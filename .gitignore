@@ -29,9 +29,17 @@ migrate_working_dir/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
+.packages
 .pub-cache/
 .pub/
-/build/
+.metadata
+build/
+flutter_client/build/
+flutter_client/.dart_tool/
+flutter_client/.flutter-plugins
+flutter_client/.flutter-plugins-dependencies
+flutter_client/.metadata
+flutter_client/pubspec.lock
 
 # Symbolication related
 app.*.symbols
@@ -43,3 +51,171 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+flutter_client/android/app/debug/
+flutter_client/android/app/profile/
+flutter_client/android/app/release/
+flutter_client/android/.gradle/
+flutter_client/android/local.properties
+
+# iOS build artifacts
+flutter_client/ios/Flutter/flutter_assets/
+flutter_client/ios/Flutter/flutter_export_environment.sh
+flutter_client/ios/.symlinks/
+flutter_client/ios/Pods/
+flutter_client/ios/Podfile.lock
+flutter_client/ios/Runner.xcworkspace/xcuserdata/
+flutter_client/ios/Runner.xcodeproj/xcuserdata/
+
+# macOS build artifacts
+flutter_client/macos/Flutter/GeneratedPluginRegistrant.swift
+flutter_client/macos/Flutter/ephemeral/
+
+# Windows build artifacts
+flutter_client/windows/flutter/generated_plugin_registrant.cc
+flutter_client/windows/flutter/generated_plugin_registrant.h
+flutter_client/windows/flutter/generated_plugins.cmake
+
+# Linux build artifacts
+flutter_client/linux/flutter/generated_plugin_registrant.cc
+flutter_client/linux/flutter/generated_plugin_registrant.h
+flutter_client/linux/flutter/generated_plugins.cmake
+
+# Web build artifacts
+flutter_client/web/
+
+# .NET Core / C# backend related
+backend/bin/
+backend/obj/
+backend/Properties/
+backend/*.user
+backend/*.suo
+backend/*.sln.docstates
+backend/[Dd]ebug/
+backend/[Rr]elease/
+backend/x64/
+backend/x86/
+backend/[Aa][Rr][Mm]/
+backend/[Aa][Rr][Mm]64/
+backend/bld/
+backend/[Bb]in/
+backend/[Oo]bj/
+backend/[Ll]og/
+backend/[Ll]ogs/
+
+# Visual Studio / Rider
+backend/.vs/
+backend/.vscode/
+backend/.idea/
+backend/TestResults/
+backend/BenchmarkDotNet.Artifacts/
+backend/[Tt]est[Rr]esult*/
+backend/[Bb]uild[Ll]og.*
+backend/MSTest/
+
+# NuGet
+backend/*.nupkg
+backend/*.snupkg
+backend/packages/
+backend/.nuget/
+
+# Database files
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+backend/*.sqlite
+backend/*.sqlite3
+videocall.db
+videocall_dev.db
+
+# Logs
+*.log
+logs/
+backend/logs/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+.sass-cache/
+.temp/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Node.js (if using any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage reports
+coverage/
+*.coverage
+*.coveragexml
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Flutter integration example (不需要提交到版本控制)
+backend/flutter_integration_example.dart
+
+# Platform specific files (at root level - these are old files)
+android/
+ios/
+linux/
+macos/
+windows/
+web/
+
+# Additional build artifacts and cache files
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/node_modules/
+**/Pods/
+**/Podfile.lock
+
+# IDE and editor files
+**/.vscode/settings.json
+**/.vscode/launch.json
+**/.idea/
+*.swp
+*.swo
+*~
+
+# Dart/Flutter specific
+**/.packages
+**/pubspec.lock
+**/.metadata
+
+# Test coverage
+**/coverage/
+**/*.lcov
+
+# Compiled binaries
+**/bin/
+**/obj/
+
+# Package manager files
+**/package-lock.json
+**/yarn.lock
+
+# System files
+**/.DS_Store
+**/Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*.orig
