@@ -32,7 +32,6 @@ dependencies:
   
   # 状态管理
   provider: ^6.1.2
-  agora_rtc_engine: ^6.5.2
 
 dev_dependencies:
   flutter_test:

@@ -56,6 +56,11 @@ class _LoginPageState extends State<LoginPage> {
         );
       }
 
+      // 重置loading状态
+      setState(() {
+        _isLoading = false;
+      });
+
       widget.onLoginResult(result);
     } catch (e) {
       setState(() {

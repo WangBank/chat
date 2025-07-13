@@ -2,9 +2,10 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/call.dart';
+import '../config/app_config.dart';
 
 class ApiService {
-  static const String baseUrl = 'https://localhost:7000/api';
+  static String get baseUrl => AppConfig.baseUrl;
   
   String? _token;
   User? _currentUser;
@@ -79,16 +80,23 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['token'] != null) {
-          _token = data['token'];
-          if (data['user'] != null) {
-            _currentUser = User.fromJson(data['user']);
+        final responseData = jsonDecode(response.body);
+        print('Login response: $responseData'); // 添加调试日志
+        
+        // 检查响应格式
+        if (responseData['success'] == true && responseData['data'] != null) {
+          final data = responseData['data'];
+          if (data['token'] != null) {
+            _token = data['token'];
+            if (data['user'] != null) {
+              _currentUser = User.fromJson(data['user']);
+            }
           }
         }
-        return data;
+        return responseData;
       } else {
-        throw Exception('登录失败: ${response.body}');
+        final errorData = jsonDecode(response.body);
+        throw Exception('登录失败: ${errorData['message'] ?? response.body}');
       }
     } catch (e) {
       throw Exception('登录错误: $e');

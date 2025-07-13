@@ -78,7 +78,23 @@ builder.Services.AddCors(options =>
     
     options.AddPolicy("SignalRCors", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "https://localhost:3000") // Flutter web 地址
+        policy.WithOrigins(
+                  "http://localhost:3000", 
+                  "https://localhost:3000", // Flutter web 地址
+                  "http://10.0.2.2:7001",   // Android 模拟器
+                  "http://127.0.0.1:7001",  // 本地回环
+                  "http://localhost:7001",  // 本地地址
+                  "http://192.168.0.2:7001" // 你的电脑IP地址
+              )
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+    
+    // 添加开发环境下的宽松策略
+    options.AddPolicy("Development", policy =>
+    {
+        policy.SetIsOriginAllowed(origin => true) // 允许任何来源
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -94,17 +110,36 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// 仅在生产环境使用 HTTPS 重定向
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
-app.UseCors("AllowAll");
+// 在开发环境使用宽松的CORS策略，生产环境使用严格策略
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors("Development");
+}
+else
+{
+    app.UseCors("AllowAll");
+}
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// 配置SignalR Hub
-app.MapHub<VideoCallHub>("/videocallhub").RequireCors("SignalRCors");
+// 配置SignalR Hub - 在开发环境使用宽松策略
+if (app.Environment.IsDevelopment())
+{
+    app.MapHub<VideoCallHub>("/videocallhub").RequireCors("Development");
+}
+else
+{
+    app.MapHub<VideoCallHub>("/videocallhub").RequireCors("SignalRCors");
+}
 
 // 数据库迁移和种子数据
 using (var scope = app.Services.CreateScope())

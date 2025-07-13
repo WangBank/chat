@@ -1,5 +1,6 @@
 import 'package:signalr_netcore/signalr_client.dart';
 import '../models/call.dart';
+import '../config/app_config.dart';
 
 typedef OnIncomingCallCallback = void Function(Call call);
 typedef OnCallAcceptedCallback = void Function(String callId);
@@ -10,7 +11,7 @@ typedef OnAnswerReceivedCallback = void Function(String callId, String answer, i
 typedef OnIceCandidateReceivedCallback = void Function(String callId, String candidate, int senderId);
 
 class SignalRService {
-  static const String hubUrl = 'https://localhost:7000/videocallhub';
+  static String get hubUrl => AppConfig.signalRUrl;
   
   HubConnection? _connection;
   

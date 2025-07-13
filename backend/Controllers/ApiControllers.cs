@@ -51,7 +51,18 @@ namespace VideoCallAPI.Controllers
             {
                 var token = await _userService.LoginAsync(loginDto);
                 var userId = _jwtService.GetUserIdFromToken(token);
-                var user = await _userService.GetUserAsync(userId!.Value);
+                
+                if (userId == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "登录失败",
+                        Errors = new List<string> { "无法从Token中获取用户ID" }
+                    });
+                }
+                
+                var user = await _userService.GetUserAsync(userId.Value);
 
                 return Ok(new ApiResponse<object>
                 {

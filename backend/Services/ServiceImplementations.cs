@@ -268,7 +268,10 @@ namespace VideoCallAPI.Services
             {
                 var tokenHandler = new JwtSecurityTokenHandler();
                 var jsonToken = tokenHandler.ReadJwtToken(token);
-                var userIdClaim = jsonToken.Claims.FirstOrDefault(x => x.Type == ClaimTypes.NameIdentifier);
+                
+                // JWT 中的 NameIdentifier 会被序列化为 "nameid"
+                var userIdClaim = jsonToken.Claims.FirstOrDefault(x => 
+                    x.Type == ClaimTypes.NameIdentifier || x.Type == "nameid");
                 
                 if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
                 {

@@ -136,27 +136,46 @@ class _VideoCallAppState extends State<VideoCallApp> {
   }
 
   void _handleLoginResult(dynamic result) {
-    if (result is Map && result['username'] != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        setState(() {
-          _isLoggedIn = true;
-          _username = result['username'] as String?;
-          _email = result['email'] as String?;
-        });
+    print('Login result: $result'); // 添加调试日志
+    
+    // 检查登录是否成功
+    if (result is Map && result['success'] == true && result['data'] != null) {
+      final data = result['data'];
+      final user = data['user'];
+      
+      if (user != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          setState(() {
+            _isLoggedIn = true;
+            _username = user['username'] as String?;
+            _email = user['email'] as String?;
+          });
 
-        // 登录成功后连接SignalR
-        if (_apiService.token != null) {
-          try {
-            await _signalRService.connect(_apiService.token!);
-            print('SignalR connected successfully');
-          } catch (e) {
-            print('SignalR connection failed: $e');
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('实时通信连接失败: $e')),
-            );
+          // 登录成功后连接SignalR
+          if (_apiService.token != null) {
+            try {
+              await _signalRService.connect(_apiService.token!);
+              print('SignalR connected successfully');
+            } catch (e) {
+              print('SignalR connection failed: $e');
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('实时通信连接失败: $e')),
+              );
+            }
           }
-        }
-      });
+          
+          // 显示登录成功消息
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('登录成功！欢迎 $_username')),
+          );
+        });
+      }
+    } else {
+      // 登录失败处理
+      final message = result is Map ? result['message'] ?? '登录失败' : '登录失败';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.red),
+      );
     }
   }
 
