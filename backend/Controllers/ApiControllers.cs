@@ -4,6 +4,7 @@ using VideoCallAPI.Models.DTOs;
 using VideoCallAPI.Services;
 using System.Security.Claims;
 using VideoCallAPI.Models;
+using Newtonsoft.Json;
 
 namespace VideoCallAPI.Controllers
 {
@@ -147,6 +148,122 @@ namespace VideoCallAPI.Controllers
             }
         }
 
+        [HttpPut("profile")]
+        public async Task<ActionResult<ApiResponse<UserResponseDto>>> UpdateProfile([FromBody] UpdateProfileDto updateProfileDto)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _userService.UpdateProfileAsync(userId, updateProfileDto);
+                return Ok(new ApiResponse<UserResponseDto>
+                {
+                    Success = true,
+                    Message = "个人资料更新成功",
+                    Data = result
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse<UserResponseDto>
+                {
+                    Success = false,
+                    Message = "更新失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("upload-avatar")]
+        public async Task<ActionResult<ApiResponse<UserResponseDto>>> UploadAvatar(IFormFile avatar)
+        {
+            try
+            {
+                if (avatar == null || avatar.Length == 0)
+                {
+                    return BadRequest(new ApiResponse<UserResponseDto>
+                    {
+                        Success = false,
+                        Message = "请选择头像文件",
+                        Errors = new List<string> { "头像文件不能为空" }
+                    });
+                }
+
+                // 检查文件类型
+                var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif" };
+                var fileExtension = Path.GetExtension(avatar.FileName).ToLowerInvariant();
+                if (!allowedExtensions.Contains(fileExtension))
+                {
+                    return BadRequest(new ApiResponse<UserResponseDto>
+                    {
+                        Success = false,
+                        Message = "不支持的文件格式",
+                        Errors = new List<string> { "只支持 JPG, JPEG, PNG, GIF 格式的图片" }
+                    });
+                }
+
+                // 检查文件大小 (最大 5MB)
+                if (avatar.Length > 5 * 1024 * 1024)
+                {
+                    return BadRequest(new ApiResponse<UserResponseDto>
+                    {
+                        Success = false,
+                        Message = "文件太大",
+                        Errors = new List<string> { "头像文件不能超过 5MB" }
+                    });
+                }
+
+                var userId = GetUserId();
+                var result = await _userService.UploadAvatarAsync(userId, avatar);
+                return Ok(new ApiResponse<UserResponseDto>
+                {
+                    Success = true,
+                    Message = "头像上传成功",
+                    Data = result
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse<UserResponseDto>
+                {
+                    Success = false,
+                    Message = "头像上传失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpGet("search-users")]
+        public async Task<ActionResult<ApiResponse<UserSearchResultDto>>> SearchUsers([FromQuery] string query = "", [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var searchDto = new SearchUsersDto
+                {
+                    Query = query,
+                    Page = page,
+                    PageSize = pageSize
+                };
+                
+                var result = await _userService.SearchUsersAsync(userId, searchDto);
+                return Ok(new ApiResponse<UserSearchResultDto>
+                {
+                    Success = true,
+                    Message = "搜索成功",
+                    Data = result
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse<UserSearchResultDto>
+                {
+                    Success = false,
+                    Message = "搜索失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
         private int GetUserId()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
@@ -177,6 +294,32 @@ namespace VideoCallAPI.Controllers
             {
                 var userId = GetUserId();
                 var contacts = await _contactService.GetContactsAsync(userId);
+                System.Console.WriteLine(JsonConvert.SerializeObject(contacts));
+                return Ok(new ApiResponse<List<ContactResponseDto>>
+                {
+                    Success = true,
+                    Data = contacts
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+                return BadRequest(new ApiResponse<List<ContactResponseDto>>
+                {
+                    Success = false,
+                    Message = "获取联系人失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpGet("search")]
+        public async Task<ActionResult<ApiResponse<List<ContactResponseDto>>>> SearchContacts([FromQuery] string query)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var contacts = await _contactService.SearchContactsAsync(userId, query);
                 
                 return Ok(new ApiResponse<List<ContactResponseDto>>
                 {
@@ -189,7 +332,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse<List<ContactResponseDto>>
                 {
                     Success = false,
-                    Message = "获取联系人失败",
+                    Message = "搜索联系人失败",
                     Errors = new List<string> { ex.Message }
                 });
             }
@@ -228,11 +371,10 @@ namespace VideoCallAPI.Controllers
             {
                 var userId = GetUserId();
                 await _contactService.RemoveContactAsync(userId, contactId);
-                
                 return Ok(new ApiResponse
                 {
                     Success = true,
-                    Message = "删除联系人成功"
+                    Message = "联系人删除成功"
                 });
             }
             catch (Exception ex)
@@ -240,7 +382,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse
                 {
                     Success = false,
-                    Message = "删除联系人失败",
+                    Message = "删除失败",
                     Errors = new List<string> { ex.Message }
                 });
             }
@@ -271,6 +413,32 @@ namespace VideoCallAPI.Controllers
             }
         }
 
+        [HttpPatch("{contactId}/display-name")]
+        public async Task<ActionResult<ApiResponse<ContactResponseDto>>> UpdateDisplayName(int contactId, [FromBody] string displayName)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var contact = await _contactService.UpdateContactDisplayNameAsync(userId, contactId, displayName);
+                
+                return Ok(new ApiResponse<ContactResponseDto>
+                {
+                    Success = true,
+                    Message = "备注修改成功",
+                    Data = contact
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse<ContactResponseDto>
+                {
+                    Success = false,
+                    Message = "修改备注失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
         private int GetUserId()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
@@ -279,6 +447,193 @@ namespace VideoCallAPI.Controllers
                 return userId;
             }
             throw new UnauthorizedAccessException("用户未登录");
+        }
+    }
+
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class ChatController : ControllerBase
+    {
+        private readonly IChatService _chatService;
+
+        public ChatController(IChatService chatService)
+        {
+            _chatService = chatService;
+        }
+
+        [HttpPost("send")]
+        public async Task<ActionResult<ApiResponse<ChatMessageDto>>> SendMessage([FromBody] SendMessageDto sendMessageDto)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                
+                return BadRequest(new ApiResponse<ChatMessageDto>
+                {
+                    Success = false,
+                    Message = "请求参数验证失败",
+                    Errors = errors
+                });
+            }
+
+            try
+            {
+                var userId = GetUserId();
+                var message = await _chatService.SendMessageAsync(userId, sendMessageDto);
+                
+                return Ok(new ApiResponse<ChatMessageDto>
+                {
+                    Success = true,
+                    Message = "消息发送成功",
+                    Data = message
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse<ChatMessageDto>
+                {
+                    Success = false,
+                    Message = "发送消息失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpGet("history/{contactId}")]
+        public async Task<ActionResult<ApiResponse<List<ChatMessageDto>>>> GetChatHistory(int contactId)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var messages = await _chatService.GetChatHistoryAsync(userId, contactId);
+                
+                return Ok(new ApiResponse<List<ChatMessageDto>>
+                {
+                    Success = true,
+                    Data = messages
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse<List<ChatMessageDto>>
+                {
+                    Success = false,
+                    Message = "获取聊天记录失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPatch("messages/{messageId}/read")]
+        public async Task<ActionResult<ApiResponse>> MarkMessageAsRead(int messageId)
+        {
+            try
+            {
+                var userId = GetUserId();
+                await _chatService.MarkMessageAsReadAsync(messageId, userId);
+                
+                return Ok(new ApiResponse
+                {
+                    Success = true,
+                    Message = "消息已标记为已读"
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse
+                {
+                    Success = false,
+                    Message = "标记消息失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpGet("unread")]
+        public async Task<ActionResult<ApiResponse<List<ChatMessageDto>>>> GetUnreadMessages()
+        {
+            try
+            {
+                var userId = GetUserId();
+                var messages = await _chatService.GetUnreadMessagesAsync(userId);
+                
+                return Ok(new ApiResponse<List<ChatMessageDto>>
+                {
+                    Success = true,
+                    Data = messages
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse<List<ChatMessageDto>>
+                {
+                    Success = false,
+                    Message = "获取未读消息失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpGet("chat-history")]
+        public async Task<ActionResult<ApiResponse<List<ChatHistoryDto>>>> GetChatHistory()
+        {
+            try
+            {
+                var userId = GetUserId();
+                var chatHistory = await _chatService.GetChatHistoryAsync(userId);
+                
+                return Ok(new ApiResponse<List<ChatHistoryDto>>
+                {
+                    Success = true,
+                    Data = chatHistory
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse<List<ChatHistoryDto>>
+                {
+                    Success = false,
+                    Message = "获取聊天记录失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpDelete("chat-history/{contactId}")]
+        public async Task<ActionResult<ApiResponse>> DeleteChatHistory(int contactId)
+        {
+            try
+            {
+                var userId = GetUserId();
+                await _chatService.DeleteChatHistoryAsync(userId, contactId);
+                
+                return Ok(new ApiResponse
+                {
+                    Success = true,
+                    Message = "删除聊天记录成功"
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse
+                {
+                    Success = false,
+                    Message = "删除聊天记录失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        private int GetUserId()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+                throw new UnauthorizedAccessException("无效的用户ID");
+            return userId;
         }
     }
 

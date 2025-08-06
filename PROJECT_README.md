@@ -34,7 +34,7 @@ chmod +x start.sh
 ./start.sh
 ```
 
-后端将在 `https://localhost:7000` 启动
+后端将在 `https://172.27.2.52:7000` 启动
 
 ### 2. 启动Flutter应用
 
@@ -129,9 +129,9 @@ flutter run
 ## 📖 API文档
 
 启动后端服务后，访问：
-- **Swagger UI**: `https://localhost:7000/swagger`
-- **API基础路径**: `https://localhost:7000/api`
-- **SignalR Hub**: `https://localhost:7000/videocallhub`
+- **Swagger UI**: `https://172.27.2.52:7000/swagger`
+- **API基础路径**: `https://172.27.2.52:7000/api`
+- **SignalR Hub**: `https://172.27.2.52:7000/videocallhub`
 
 ### 主要API端点
 ```

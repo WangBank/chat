@@ -1,266 +1,269 @@
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.AspNetCore.Authorization;
+using VideoCallAPI.Models;
 using VideoCallAPI.Models.DTOs;
 using VideoCallAPI.Services;
-using System.Security.Claims;
 
 namespace VideoCallAPI.Hubs
 {
-    [Authorize]
     public class VideoCallHub : Hub
     {
-        private readonly ICallService _callService;
+        private readonly IWebRTCService _webRTCService;
+        private readonly IUserService _userService;
         private readonly ILogger<VideoCallHub> _logger;
+        private static readonly Dictionary<string, int> _connectionUserMap = new();
 
-        public VideoCallHub(ICallService callService, ILogger<VideoCallHub> logger)
+        public VideoCallHub(
+            IWebRTCService webRTCService,
+            IUserService userService,
+            ILogger<VideoCallHub> logger)
         {
-            _callService = callService;
+            _webRTCService = webRTCService;
+            _userService = userService;
             _logger = logger;
         }
 
         public override async Task OnConnectedAsync()
         {
-            var userId = GetUserId();
-            if (userId.HasValue)
-            {
-                await Groups.AddToGroupAsync(Context.ConnectionId, $"User_{userId}");
-                await _callService.UpdateUserOnlineStatus(userId.Value, true);
-                _logger.LogInformation($"User {userId} connected with connectionId {Context.ConnectionId}");
-            }
+            _logger.LogInformation("客户端连接: {ConnectionId}", Context.ConnectionId);
             await base.OnConnectedAsync();
         }
 
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
-            var userId = GetUserId();
-            if (userId.HasValue)
+            var connectionId = Context.ConnectionId;
+            if (_connectionUserMap.TryGetValue(connectionId, out var userId))
             {
-                await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"User_{userId}");
-                await _callService.UpdateUserOnlineStatus(userId.Value, false);
-                _logger.LogInformation($"User {userId} disconnected");
+                _connectionUserMap.Remove(connectionId);
+                _logger.LogInformation("用户断开连接: {UserId}, 连接: {ConnectionId}", userId, connectionId);
             }
             await base.OnDisconnectedAsync(exception);
         }
 
-        // 发起通话
-        public async Task InitiateCall(InitiateCallDto callDto)
+        // 用户认证
+        public async Task Authenticate(int userId)
         {
-            var callerId = GetUserId();
-            if (!callerId.HasValue) return;
+            _connectionUserMap[Context.ConnectionId] = userId;
+            await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
+            _logger.LogInformation("用户认证: {UserId}, 连接: {ConnectionId}", userId, Context.ConnectionId);
+        }
 
+        // 发起通话
+        public async Task InitiateCall(InitiateCallDto request)
+        {
             try
             {
-                var call = await _callService.InitiateCallAsync(callerId.Value, callDto.ReceiverId, callDto.CallType);
-                
-                // 通知被叫用户
-                await Clients.Group($"User_{callDto.ReceiverId}")
-                    .SendAsync("IncomingCall", new
-                    {
-                        CallId = call.CallId,
-                        Caller = call.Caller,
-                        CallType = call.CallType
-                    });
+                var callerId = GetCurrentUserId();
+                if (callerId == null)
+                {
+                    await Clients.Caller.SendAsync("CallError", "用户未认证");
+                    return;
+                }
 
-                // 通知主叫用户
-                await Clients.Caller.SendAsync("CallInitiated", call);
+                var session = await _webRTCService.CreateSessionAsync(callerId.Value, request.ReceiverId, request.CallType);
+                
+                // 通知接收者
+                await Clients.Group($"user_{request.ReceiverId}").SendAsync("IncomingCall", new
+                {
+                    CallId = session.CallId,
+                    CallerId = callerId,
+                    CallType = request.CallType,
+                    Timestamp = session.StartTime
+                });
+
+                _logger.LogInformation("发起通话: {CallId}, 呼叫者: {CallerId}, 接收者: {ReceiverId}", 
+                    session.CallId, callerId, request.ReceiverId);
             }
             catch (Exception ex)
             {
-                await Clients.Caller.SendAsync("CallError", ex.Message);
+                _logger.LogError(ex, "发起通话失败");
+                await Clients.Caller.SendAsync("CallError", "发起通话失败");
             }
         }
 
         // 应答通话
-        public async Task AnswerCall(AnswerCallDto answerDto)
+        public async Task AnswerCall(AnswerCallDto request)
         {
-            var userId = GetUserId();
-            if (!userId.HasValue) return;
-
             try
             {
-                var result = await _callService.AnswerCallAsync(answerDto.CallId, userId.Value, answerDto.Accept);
-                
-                if (answerDto.Accept)
+                var userId = GetCurrentUserId();
+                if (userId == null)
                 {
-                    // 加入通话房间
-                    await Groups.AddToGroupAsync(Context.ConnectionId, $"Call_{answerDto.CallId}");
-                    
-                    // 通知主叫用户通话被接受
-                    await Clients.Group($"User_{result.Caller.Id}")
-                        .SendAsync("CallAccepted", new { CallId = answerDto.CallId });
+                    await Clients.Caller.SendAsync("CallError", "用户未认证");
+                    return;
+                }
+
+                if (request.Accept)
+                {
+                    var success = await _webRTCService.AcceptCallAsync(request.CallId, userId.Value);
+                    if (success)
+                    {
+                        var session = await _webRTCService.GetSessionAsync(request.CallId);
+                        if (session != null)
+                        {
+                            // 通知呼叫者通话被接受
+                            await Clients.Group($"user_{session.CallerId}").SendAsync("CallAccepted", new
+                            {
+                                CallId = request.CallId,
+                                ReceiverId = userId
+                            });
+
+                            _logger.LogInformation("通话被接受: {CallId}, 接收者: {UserId}", request.CallId, userId);
+                        }
+                    }
                 }
                 else
                 {
-                    // 通知主叫用户通话被拒绝
-                    await Clients.Group($"User_{result.Caller.Id}")
-                        .SendAsync("CallRejected", new { CallId = answerDto.CallId });
+                    var success = await _webRTCService.RejectCallAsync(request.CallId, userId.Value);
+                    if (success)
+                    {
+                        var session = await _webRTCService.GetSessionAsync(request.CallId);
+                        if (session != null)
+                        {
+                            // 通知呼叫者通话被拒绝
+                            await Clients.Group($"user_{session.CallerId}").SendAsync("CallRejected", new
+                            {
+                                CallId = request.CallId,
+                                ReceiverId = userId
+                            });
+
+                            _logger.LogInformation("通话被拒绝: {CallId}, 接收者: {UserId}", request.CallId, userId);
+                        }
+                    }
                 }
             }
             catch (Exception ex)
             {
-                await Clients.Caller.SendAsync("CallError", ex.Message);
+                _logger.LogError(ex, "应答通话失败");
+                await Clients.Caller.SendAsync("CallError", "应答通话失败");
             }
         }
 
         // 结束通话
         public async Task EndCall(string callId)
         {
-            var userId = GetUserId();
-            if (!userId.HasValue) return;
-
             try
             {
-                await _callService.EndCallAsync(callId, userId.Value);
-                
-                // 通知通话房间内的所有用户
-                await Clients.Group($"Call_{callId}").SendAsync("CallEnded", new { CallId = callId });
-                
-                // 移除用户从通话房间
-                await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"Call_{callId}");
-            }
-            catch (Exception ex)
-            {
-                await Clients.Caller.SendAsync("CallError", ex.Message);
-            }
-        }
-
-        // WebRTC 信令 - 发送 Offer
-        public async Task SendOffer(WebRTCOfferDto offerDto)
-        {
-            await Clients.Group($"Call_{offerDto.CallId}")
-                .SendAsync("ReceiveOffer", new
+                var userId = GetCurrentUserId();
+                if (userId == null)
                 {
-                    CallId = offerDto.CallId,
-                    Offer = offerDto.Offer,
-                    SenderId = GetUserId()
-                });
-        }
+                    await Clients.Caller.SendAsync("CallError", "用户未认证");
+                    return;
+                }
 
-        // WebRTC 信令 - 发送 Answer
-        public async Task SendAnswer(WebRTCAnswerDto answerDto)
-        {
-            await Clients.Group($"Call_{answerDto.CallId}")
-                .SendAsync("ReceiveAnswer", new
+                var success = await _webRTCService.EndCallAsync(callId, userId.Value);
+                if (success)
                 {
-                    CallId = answerDto.CallId,
-                    Answer = answerDto.Answer,
-                    SenderId = GetUserId()
-                });
-        }
-
-        // WebRTC 信令 - 发送 ICE Candidate
-        public async Task SendIceCandidate(WebRTCCandidateDto candidateDto)
-        {
-            await Clients.Group($"Call_{candidateDto.CallId}")
-                .SendAsync("ReceiveIceCandidate", new
-                {
-                    CallId = candidateDto.CallId,
-                    Candidate = candidateDto.Candidate,
-                    SenderId = GetUserId()
-                });
-        }
-
-        // 加入房间
-        public async Task JoinRoom(string roomCode)
-        {
-            var userId = GetUserId();
-            if (!userId.HasValue) return;
-
-            try
-            {
-                var room = await _callService.JoinRoomAsync(roomCode, userId.Value);
-                
-                // 加入房间群组
-                await Groups.AddToGroupAsync(Context.ConnectionId, $"Room_{room.Id}");
-                
-                // 通知房间内其他用户
-                await Clients.Group($"Room_{room.Id}")
-                    .SendAsync("UserJoinedRoom", new
+                    var session = await _webRTCService.GetSessionAsync(callId);
+                    if (session != null)
                     {
-                        RoomId = room.Id,
-                        UserId = userId.Value,
-                        Username = Context.User?.Identity?.Name
-                    });
+                        // 通知所有参与者通话结束
+                        await Clients.Group($"user_{session.CallerId}").SendAsync("CallEnded", new
+                        {
+                            CallId = callId,
+                            EndedBy = userId
+                        });
+                        await Clients.Group($"user_{session.ReceiverId}").SendAsync("CallEnded", new
+                        {
+                            CallId = callId,
+                            EndedBy = userId
+                        });
 
-                // 通知用户加入成功
-                await Clients.Caller.SendAsync("RoomJoined", room);
+                        _logger.LogInformation("通话结束: {CallId}, 结束者: {UserId}", callId, userId);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                await Clients.Caller.SendAsync("RoomError", ex.Message);
+                _logger.LogError(ex, "结束通话失败");
+                await Clients.Caller.SendAsync("CallError", "结束通话失败");
             }
         }
 
-        // 离开房间
-        public async Task LeaveRoom(int roomId)
+        // WebRTC 信令消息
+        public async Task SendWebRTCMessage(WebRTCMessage message)
         {
-            var userId = GetUserId();
-            if (!userId.HasValue) return;
-
             try
             {
-                await _callService.LeaveRoomAsync(roomId, userId.Value);
-                
-                // 离开房间群组
-                await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"Room_{roomId}");
-                
-                // 通知房间内其他用户
-                await Clients.Group($"Room_{roomId}")
-                    .SendAsync("UserLeftRoom", new
-                    {
-                        RoomId = roomId,
-                        UserId = userId.Value,
-                        Username = Context.User?.Identity?.Name
-                    });
+                var userId = GetCurrentUserId();
+                if (userId == null)
+                {
+                    await Clients.Caller.SendAsync("CallError", "用户未认证");
+                    return;
+                }
+
+                message.SenderId = userId.Value;
+                await _webRTCService.SendMessageAsync(message);
+
+                var session = await _webRTCService.GetSessionAsync(message.CallId);
+                if (session != null)
+                {
+                    // 转发消息给通话中的其他用户
+                    var targetUserId = message.SenderId == session.CallerId ? session.ReceiverId : session.CallerId;
+                    await Clients.Group($"user_{targetUserId}").SendAsync("WebRTCMessage", message);
+
+                    _logger.LogDebug("转发WebRTC消息: {CallId}, 类型: {Type}, 从: {SenderId}, 到: {TargetUserId}", 
+                        message.CallId, message.Type, message.SenderId, targetUserId);
+                }
             }
             catch (Exception ex)
             {
-                await Clients.Caller.SendAsync("RoomError", ex.Message);
+                _logger.LogError(ex, "发送WebRTC消息失败");
+                await Clients.Caller.SendAsync("CallError", "发送WebRTC消息失败");
             }
         }
 
-        // 房间内发送 WebRTC 信令
-        public async Task SendRoomOffer(int roomId, string offer, int targetUserId)
+        // 加入通话
+        public async Task JoinCall(string callId)
         {
-            await Clients.Group($"User_{targetUserId}")
-                .SendAsync("ReceiveRoomOffer", new
-                {
-                    RoomId = roomId,
-                    Offer = offer,
-                    SenderId = GetUserId()
-                });
-        }
-
-        public async Task SendRoomAnswer(int roomId, string answer, int targetUserId)
-        {
-            await Clients.Group($"User_{targetUserId}")
-                .SendAsync("ReceiveRoomAnswer", new
-                {
-                    RoomId = roomId,
-                    Answer = answer,
-                    SenderId = GetUserId()
-                });
-        }
-
-        public async Task SendRoomIceCandidate(int roomId, string candidate, int targetUserId)
-        {
-            await Clients.Group($"User_{targetUserId}")
-                .SendAsync("ReceiveRoomIceCandidate", new
-                {
-                    RoomId = roomId,
-                    Candidate = candidate,
-                    SenderId = GetUserId()
-                });
-        }
-
-        private int? GetUserId()
-        {
-            var userIdClaim = Context.User?.FindFirst(ClaimTypes.NameIdentifier);
-            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            try
             {
-                return userId;
+                var userId = GetCurrentUserId();
+                if (userId == null)
+                {
+                    await Clients.Caller.SendAsync("CallError", "用户未认证");
+                    return;
+                }
+
+                await _webRTCService.ConnectUserAsync(callId, userId.Value, Context.ConnectionId);
+                await Clients.Caller.SendAsync("JoinedCall", new { CallId = callId, UserId = userId });
+
+                _logger.LogInformation("用户加入通话: {CallId}, 用户: {UserId}", callId, userId);
             }
-            return null;
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "加入通话失败");
+                await Clients.Caller.SendAsync("CallError", "加入通话失败");
+            }
+        }
+
+        // 离开通话
+        public async Task LeaveCall(string callId)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                if (userId == null)
+                {
+                    await Clients.Caller.SendAsync("CallError", "用户未认证");
+                    return;
+                }
+
+                await _webRTCService.DisconnectUserAsync(callId, userId.Value);
+                await Clients.Caller.SendAsync("LeftCall", new { CallId = callId, UserId = userId });
+
+                _logger.LogInformation("用户离开通话: {CallId}, 用户: {UserId}", callId, userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "离开通话失败");
+                await Clients.Caller.SendAsync("CallError", "离开通话失败");
+            }
+        }
+
+        private int? GetCurrentUserId()
+        {
+            var connectionId = Context.ConnectionId;
+            return _connectionUserMap.TryGetValue(connectionId, out var userId) ? userId : null;
         }
     }
 }

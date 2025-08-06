@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../models/user.dart';
 
 class LoginPage extends StatefulWidget {
-  final Function(Map<String, dynamic>) onLoginResult;
+  final Function(User user)? onLoginSuccess;
+  final ApiService? apiService;
 
   const LoginPage({
     super.key,
-    required this.onLoginResult,
+    this.onLoginSuccess,
+    this.apiService,
   });
 
   @override
@@ -17,7 +20,13 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final ApiService _apiService = ApiService();
+  late final ApiService _apiService;
+  
+  @override
+  void initState() {
+    super.initState();
+    _apiService = widget.apiService ?? ApiService();
+  }
   
   bool _isLogin = true;
   bool _isLoading = false;
@@ -27,6 +36,10 @@ class _LoginPageState extends State<LoginPage> {
     final username = _usernameController.text.trim();
     final password = _passwordController.text.trim();
     final email = _emailController.text.trim();
+
+    print('🔐 开始登录流程...');
+    print(' 用户名: $username');
+    print('📧 邮箱: $email');
 
     if (username.isEmpty || password.isEmpty || (!_isLogin && email.isEmpty)) {
       setState(() {
@@ -44,16 +57,20 @@ class _LoginPageState extends State<LoginPage> {
       Map<String, dynamic> result;
       
       if (_isLogin) {
+        print('🚀 调用登录API...');
         result = await _apiService.login(
           username: username,
           password: password,
         );
+        print('✅ 登录API调用完成: $result');
       } else {
+        print('🚀 调用注册API...');
         result = await _apiService.register(
           username: username,
           email: email,
           password: password,
         );
+        print('✅ 注册API调用完成: $result');
       }
 
       // 重置loading状态
@@ -61,8 +78,16 @@ class _LoginPageState extends State<LoginPage> {
         _isLoading = false;
       });
 
-      widget.onLoginResult(result);
+      // 处理登录成功
+      if (result['success'] == true && result['data'] != null) {
+        final userData = result['data']['user'];
+        if (userData != null) {
+          final user = User.fromJson(userData);
+          widget.onLoginSuccess?.call(user);
+        }
+      }
     } catch (e) {
+      print('❌ 登录/注册失败: $e');
       setState(() {
         _errorMessage = e.toString();
         _isLoading = false;
@@ -96,7 +121,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 child: Column(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.video_call,
                       size: 64,
                       color: Colors.blue,

@@ -1,208 +1,121 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../models/call.dart';
 import '../models/user.dart';
-import 'api_service.dart';
-import 'signalr_service.dart';
 import 'webrtc_service.dart';
 
-enum CallState {
-  idle,
-  initiating,
-  ringing,
-  connecting,
-  connected,
-  ending,
-}
-
 class CallManager extends ChangeNotifier {
-  final ApiService _apiService;
-  final SignalRService _signalRService;
-  late final WebRTCService _webRTCService;
-
-  CallState _callState = CallState.idle;
+  final WebRTCService _webRTCService;
+  
   Call? _currentCall;
-  String? _errorMessage;
+  bool _isInCall = false;
+  User? _currentUser;
 
-  CallManager(this._apiService, this._signalRService) {
-    _webRTCService = WebRTCService(_signalRService);
-    _initializeServices();
+  CallManager(this._webRTCService) {
+    _setupWebRTCHandlers();
   }
 
   // Getters
-  CallState get callState => _callState;
   Call? get currentCall => _currentCall;
-  String? get errorMessage => _errorMessage;
-  WebRTCService get webRTCService => _webRTCService;
-  bool get isInCall => _callState != CallState.idle;
+  bool get isInCall => _isInCall;
+  User? get currentUser => _currentUser;
 
-  // 初始化服务
-  Future<void> _initializeServices() async {
-    await _webRTCService.initialize();
-    
-    // 设置SignalR回调
-    _signalRService.onIncomingCall = _handleIncomingCall;
-    _signalRService.onCallAccepted = _handleCallAccepted;
-    _signalRService.onCallRejected = _handleCallRejected;
-    _signalRService.onCallEnded = _handleCallEnded;
+  // 设置WebRTC事件处理器
+  void _setupWebRTCHandlers() {
+    _webRTCService.onIncomingCall = (call) {
+      _currentCall = call;
+      _isInCall = true;
+      notifyListeners();
+      print('📞 收到来电: ${call.caller.username}');
+    };
 
-    // 设置WebRTC回调
-    _webRTCService.onConnectionEstablished = _handleConnectionEstablished;
-    _webRTCService.onConnectionLost = _handleConnectionLost;
+    _webRTCService.onCallAccepted = (call) {
+      _currentCall = call;
+      _isInCall = true;
+      notifyListeners();
+      print('📞 通话被接受: ${call.callId}');
+    };
+
+    _webRTCService.onCallRejected = (call) {
+      _currentCall = null;
+      _isInCall = false;
+      notifyListeners();
+      print('📞 通话被拒绝: ${call.callId}');
+    };
+
+    _webRTCService.onCallEnded = (call) {
+      _currentCall = null;
+      _isInCall = false;
+      notifyListeners();
+      print('📞 通话结束: ${call.callId}');
+    };
+
+    _webRTCService.onError = (error) {
+      print('❌ WebRTC错误: $error');
+    };
+  }
+
+  // 初始化
+  Future<void> initialize(String token, User user) async {
+    try {
+      _currentUser = user;
+      await _webRTCService.initialize(token);
+      print('✅ CallManager初始化成功');
+    } catch (e) {
+      print('❌ CallManager初始化失败: $e');
+      rethrow;
+    }
   }
 
   // 发起通话
   Future<void> initiateCall(User receiver, CallType callType) async {
     try {
-      _setCallState(CallState.initiating);
-      _errorMessage = null;
-
-      // 通过SignalR发起通话
-      await _signalRService.initiateCall(InitiateCallRequest(
-        receiverId: receiver.id,
-        callType: callType,
-      ));
-
-      // 创建本地通话对象
-      _currentCall = Call(
-        callId: DateTime.now().millisecondsSinceEpoch.toString(),
-        caller: _apiService.currentUser!,
-        receiver: receiver,
-        callType: callType,
-        status: CallStatus.initiated,
-        startTime: DateTime.now(),
-      );
-
-      _setCallState(CallState.ringing);
-      notifyListeners();
+      await _webRTCService.initiateCall(receiver, callType);
+      print('📞 发起通话: ${receiver.username}');
     } catch (e) {
-      _errorMessage = e.toString();
-      _setCallState(CallState.idle);
-      notifyListeners();
+      print('❌ 发起通话失败: $e');
+      rethrow;
     }
   }
 
   // 应答通话
-  Future<void> answerCall(bool accept) async {
-    if (_currentCall == null) return;
-
+  Future<void> answerCall(String callId, bool accept) async {
     try {
-      await _signalRService.answerCall(AnswerCallRequest(
-        callId: _currentCall!.callId,
-        accept: accept,
-      ));
-
-      if (accept) {
-        _setCallState(CallState.connecting);
-        await _webRTCService.answerCall(_currentCall!.callId, _currentCall!.callType);
-      } else {
-        await _endCallInternal();
-      }
-
-      notifyListeners();
+      await _webRTCService.answerCall(callId, accept);
+      print('📞 ${accept ? "应答" : "拒绝"}通话: $callId');
     } catch (e) {
-      _errorMessage = e.toString();
-      await _endCallInternal();
-      notifyListeners();
+      print('❌ 应答通话失败: $e');
+      rethrow;
     }
   }
 
   // 结束通话
   Future<void> endCall() async {
-    if (_currentCall == null) return;
-
     try {
-      _setCallState(CallState.ending);
-      await _signalRService.endCall(_currentCall!.callId);
-      await _endCallInternal();
+      await _webRTCService.endCall();
+      print('📞 结束通话');
     } catch (e) {
-      _errorMessage = e.toString();
-      await _endCallInternal();
+      print('❌ 结束通话失败: $e');
+      rethrow;
     }
   }
 
-  // 内部结束通话逻辑
-  Future<void> _endCallInternal() async {
-    await _webRTCService.endCall();
-    _currentCall = null;
-    _setCallState(CallState.idle);
-    notifyListeners();
-  }
-
-  // 处理来电
-  void _handleIncomingCall(Call call) {
-    _currentCall = call;
-    _setCallState(CallState.ringing);
-    notifyListeners();
-  }
-
-  // 处理通话被接受
-  void _handleCallAccepted(String callId) async {
-    if (_currentCall?.callId != callId) return;
-
+  // 断开连接
+  Future<void> disconnect() async {
     try {
-      _setCallState(CallState.connecting);
-      await _webRTCService.initiateCall(callId, _currentCall!.callType);
+      await _webRTCService.disconnect();
+      _currentCall = null;
+      _isInCall = false;
+      _currentUser = null;
       notifyListeners();
+      print('🔌 CallManager已断开连接');
     } catch (e) {
-      _errorMessage = e.toString();
-      await _endCallInternal();
+      print('❌ 断开连接失败: $e');
     }
-  }
-
-  // 处理通话被拒绝
-  void _handleCallRejected(String callId) async {
-    if (_currentCall?.callId != callId) return;
-    await _endCallInternal();
-  }
-
-  // 处理通话结束
-  void _handleCallEnded(String callId) async {
-    if (_currentCall?.callId != callId) return;
-    await _endCallInternal();
-  }
-
-  // 处理WebRTC连接建立
-  void _handleConnectionEstablished() {
-    _setCallState(CallState.connected);
-    notifyListeners();
-  }
-
-  // 处理WebRTC连接丢失
-  void _handleConnectionLost() async {
-    if (_callState == CallState.connected) {
-      await endCall();
-    }
-  }
-
-  // 设置通话状态
-  void _setCallState(CallState state) {
-    _callState = state;
-  }
-
-  // 切换摄像头
-  Future<void> switchCamera() async {
-    await _webRTCService.switchCamera();
-  }
-
-  // 切换麦克风
-  void toggleMicrophone() {
-    _webRTCService.toggleMicrophone();
-  }
-
-  // 切换摄像头开关
-  void toggleCamera() {
-    _webRTCService.toggleCamera();
-  }
-
-  // 清理错误消息
-  void clearError() {
-    _errorMessage = null;
-    notifyListeners();
   }
 
   @override
   void dispose() {
-    _webRTCService.dispose();
+    disconnect();
     super.dispose();
   }
 }

@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import '../models/contact.dart';
 import '../models/user.dart';
 import '../models/call.dart';
 import '../services/api_service.dart';
 import '../services/call_manager.dart';
-import 'video_call_page.dart';
+import '../config/app_config.dart';
+import 'user_search_page.dart';
+import 'chat_page.dart';
 
 class ContactsPage extends StatefulWidget {
   final ApiService apiService;
@@ -20,150 +23,143 @@ class ContactsPage extends StatefulWidget {
 }
 
 class _ContactsPageState extends State<ContactsPage> {
-  List<User> _contacts = [];
-  bool _isLoading = true;
-  String? _errorMessage;
-  final TextEditingController _usernameController = TextEditingController();
+  List<Contact> _contacts = [];
+  List<Contact> _filteredContacts = [];
+  final TextEditingController _searchController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _loadContacts();
-    _setupCallListener();
   }
 
-  void _setupCallListener() {
-    widget.callManager.addListener(() {
-      // 如果有来电，显示通话页面
-      if (widget.callManager.callState == CallState.ringing && 
-          widget.callManager.currentCall != null) {
-        _showVideoCallPage(widget.callManager.currentCall!, isIncoming: true);
+  Future<void> _loadContacts() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final contacts = await widget.apiService.getContacts();
+      setState(() {
+        _contacts = contacts;
+        _filteredContacts = contacts;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('获取联系人失败: $e')),
+        );
+      }
+    }
+  }
+
+  void _filterContacts(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        _filteredContacts = _contacts;
+      } else {
+        _filteredContacts = _contacts.where((contact) {
+          final displayName = contact.displayName?.toLowerCase() ?? '';
+          final username = contact.contactUser.username.toLowerCase();
+          final nickname = contact.contactUser.nickname?.toLowerCase() ?? '';
+          final searchQuery = query.toLowerCase();
+          
+          return displayName.contains(searchQuery) ||
+                 username.contains(searchQuery) ||
+                 nickname.contains(searchQuery);
+        }).toList();
       }
     });
   }
 
-  Future<void> _loadContacts() async {
+  Future<void> _addContact(User user) async {
     try {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
-
-      final contacts = await widget.apiService.getContacts();
-      setState(() {
-        _contacts = contacts;
-        _isLoading = false;
-      });
+      await widget.apiService.addContact(username: user.username);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('联系人添加成功')),
+      );
+      _loadContacts(); // 重新加载联系人列表
     } catch (e) {
-      setState(() {
-        _errorMessage = e.toString();
-        _isLoading = false;
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('添加联系人失败: $e')),
+        );
+      }
     }
   }
 
-  Future<void> _addContact() async {
-    final username = _usernameController.text.trim();
-    if (username.isEmpty) return;
-
+  Future<void> _deleteContact(Contact contact) async {
     try {
-      final newContact = await widget.apiService.addContact(username: username);
+      await widget.apiService.removeContact(contact.id);
       setState(() {
-        _contacts.add(newContact);
+        _contacts.removeWhere((c) => c.id == contact.id);
+        _filteredContacts.removeWhere((c) => c.id == contact.id);
       });
-      _usernameController.clear();
-      Navigator.of(context).pop();
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已添加联系人: ${newContact.username}')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('联系人删除成功')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('添加联系人失败: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('删除联系人失败: $e')),
+        );
+      }
     }
   }
 
-  void _showAddContactDialog() {
+  void _showDeleteDialog(Contact contact) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('添加联系人'),
-        content: TextField(
-          controller: _usernameController,
-          decoration: InputDecoration(
-            labelText: '用户名',
-            hintText: '请输入用户名',
-          ),
-          autofocus: true,
-        ),
+        title: const Text('删除联系人'),
+        content: Text('确定要删除联系人 "${contact.displayName?.isNotEmpty == true ? contact.displayName! : contact.contactUser.username}" 吗？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text('取消'),
+            child: const Text('取消'),
           ),
           TextButton(
-            onPressed: _addContact,
-            child: Text('添加'),
+            onPressed: () {
+              Navigator.of(context).pop();
+              _deleteContact(contact);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
           ),
         ],
       ),
     );
   }
 
-  void _initiateCall(User contact, CallType callType) async {
-    try {
-      await widget.callManager.initiateCall(contact, callType);
-      _showVideoCallPage(widget.callManager.currentCall!);
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('发起通话失败: $e')),
-      );
-    }
-  }
-
-  void _showVideoCallPage(Call call, {bool isIncoming = false}) {
-    Navigator.of(context).push(
+  void _showUserSearchPage() {
+    Navigator.push(
+      context,
       MaterialPageRoute(
-        builder: (context) => VideoCallPage(
-          call: call,
-          callManager: widget.callManager,
-          isIncoming: isIncoming,
+        builder: (context) => UserSearchPage(
+          apiService: widget.apiService,
+          onUserSelected: _addContact,
         ),
       ),
-    );
+    ).then((_) {
+      // 返回时重新加载联系人列表
+      _loadContacts();
+    });
   }
 
-  void _showCallOptions(User contact) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => Container(
-        padding: EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '选择通话方式',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 20),
-            ListTile(
-              leading: Icon(Icons.videocam, color: Colors.blue),
-              title: Text('视频通话'),
-              onTap: () {
-                Navigator.of(context).pop();
-                _initiateCall(contact, CallType.video);
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.call, color: Colors.green),
-              title: Text('语音通话'),
-              onTap: () {
-                Navigator.of(context).pop();
-                _initiateCall(contact, CallType.audio);
-              },
-            ),
-          ],
+  void _navigateToChatPage(Contact contact) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatPage(
+          contact: contact,
+          apiService: widget.apiService,
         ),
       ),
     );
@@ -173,136 +169,199 @@ class _ContactsPageState extends State<ContactsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('联系人'),
+        title: const Text('联系人'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: Icon(Icons.person_add),
-            onPressed: _showAddContactDialog,
-          ),
-          IconButton(
-            icon: Icon(Icons.refresh),
-            onPressed: _loadContacts,
+            icon: const Icon(Icons.person_add),
+            onPressed: _showUserSearchPage,
+            tooltip: '添加联系人',
           ),
         ],
       ),
-      body: _buildBody(),
-    );
-  }
-
-  Widget _buildBody() {
-    if (_isLoading) {
-      return Center(child: CircularProgressIndicator());
-    }
-
-    if (_errorMessage != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error, size: 64, color: Colors.red),
-            SizedBox(height: 16),
-            Text(
-              '加载失败',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            Text(
-              _errorMessage!,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadContacts,
-              child: Text('重试'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_contacts.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.people, size: 64, color: Colors.grey),
-            SizedBox(height: 16),
-            Text(
-              '暂无联系人',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            Text(
-              '点击右上角添加联系人',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _showAddContactDialog,
-              icon: Icon(Icons.person_add),
-              label: Text('添加联系人'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      itemCount: _contacts.length,
-      itemBuilder: (context, index) {
-        final contact = _contacts[index];
-        return Card(
-          margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundImage: contact.avatarUrl != null
-                  ? NetworkImage(contact.avatarUrl!)
-                  : null,
-              child: contact.avatarUrl == null
-                  ? Text(
-                      contact.username[0].toUpperCase(),
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    )
-                  : null,
-            ),
-            title: Text(
-              contact.username,
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Text(contact.email),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 在线状态指示器
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: contact.isOnline ? Colors.green : Colors.grey,
-                    shape: BoxShape.circle,
-                  ),
+      body: Column(
+        children: [
+          // 搜索框
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _filterContacts,
+              decoration: InputDecoration(
+                hintText: '搜索联系人',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                SizedBox(width: 8),
-                // 通话按钮
-                IconButton(
-                  icon: Icon(Icons.call, color: Colors.blue),
-                  onPressed: () => _showCallOptions(contact),
-                ),
-              ],
+                filled: true,
+                fillColor: Colors.grey[100],
+              ),
             ),
-            onTap: () => _showCallOptions(contact),
           ),
-        );
-      },
+          
+          // 联系人列表
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _filteredContacts.isEmpty
+                    ? const Center(
+                        child: Text(
+                          '没有联系人',
+                          style: TextStyle(fontSize: 16, color: Colors.grey),
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: _filteredContacts.length,
+                        itemBuilder: (context, index) {
+                          final contact = _filteredContacts[index];
+                          return Card(
+                            margin: const EdgeInsets.symmetric(
+                              horizontal: 16.0,
+                              vertical: 4.0,
+                            ),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: Colors.blue,
+                                backgroundImage: contact.contactUser.avatarPath != null
+                                    ? NetworkImage('${AppConfig.baseUrl}${contact.contactUser.avatarPath!}')
+                                    : null,
+                                child: contact.contactUser.avatarPath == null
+                                    ? Text(
+                                        (contact.displayName?.isNotEmpty == true
+                                                ? contact.displayName![0]
+                                                : (contact.contactUser.nickname?.isNotEmpty == true
+                                                    ? contact.contactUser.nickname![0]
+                                                    : contact.contactUser.username[0]))
+                                            .toUpperCase(),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      )
+                                    : null,
+                              ),
+                              title: Text(
+                                contact.displayName?.isNotEmpty == true
+                                    ? contact.displayName!
+                                    : (contact.contactUser.nickname?.isNotEmpty == true
+                                        ? contact.contactUser.nickname!
+                                        : contact.contactUser.username),
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('用户名: ${contact.contactUser.username}'),
+                                  if (contact.contactUser.nickname?.isNotEmpty == true)
+                                    Text('昵称: ${contact.contactUser.nickname}'),
+                                  if (contact.lastMessageAt != null)
+                                    Text(
+                                      '最后消息: ${_formatTime(contact.lastMessageAt!)}',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  if (contact.unreadCount > 0)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        '${contact.unreadCount} 条未读',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.call),
+                                    onPressed: () {
+                                      widget.callManager.initiateCall(
+                                        contact.contactUser,
+                                        CallType.audio,
+                                      );
+                                    },
+                                    tooltip: '语音通话',
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.video_call),
+                                    onPressed: () {
+                                      widget.callManager.initiateCall(
+                                        contact.contactUser,
+                                        CallType.video,
+                                      );
+                                    },
+                                    tooltip: '视频通话',
+                                  ),
+                                  PopupMenuButton<String>(
+                                    onSelected: (value) {
+                                      switch (value) {
+                                        case 'chat':
+                                          _navigateToChatPage(contact);
+                                          break;
+                                        case 'delete':
+                                          _showDeleteDialog(contact);
+                                          break;
+                                      }
+                                    },
+                                    itemBuilder: (context) => [
+                                      const PopupMenuItem(
+                                        value: 'chat',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.chat),
+                                            SizedBox(width: 8),
+                                            Text('发送消息'),
+                                          ],
+                                        ),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete, color: Colors.red),
+                                            SizedBox(width: 8),
+                                            Text('删除联系人', style: TextStyle(color: Colors.red)),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              onTap: () => _navigateToChatPage(contact),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
     );
   }
 
-  @override
-  void dispose() {
-    _usernameController.dispose();
-    super.dispose();
+  String _formatTime(DateTime time) {
+    final now = DateTime.now();
+    final difference = now.difference(time);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}天前';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}小时前';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}分钟前';
+    } else {
+      return '刚刚';
+    }
   }
 }

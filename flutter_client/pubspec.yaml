@@ -15,7 +15,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   
   # WebRTC - 使用最新兼容版本
-  flutter_webrtc: ^0.12.3
+  flutter_webrtc: ^1.0.0
   
   # 信令服务
   signalr_netcore: ^1.4.3
@@ -27,8 +27,14 @@ dependencies:
   sqflite: ^2.4.1
   path_provider: ^2.1.4
   
+  # 本地存储
+  shared_preferences: ^2.2.2
+  
   # 权限管理
-  permission_handler: ^11.3.1
+  permission_handler: ^12.0.1
+  
+  # 图片选择器
+  image_picker: ^1.0.7
   
   # 状态管理
   provider: ^6.1.2
@@ -37,7 +43,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
+  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true

@@ -14,6 +14,7 @@ namespace VideoCallAPI.Data
         public DbSet<CallHistory> CallHistories { get; set; }
         public DbSet<Room> Rooms { get; set; }
         public DbSet<RoomParticipant> RoomParticipants { get; set; }
+        public DbSet<ChatMessage> ChatMessages { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -92,6 +93,29 @@ namespace VideoCallAPI.Data
 
             modelBuilder.Entity<CallHistory>()
                 .Property(e => e.Status)
+                .HasConversion<int>();
+
+            // ChatMessage 表配置
+            modelBuilder.Entity<ChatMessage>(entity =>
+            {
+                entity.HasOne(d => d.Sender)
+                    .WithMany(p => p.SentMessages)
+                    .HasForeignKey(d => d.SenderId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(d => d.Receiver)
+                    .WithMany(p => p.ReceivedMessages)
+                    .HasForeignKey(d => d.ReceiverId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // 为消息查询创建索引
+                entity.HasIndex(e => new { e.SenderId, e.ReceiverId, e.Timestamp });
+                entity.HasIndex(e => new { e.ReceiverId, e.SenderId, e.Timestamp });
+            });
+
+            // 枚举配置
+            modelBuilder.Entity<ChatMessage>()
+                .Property(e => e.Type)
                 .HasConversion<int>();
         }
     }

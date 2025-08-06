@@ -219,3 +219,5 @@ web/
 *.bak
 *.backup
 *.orig
+
+.fake

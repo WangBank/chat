@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'video_call_app.dart';
+import 'main_app.dart';
 
 void main() {
-  runApp(const VideoCallApp());
+  runApp(const MainApp());
 }

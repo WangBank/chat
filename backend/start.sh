@@ -51,9 +51,9 @@ fi
 
 # 启动项目
 echo "正在启动 Video Call API (SQLite版本)..."
-echo "API 地址: https://localhost:7000"
-echo "Swagger 文档: https://localhost:7000/swagger"
-echo "SignalR Hub: https://localhost:7000/videocallhub"
+echo "API 地址: https://172.27.2.52:7000"
+echo "Swagger 文档: https://172.27.2.52:7000/swagger"
+echo "SignalR Hub: https://172.27.2.52:7000/videocallhub"
 echo "数据库: SQLite (videocall_dev.db)"
 echo ""
 echo "测试账号:"

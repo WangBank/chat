@@ -1,286 +1,222 @@
-import 'dart:convert';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'signalr_service.dart';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import '../models/call.dart';
+import '../models/user.dart';
+import 'signalr_service.dart';
 
-class WebRTCService {
-  RTCPeerConnection? _peerConnection;
-  MediaStream? _localStream;
-  MediaStream? _remoteStream;
-  
+class WebRTCService extends ChangeNotifier {
   final SignalRService _signalRService;
-  String? _currentCallId;
   
-  // 视频渲染器
-  RTCVideoRenderer localRenderer = RTCVideoRenderer();
-  RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
+  // WebRTC 状态
+  bool _isInitialized = false;
+  Call? _currentCall;
+  bool _isInCall = false;
+  String? _localStreamId;
+  String? _remoteStreamId;
   
   // 回调函数
-  Function(MediaStream)? onLocalStream;
-  Function(MediaStream)? onRemoteStream;
-  Function()? onConnectionEstablished;
-  Function()? onConnectionLost;
+  Function(Call)? onIncomingCall;
+  Function(Call)? onCallAccepted;
+  Function(Call)? onCallRejected;
+  Function(Call)? onCallEnded;
+  Function(String)? onConnectionEstablished;
+  Function(String)? onConnectionLost;
+  Function(String)? onError;
 
-  WebRTCService(this._signalRService);
-
-  // 初始化
-  Future<void> initialize() async {
-    await localRenderer.initialize();
-    await remoteRenderer.initialize();
-    
-    // 设置SignalR回调
-    _signalRService.onOfferReceived = _handleOfferReceived;
-    _signalRService.onAnswerReceived = _handleAnswerReceived;
-    _signalRService.onIceCandidateReceived = _handleIceCandidateReceived;
+  WebRTCService(this._signalRService) {
+    _setupSignalRHandlers();
   }
 
-  // 请求权限
-  Future<bool> requestPermissions() async {
-    final permissions = [
-      Permission.camera,
-      Permission.microphone,
-    ];
+  // Getters
+  bool get isInitialized => _isInitialized;
+  Call? get currentCall => _currentCall;
+  bool get isInCall => _isInCall;
+  String? get localStreamId => _localStreamId;
+  String? get remoteStreamId => _remoteStreamId;
 
-    Map<Permission, PermissionStatus> statuses = await permissions.request();
-    
-    return statuses.values.every((status) => status.isGranted);
-  }
-
-  // 创建PeerConnection
-  Future<void> _createPeerConnection() async {
-    final configuration = {
-      'iceServers': [
-        {'urls': 'stun:stun.l.google.com:19302'},
-        {'urls': 'stun:stun1.l.google.com:19302'},
-      ]
-    };
-
-    final constraints = {
-      'mandatory': {},
-      'optional': [
-        {'DtlsSrtpKeyAgreement': true},
-      ]
-    };
-
-    _peerConnection = await createPeerConnection(configuration, constraints);
-
-    // 设置事件监听器
-    _peerConnection!.onIceCandidate = (candidate) {
-      if (_currentCallId != null) {
-        _signalRService.sendIceCandidate(WebRTCCandidate(
-          callId: _currentCallId!,
-          candidate: jsonEncode(candidate.toMap()),
-        ));
-      }
-    };
-
-    _peerConnection!.onAddStream = (stream) {
-      _remoteStream = stream;
-      remoteRenderer.srcObject = stream;
-      onRemoteStream?.call(stream);
-    };
-
-    _peerConnection!.onRemoveStream = (stream) {
-      _remoteStream = null;
-      remoteRenderer.srcObject = null;
-    };
-
-    _peerConnection!.onConnectionState = (state) {
-      print('Connection state: $state');
-      if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-        onConnectionEstablished?.call();
-      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
-                 state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
-        onConnectionLost?.call();
-      }
-    };
-  }
-
-  // 获取本地媒体流
-  Future<void> _getUserMedia({bool video = true, bool audio = true}) async {
-    final constraints = {
-      'audio': audio,
-      'video': video ? {
-        'width': {'min': 640, 'ideal': 1280},
-        'height': {'min': 480, 'ideal': 720},
-        'facingMode': 'user',
-      } : false,
-    };
-
+  // 初始化WebRTC服务
+  Future<void> initialize(String token) async {
     try {
-      _localStream = await navigator.mediaDevices.getUserMedia(constraints);
-      localRenderer.srcObject = _localStream;
-      onLocalStream?.call(_localStream!);
-      
-      if (_peerConnection != null) {
-        await _peerConnection!.addStream(_localStream!);
+      await _signalRService.connect(token);
+      _isInitialized = true;
+      notifyListeners();
+      print('✅ WebRTC服务初始化成功');
+    } catch (e) {
+      print('❌ WebRTC服务初始化失败: $e');
+      onError?.call('WebRTC服务初始化失败: $e');
+    }
+  }
+
+  // 设置SignalR事件处理器
+  void _setupSignalRHandlers() {
+    _signalRService.onIncomingCall = (call) {
+      _currentCall = call;
+      onIncomingCall?.call(call);
+      notifyListeners();
+    };
+
+    _signalRService.onCallAccepted = (callId) {
+      if (_currentCall != null) {
+        _isInCall = true;
+        onCallAccepted?.call(_currentCall!);
+        notifyListeners();
+      }
+    };
+
+    _signalRService.onCallRejected = (callId) {
+      _currentCall = null;
+      _isInCall = false;
+      notifyListeners();
+    };
+
+    _signalRService.onCallEnded = (callId) {
+      _currentCall = null;
+      _isInCall = false;
+      _localStreamId = null;
+      _remoteStreamId = null;
+      notifyListeners();
+    };
+  }
+
+  // 处理WebRTC信令消息
+  void _handleWebRTCMessage(Map<String, dynamic> messageData) {
+    try {
+      final messageType = messageData['type'] as String;
+      final callId = messageData['callId'] as String;
+      final data = messageData['data'] as String;
+
+      switch (messageType) {
+        case 'Offer':
+          _handleOffer(callId, data);
+          break;
+        case 'Answer':
+          _handleAnswer(callId, data);
+          break;
+        case 'IceCandidate':
+          _handleIceCandidate(callId, data);
+          break;
+        default:
+          print('⚠️ 未知的WebRTC消息类型: $messageType');
       }
     } catch (e) {
-      print('Error getting user media: $e');
-      throw Exception('无法获取摄像头/麦克风权限');
+      print('❌ 处理WebRTC消息失败: $e');
+      onError?.call('处理WebRTC消息失败: $e');
     }
+  }
+
+  // 处理Offer
+  void _handleOffer(String callId, String offer) {
+    print('📥 收到Offer: $callId');
+    // TODO: 实现WebRTC Offer处理
+    // 这里需要与具体的WebRTC实现集成
+  }
+
+  // 处理Answer
+  void _handleAnswer(String callId, String answer) {
+    print('📥 收到Answer: $callId');
+    // TODO: 实现WebRTC Answer处理
+  }
+
+  // 处理ICE候选
+  void _handleIceCandidate(String callId, String candidate) {
+    print('📥 收到ICE候选: $callId');
+    // TODO: 实现ICE候选处理
   }
 
   // 发起通话
-  Future<void> initiateCall(String callId, CallType callType) async {
-    _currentCallId = callId;
-    
-    // 请求权限
-    if (!await requestPermissions()) {
-      throw Exception('需要摄像头和麦克风权限');
+  Future<void> initiateCall(User receiver, CallType callType) async {
+    try {
+      if (!_isInitialized) {
+        throw Exception('WebRTC服务未初始化');
+      }
+
+      // 通过SignalR发起通话
+      await _signalRService.initiateCall(InitiateCallRequest(
+        receiverId: receiver.id,
+        callType: callType,
+      ));
+
+      print('📞 发起通话: ${receiver.username}');
+    } catch (e) {
+      print('❌ 发起通话失败: $e');
+      onError?.call('发起通话失败: $e');
+      rethrow;
     }
-
-    await _createPeerConnection();
-    await _getUserMedia(
-      video: callType == CallType.video,
-      audio: true,
-    );
-
-    // 创建offer
-    final offer = await _peerConnection!.createOffer();
-    await _peerConnection!.setLocalDescription(offer);
-
-    // 发送offer
-    await _signalRService.sendOffer(WebRTCOffer(
-      callId: callId,
-      offer: jsonEncode(offer.toMap()),
-    ));
   }
 
   // 应答通话
-  Future<void> answerCall(String callId, CallType callType) async {
-    _currentCallId = callId;
-    
-    // 请求权限
-    if (!await requestPermissions()) {
-      throw Exception('需要摄像头和麦克风权限');
-    }
-
-    await _createPeerConnection();
-    await _getUserMedia(
-      video: callType == CallType.video,
-      audio: true,
-    );
-  }
-
-  // 处理接收到的offer
-  Future<void> _handleOfferReceived(String callId, String offer, int senderId) async {
-    if (_currentCallId != callId) return;
-
+  Future<void> answerCall(String callId, bool accept) async {
     try {
-      final offerDescription = RTCSessionDescription(
-        jsonDecode(offer)['sdp'],
-        jsonDecode(offer)['type'],
-      );
+      if (!_isInitialized) {
+        throw Exception('WebRTC服务未初始化');
+      }
 
-      await _peerConnection!.setRemoteDescription(offerDescription);
-
-      // 创建answer
-      final answer = await _peerConnection!.createAnswer();
-      await _peerConnection!.setLocalDescription(answer);
-
-      // 发送answer
-      await _signalRService.sendAnswer(WebRTCAnswer(
+      // 通过SignalR应答通话
+      await _signalRService.answerCall(AnswerCallRequest(
         callId: callId,
-        answer: jsonEncode(answer.toMap()),
+        accept: accept,
       ));
+
+      if (accept) {
+        _isInCall = true;
+      } else {
+        _currentCall = null;
+        _isInCall = false;
+      }
+      notifyListeners();
+
+      print('📞 ${accept ? "应答" : "拒绝"}通话: $callId');
     } catch (e) {
-      print('Error handling offer: $e');
-    }
-  }
-
-  // 处理接收到的answer
-  Future<void> _handleAnswerReceived(String callId, String answer, int senderId) async {
-    if (_currentCallId != callId) return;
-
-    try {
-      final answerDescription = RTCSessionDescription(
-        jsonDecode(answer)['sdp'],
-        jsonDecode(answer)['type'],
-      );
-
-      await _peerConnection!.setRemoteDescription(answerDescription);
-    } catch (e) {
-      print('Error handling answer: $e');
-    }
-  }
-
-  // 处理接收到的ICE candidate
-  Future<void> _handleIceCandidateReceived(String callId, String candidate, int senderId) async {
-    if (_currentCallId != callId) return;
-
-    try {
-      final candidateMap = jsonDecode(candidate);
-      final iceCandidate = RTCIceCandidate(
-        candidateMap['candidate'],
-        candidateMap['sdpMid'],
-        candidateMap['sdpMLineIndex'],
-      );
-
-      await _peerConnection!.addCandidate(iceCandidate);
-    } catch (e) {
-      print('Error handling ICE candidate: $e');
-    }
-  }
-
-  // 切换摄像头
-  Future<void> switchCamera() async {
-    if (_localStream != null) {
-      final videoTrack = _localStream!.getVideoTracks().first;
-      await Helper.switchCamera(videoTrack);
-    }
-  }
-
-  // 切换麦克风
-  void toggleMicrophone() {
-    if (_localStream != null) {
-      final audioTrack = _localStream!.getAudioTracks().first;
-      audioTrack.enabled = !audioTrack.enabled;
-    }
-  }
-
-  // 切换摄像头开关
-  void toggleCamera() {
-    if (_localStream != null) {
-      final videoTrack = _localStream!.getVideoTracks().first;
-      videoTrack.enabled = !videoTrack.enabled;
+      print('❌ 应答通话失败: $e');
+      onError?.call('应答通话失败: $e');
+      rethrow;
     }
   }
 
   // 结束通话
   Future<void> endCall() async {
-    // 停止本地流
-    if (_localStream != null) {
-      _localStream!.getTracks().forEach((track) {
-        track.stop();
-      });
-      _localStream = null;
+    try {
+      if (_currentCall == null) return;
+
+      final callId = _currentCall!.callId;
+
+      // 通过SignalR结束通话
+      await _signalRService.endCall(callId);
+
+      _currentCall = null;
+      _isInCall = false;
+      _localStreamId = null;
+      _remoteStreamId = null;
+      notifyListeners();
+
+      print('📞 结束通话: $callId');
+    } catch (e) {
+      print('❌ 结束通话失败: $e');
+      onError?.call('结束通话失败: $e');
+      rethrow;
     }
-
-    // 关闭peer connection
-    if (_peerConnection != null) {
-      await _peerConnection!.close();
-      _peerConnection = null;
-    }
-
-    // 清理渲染器
-    localRenderer.srcObject = null;
-    remoteRenderer.srcObject = null;
-
-    _currentCallId = null;
   }
 
-  // 销毁资源
-  Future<void> dispose() async {
-    await endCall();
-    await localRenderer.dispose();
-    await remoteRenderer.dispose();
+  // 断开连接
+  Future<void> disconnect() async {
+    try {
+      await _signalRService.disconnect();
+      _isInitialized = false;
+      _currentCall = null;
+      _isInCall = false;
+      _localStreamId = null;
+      _remoteStreamId = null;
+      notifyListeners();
+      print('🔌 WebRTC服务已断开连接');
+    } catch (e) {
+      print('❌ 断开连接失败: $e');
+      onError?.call('断开连接失败: $e');
+    }
   }
 
-  // 获取当前状态
-  bool get isInCall => _currentCallId != null;
-  String? get currentCallId => _currentCallId;
-  bool get hasLocalStream => _localStream != null;
-  bool get hasRemoteStream => _remoteStream != null;
+  @override
+  void dispose() {
+    disconnect();
+    super.dispose();
+  }
 }

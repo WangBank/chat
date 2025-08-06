@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace VideoCallAPI.Models
 {
@@ -20,10 +21,15 @@ namespace VideoCallAPI.Models
         [Required]
         public string PasswordHash { get; set; } = string.Empty;
         
+        [StringLength(50)]
+        public string? Nickname { get; set; } // 昵称
+        
         [StringLength(255)]
         public string? AvatarPath { get; set; }
         
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
         
         public DateTime? LastLoginAt { get; set; }
         
@@ -34,6 +40,8 @@ namespace VideoCallAPI.Models
         public virtual ICollection<Contact> ContactedBy { get; set; } = new List<Contact>();
         public virtual ICollection<CallHistory> InitiatedCalls { get; set; } = new List<CallHistory>();
         public virtual ICollection<CallHistory> ReceivedCalls { get; set; } = new List<CallHistory>();
+        public virtual ICollection<ChatMessage> SentMessages { get; set; } = new List<ChatMessage>();
+        public virtual ICollection<ChatMessage> ReceivedMessages { get; set; } = new List<ChatMessage>();
     }
 
     // 联系人表
@@ -55,12 +63,56 @@ namespace VideoCallAPI.Models
         
         public bool IsBlocked { get; set; } = false;
         
+        public DateTime? LastMessageAt { get; set; } // 最后消息时间
+        
+        public int UnreadCount { get; set; } = 0; // 未读消息数
+        
         // 导航属性
         [ForeignKey("UserId")]
         public virtual User User { get; set; } = null!;
         
         [ForeignKey("ContactUserId")]
         public virtual User ContactUser { get; set; } = null!;
+    }
+
+    // 聊天消息表
+    public class ChatMessage
+    {
+        [Key]
+        public int Id { get; set; }
+        
+        [Required]
+        public int SenderId { get; set; }
+        
+        [Required]
+        public int ReceiverId { get; set; }
+        
+        [Required]
+        [StringLength(1000)]
+        public string Content { get; set; } = string.Empty;
+        
+        [Required]
+        public MessageType Type { get; set; } = MessageType.Text;
+        
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+        
+        public bool IsRead { get; set; } = false;
+        
+        [StringLength(255)]
+        public string? FilePath { get; set; } // 文件路径
+        
+        public int? FileSize { get; set; } // 文件大小
+        
+        public int? Duration { get; set; } // 语音/视频时长（秒）
+        
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        
+        // 导航属性
+        [ForeignKey("SenderId")]
+        public virtual User Sender { get; set; } = null!;
+        
+        [ForeignKey("ReceiverId")]
+        public virtual User Receiver { get; set; } = null!;
     }
 
     // 通话历史表
@@ -89,6 +141,8 @@ namespace VideoCallAPI.Models
         
         [StringLength(255)]
         public string? EndReason { get; set; }
+        
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         
         // 导航属性
         [ForeignKey("CallerId")]
@@ -156,8 +210,8 @@ namespace VideoCallAPI.Models
     // 枚举
     public enum CallType
     {
-        Video = 1,
-        Audio = 2
+        Voice = 1,
+        Video = 2
     }
 
     public enum CallStatus
@@ -169,5 +223,15 @@ namespace VideoCallAPI.Models
         Missed = 5,
         Ended = 6,
         Failed = 7
+    }
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public enum MessageType
+    {
+        Text = 1,
+        Image = 2,
+        Video = 3,
+        Audio = 4,
+        File = 5
     }
 }
