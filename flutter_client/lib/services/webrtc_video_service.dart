@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../models/call.dart';
 import '../models/user.dart';
 import 'signalr_service.dart';
@@ -45,6 +46,7 @@ class WebRTCVideoService extends ChangeNotifier {
   MediaStream? get remoteStream => _remoteStream;
   RTCVideoRenderer? get localRenderer => _localRenderer;
   RTCVideoRenderer? get remoteRenderer => _remoteRenderer;
+  SignalRService get signalRService => _signalRService;
 
   // 初始化视频渲染器
   Future<void> _initializeRenderers() async {
@@ -231,10 +233,46 @@ class WebRTCVideoService extends ChangeNotifier {
     return pc;
   }
 
+  // 请求权限
+  Future<bool> _requestPermissions() async {
+    try {
+      print('🔐 请求摄像头和麦克风权限...');
+      
+      // 请求摄像头权限
+      final cameraStatus = await Permission.camera.request();
+      print('📷 摄像头权限状态: $cameraStatus');
+      
+      // 请求麦克风权限
+      final microphoneStatus = await Permission.microphone.request();
+      print('🎤 麦克风权限状态: $microphoneStatus');
+      
+      // 检查权限状态
+      if (cameraStatus.isGranted && microphoneStatus.isGranted) {
+        print('✅ 所有权限已授予');
+        return true;
+      } else if (microphoneStatus.isGranted) {
+        print('⚠️ 仅麦克风权限已授予，将使用音频通话');
+        return true;
+      } else {
+        print('❌ 权限被拒绝');
+        return false;
+      }
+    } catch (e) {
+      print('❌ 权限请求失败: $e');
+      return false;
+    }
+  }
+
   // 获取本地媒体流
   Future<MediaStream?> _getUserMedia() async {
     try {
       print('📹 请求摄像头和麦克风权限...');
+      
+      // 先请求权限
+      final hasPermissions = await _requestPermissions();
+      if (!hasPermissions) {
+        throw Exception('摄像头或麦克风权限被拒绝，请在设置中允许应用访问摄像头和麦克风');
+      }
       
       final constraints = {
         'audio': true,

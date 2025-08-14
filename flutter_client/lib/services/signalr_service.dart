@@ -1,5 +1,6 @@
 import 'package:signalr_netcore/signalr_client.dart';
 import '../models/call.dart';
+import '../models/chat_message.dart';
 import '../config/app_config.dart';
 
 typedef OnIncomingCallCallback = void Function(Call call);
@@ -9,6 +10,7 @@ typedef OnCallEndedCallback = void Function(String callId);
 typedef OnOfferReceivedCallback = void Function(String callId, String offer, int senderId);
 typedef OnAnswerReceivedCallback = void Function(String callId, String answer, int senderId);
 typedef OnIceCandidateReceivedCallback = void Function(String callId, String candidate, int senderId);
+typedef OnNewMessageCallback = void Function(ChatMessage message);
 
 class SignalRService {
   static String get hubUrl => AppConfig.signalRUrl;
@@ -23,6 +25,7 @@ class SignalRService {
   OnOfferReceivedCallback? onOfferReceived;
   OnAnswerReceivedCallback? onAnswerReceived;
   OnIceCandidateReceivedCallback? onIceCandidateReceived;
+  OnNewMessageCallback? onNewMessage;
 
   bool get isConnected => _connection?.state == HubConnectionState.Connected;
 
@@ -144,6 +147,19 @@ class SignalRService {
         }
       } catch (e) {
         print('Error parsing WebRTC message: $e');
+      }
+    });
+
+    // 接收新消息
+    _connection!.on('NewMessage', (arguments) {
+      try {
+        final data = arguments?[0] as Map<String, dynamic>;
+        print('Received new message: $data');
+        
+        final message = ChatMessage.fromJson(data);
+        onNewMessage?.call(message);
+      } catch (e) {
+        print('Error parsing new message: $e');
       }
     });
   }
@@ -272,5 +288,6 @@ class SignalRService {
     onOfferReceived = null;
     onAnswerReceived = null;
     onIceCandidateReceived = null;
+    onNewMessage = null;
   }
 }

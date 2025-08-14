@@ -32,9 +32,14 @@ class CallManager extends ChangeNotifier {
     };
 
     _webRTCService.onCallAccepted = (call) {
+      print('📞 收到通话接受事件: ${call.callId}');
+      
+      // 更新当前通话信息
       _currentCall = call;
       _isInCall = true;
       _isWaitingForAnswer = false;
+      
+      print('📞 状态更新: isInCall=$_isInCall, isWaitingForAnswer=$_isWaitingForAnswer');
       notifyListeners();
       print('📞 通话被接受: ${call.callId}');
     };

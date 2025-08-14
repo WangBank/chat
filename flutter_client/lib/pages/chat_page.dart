@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 import '../models/contact.dart';
 import '../models/chat_message.dart';
+import '../models/call.dart';
 import '../services/api_service.dart';
+import '../services/call_manager.dart';
 import '../config/app_config.dart';
 
 class ChatPage extends StatefulWidget {
   final Contact contact;
   final ApiService apiService;
+  final CallManager? callManager;
 
   const ChatPage({
     super.key,
     required this.contact,
     required this.apiService,
+    this.callManager,
   });
 
   @override
@@ -30,12 +34,46 @@ class _ChatPageState extends State<ChatPage> {
   void initState() {
     super.initState();
     _loadMessages();
+    _setupMessageListener();
+  }
+
+  void _setupMessageListener() {
+    // 监听新消息
+    if (widget.callManager != null) {
+      widget.callManager!.webRTCService.signalRService.onNewMessage = (message) {
+        print('📨 收到新消息: ${message.content}');
+        // 检查消息是否属于当前聊天
+        if (message.senderId == widget.contact.contactUser.id || 
+            message.receiverId == widget.contact.contactUser.id) {
+          setState(() {
+            _messages.add(message);
+          });
+          
+          // 滚动到底部
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_scrollController.hasClients) {
+              _scrollController.animateTo(
+                _scrollController.position.maxScrollExtent,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+              );
+            }
+          });
+        }
+      };
+    }
   }
 
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
+    
+    // 清理消息监听器
+    if (widget.callManager != null) {
+      widget.callManager!.webRTCService.signalRService.onNewMessage = null;
+    }
+    
     super.dispose();
   }
 
@@ -187,14 +225,24 @@ class _ChatPageState extends State<ChatPage> {
           IconButton(
             icon: const Icon(Icons.call),
             onPressed: () {
-              // TODO: 发起语音通话
+              if (widget.callManager != null) {
+                widget.callManager!.initiateCall(
+                  widget.contact.contactUser,
+                  CallType.voice,
+                );
+              }
             },
             tooltip: '语音通话',
           ),
           IconButton(
             icon: const Icon(Icons.video_call),
             onPressed: () {
-              // TODO: 发起视频通话
+              if (widget.callManager != null) {
+                widget.callManager!.initiateCall(
+                  widget.contact.contactUser,
+                  CallType.video,
+                );
+              }
             },
             tooltip: '视频通话',
           ),

@@ -160,6 +160,7 @@ class _ContactsPageState extends State<ContactsPage> {
         builder: (context) => ChatPage(
           contact: contact,
           apiService: widget.apiService,
+          callManager: widget.callManager,
         ),
       ),
     );
