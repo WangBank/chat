@@ -19,7 +19,7 @@ namespace VideoCallAPI.Services
     {
         Task<UserResponseDto> RegisterAsync(UserRegistrationDto registrationDto);
         Task<string> LoginAsync(UserLoginDto loginDto);
-        Task<UserResponseDto> GetUserAsync(int userId);
+        Task<UserResponseDto> GetUserByIdAsync(int userId);
         Task<bool> ChangePasswordAsync(int userId, ChangePasswordDto changePasswordDto);
         Task<UserResponseDto> UpdateProfileAsync(int userId, UpdateProfileDto updateProfileDto);
         Task<UserResponseDto> UploadAvatarAsync(int userId, IFormFile avatar);

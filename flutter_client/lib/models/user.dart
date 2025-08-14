@@ -27,13 +27,13 @@ class User {
       username: json['username'] as String,
       email: json['email'] as String,
       nickname: json['nickname'] as String?,
-      avatarPath: json['avatarPath'] as String?,
-      isOnline: json['isOnline'] as bool? ?? false,
-      lastLoginAt: json['lastLoginAt'] != null 
-          ? DateTime.parse(json['lastLoginAt'] as String) 
+      avatarPath: json['avatar_path'] as String?,
+      isOnline: json['is_online'] as bool? ?? false,
+      lastLoginAt: json['last_login_at'] != null 
+          ? DateTime.parse(json['last_login_at'] as String) 
           : null,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      createdAt: DateTime.parse(json['created_at'] as String),
+      updatedAt: DateTime.parse(json['updated_at'] as String),
     );
   }
 
@@ -43,11 +43,11 @@ class User {
       'username': username,
       'email': email,
       'nickname': nickname,
-      'avatarPath': avatarPath,
-      'isOnline': isOnline,
-      'lastLoginAt': lastLoginAt?.toIso8601String(),
-      'createdAt': createdAt.toIso8601String(),
-      'updatedAt': updatedAt.toIso8601String(),
+      'avatar_path': avatarPath,
+      'is_online': isOnline,
+      'last_login_at': lastLoginAt?.toIso8601String(),
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
     };
   }
 

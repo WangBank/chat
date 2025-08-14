@@ -23,23 +23,23 @@ namespace VideoCallAPI.Services
         public async Task<CallResponseDto> InitiateCallAsync(int callerId, int receiverId, CallType callType)
         {
             // 检查用户是否存在
-            var caller = await _context.Users.FindAsync(callerId);
-            var receiver = await _context.Users.FindAsync(receiverId);
+            var caller = await _context.users.FindAsync(callerId);
+            var receiver = await _context.users.FindAsync(receiverId);
 
             if (caller == null || receiver == null)
                 throw new ArgumentException("用户不存在");
 
-            if (!receiver.IsOnline)
+            if (!receiver.is_online)
                 throw new InvalidOperationException("用户不在线");
 
             // 创建通话记录
             var callHistory = new CallHistory
             {
-                CallerId = callerId,
-                ReceiverId = receiverId,
-                CallType = callType,
-                Status = CallStatus.Initiated,
-                StartTime = DateTime.UtcNow
+                caller_id = callerId,
+                receiver_id = receiverId,
+                call_type = callType,
+                status = CallStatus.Initiated,
+                start_time = DateTime.UtcNow
             };
 
             _context.CallHistories.Add(callHistory);
@@ -50,25 +50,25 @@ namespace VideoCallAPI.Services
             // 创建通话会话
             var callSession = new CallSession
             {
-                Id = callId,
-                CallerId = callerId,
-                ReceiverId = receiverId,
+                id = callId,
+                caller_id = callerId,
+                receiver_id = receiverId,
                 CallType = callType,
                 Status = CallStatus.Initiated,
-                StartTime = DateTime.UtcNow,
-                CallHistoryId = callHistory.Id
+                start_time = DateTime.UtcNow,
+                CallHistoryId = callHistory.id
             };
 
             _activeCalls.TryAdd(callId, callSession);
 
             return new CallResponseDto
             {
-                CallId = callId,
-                Caller = MapToUserResponse(caller),
-                Receiver = MapToUserResponse(receiver),
-                CallType = callType,
-                Status = CallStatus.Initiated,
-                StartTime = DateTime.UtcNow
+                call_id = callId,
+                caller = MapToUserResponse(caller),
+                receiver = MapToUserResponse(receiver),
+                call_type = callType,
+                status = CallStatus.Initiated,
+                start_time = DateTime.UtcNow
             };
         }
 
@@ -77,7 +77,7 @@ namespace VideoCallAPI.Services
             if (!_activeCalls.TryGetValue(callId, out var callSession))
                 throw new InvalidOperationException("通话不存在");
 
-            if (callSession.ReceiverId != userId)
+            if (callSession.receiver_id != userId)
                 throw new UnauthorizedAccessException("无权限操作此通话");
 
             var status = accept ? CallStatus.Answered : CallStatus.Rejected;
@@ -87,11 +87,11 @@ namespace VideoCallAPI.Services
             var callHistory = await _context.CallHistories.FindAsync(callSession.CallHistoryId);
             if (callHistory != null)
             {
-                callHistory.Status = status;
+                callHistory.status = status;
                 if (!accept)
                 {
-                    callHistory.EndTime = DateTime.UtcNow;
-                    callHistory.EndReason = "被拒绝";
+                    callHistory.end_time = DateTime.UtcNow;
+                    callHistory.end_reason = "被拒绝";
                 }
                 await _context.SaveChangesAsync();
             }
@@ -102,17 +102,17 @@ namespace VideoCallAPI.Services
                 _activeCalls.TryRemove(callId, out _);
             }
 
-            var caller = await _context.Users.FindAsync(callSession.CallerId);
-            var receiver = await _context.Users.FindAsync(callSession.ReceiverId);
+            var caller = await _context.users.FindAsync(callSession.caller_id);
+            var receiver = await _context.users.FindAsync(callSession.receiver_id);
 
             return new CallResponseDto
             {
-                CallId = callId,
-                Caller = MapToUserResponse(caller!),
-                Receiver = MapToUserResponse(receiver!),
-                CallType = callSession.CallType,
-                Status = status,
-                StartTime = callSession.StartTime
+                call_id = callId,
+                caller = MapToUserResponse(caller!),
+                receiver = MapToUserResponse(receiver!),
+                call_type = callSession.CallType,
+                status = status,
+                start_time = callSession.start_time
             };
         }
 
@@ -125,13 +125,13 @@ namespace VideoCallAPI.Services
             var callHistory = await _context.CallHistories.FindAsync(callSession.CallHistoryId);
             if (callHistory != null)
             {
-                callHistory.Status = CallStatus.Ended;
-                callHistory.EndTime = DateTime.UtcNow;
+                callHistory.status = CallStatus.Ended;
+                callHistory.end_time = DateTime.UtcNow;
                 
-                if (callHistory.Status == CallStatus.Answered)
+                if (callHistory.status == CallStatus.Answered)
                 {
-                    var duration = (int)(DateTime.UtcNow - callHistory.StartTime).TotalSeconds;
-                    callHistory.Duration = duration;
+                    var duration = (int)(DateTime.UtcNow - callHistory.start_time).TotalSeconds;
+                    callHistory.duration = duration;
                 }
                 
                 await _context.SaveChangesAsync();
@@ -140,13 +140,13 @@ namespace VideoCallAPI.Services
 
         public async Task UpdateUserOnlineStatus(int userId, bool isOnline)
         {
-            var user = await _context.Users.FindAsync(userId);
+            var user = await _context.users.FindAsync(userId);
             if (user != null)
             {
-                user.IsOnline = isOnline;
+                user.is_online = isOnline;
                 if (isOnline)
                 {
-                    user.LastLoginAt = DateTime.UtcNow;
+                    user.last_login_at = DateTime.UtcNow;
                 }
                 await _context.SaveChangesAsync();
             }
@@ -156,10 +156,10 @@ namespace VideoCallAPI.Services
         {
             var room = new Room
             {
-                RoomName = createRoomDto.RoomName,
-                RoomCode = GenerateRoomCode(),
-                CreatedBy = userId,
-                MaxParticipants = createRoomDto.MaxParticipants
+                room_name = createRoomDto.room_name,
+                room_code = GenerateRoomCode(),
+                created_by = userId,
+                max_participants = createRoomDto.max_participants
             };
 
             _context.Rooms.Add(room);
@@ -168,53 +168,53 @@ namespace VideoCallAPI.Services
             // 创建者自动加入房间
             var participant = new RoomParticipant
             {
-                RoomId = room.Id,
-                UserId = userId
+                room_id = room.id,
+                user_id = userId
             };
 
             _context.RoomParticipants.Add(participant);
             await _context.SaveChangesAsync();
 
-            var creator = await _context.Users.FindAsync(userId);
+            var creator = await _context.users.FindAsync(userId);
             return new RoomResponseDto
             {
-                Id = room.Id,
-                RoomName = room.RoomName,
-                RoomCode = room.RoomCode,
-                Creator = MapToUserResponse(creator!),
-                CreatedAt = room.CreatedAt,
-                IsActive = room.IsActive,
-                MaxParticipants = room.MaxParticipants,
-                CurrentParticipants = 1,
-                Participants = new List<UserResponseDto> { MapToUserResponse(creator!) }
+                id = room.id,
+                room_name = room.room_name,
+                room_code = room.room_code,
+                creator = MapToUserResponse(creator!),
+                created_at = room.created_at,
+                is_active = room.is_active,
+                max_participants = room.max_participants,
+                current_participants = 1,
+                participants = new List<UserResponseDto> { MapToUserResponse(creator!) }
             };
         }
 
         public async Task<RoomResponseDto> JoinRoomAsync(string roomCode, int userId)
         {
             var room = await _context.Rooms
-                .Include(r => r.Creator)
-                .Include(r => r.Participants)
+                .Include(r => r.creator)
+                .Include(r => r.participants)
                 .ThenInclude(p => p.User)
-                .FirstOrDefaultAsync(r => r.RoomCode == roomCode && r.IsActive);
+                .FirstOrDefaultAsync(r => r.room_code == roomCode && r.is_active);
 
             if (room == null)
                 throw new InvalidOperationException("房间不存在或已关闭");
 
-            var activeParticipants = room.Participants.Where(p => p.IsActive).Count();
-            if (activeParticipants >= room.MaxParticipants)
+            var activeParticipants = room.participants.Where(p => p.is_active).Count();
+            if (activeParticipants >= room.max_participants)
                 throw new InvalidOperationException("房间已满");
 
             // 检查用户是否已在房间中
-            var existingParticipant = room.Participants
-                .FirstOrDefault(p => p.UserId == userId && p.IsActive);
+            var existingParticipant = room.participants
+                .FirstOrDefault(p => p.user_id == userId && p.is_active);
 
             if (existingParticipant == null)
             {
                 var participant = new RoomParticipant
                 {
-                    RoomId = room.Id,
-                    UserId = userId
+                    room_id = room.id,
+                    user_id = userId
                 };
 
                 _context.RoomParticipants.Add(participant);
@@ -222,40 +222,40 @@ namespace VideoCallAPI.Services
 
                 // 重新加载房间数据
                 room = await _context.Rooms
-                    .Include(r => r.Creator)
-                    .Include(r => r.Participants)
+                    .Include(r => r.creator)
+                    .Include(r => r.participants)
                     .ThenInclude(p => p.User)
-                    .FirstOrDefaultAsync(r => r.Id == room.Id);
+                    .FirstOrDefaultAsync(r => r.id == room.id);
             }
 
-            var participants = room!.Participants
-                .Where(p => p.IsActive)
+            var participants = room!.participants
+                .Where(p => p.is_active)
                 .Select(p => MapToUserResponse(p.User))
                 .ToList();
 
             return new RoomResponseDto
             {
-                Id = room.Id,
-                RoomName = room.RoomName,
-                RoomCode = room.RoomCode,
-                Creator = MapToUserResponse(room.Creator),
-                CreatedAt = room.CreatedAt,
-                IsActive = room.IsActive,
-                MaxParticipants = room.MaxParticipants,
-                CurrentParticipants = participants.Count,
-                Participants = participants
+                id = room.id,
+                room_name = room.room_name,
+                room_code = room.room_code,
+                creator = MapToUserResponse(room.creator),
+                created_at = room.created_at,
+                is_active = room.is_active,
+                max_participants = room.max_participants,
+                current_participants = participants.Count,
+                participants = participants
             };
         }
 
         public async Task LeaveRoomAsync(int roomId, int userId)
         {
             var participant = await _context.RoomParticipants
-                .FirstOrDefaultAsync(p => p.RoomId == roomId && p.UserId == userId && p.IsActive);
+                .FirstOrDefaultAsync(p => p.room_id == roomId && p.user_id == userId && p.is_active);
 
             if (participant != null)
             {
-                participant.IsActive = false;
-                participant.LeftAt = DateTime.UtcNow;
+                participant.is_active = false;
+                participant.left_at = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
             }
         }
@@ -264,9 +264,9 @@ namespace VideoCallAPI.Services
         {
             return await _context.CallHistories
                 .Include(c => c.Caller)
-                .Include(c => c.Receiver)
-                .Where(c => c.CallerId == userId || c.ReceiverId == userId)
-                .OrderByDescending(c => c.StartTime)
+                .Include(c => c.receiver)
+                .Where(c => c.caller_id == userId || c.receiver_id == userId)
+                .OrderByDescending(c => c.start_time)
                 .Take(50)
                 .ToListAsync();
         }
@@ -275,12 +275,12 @@ namespace VideoCallAPI.Services
         {
             return new UserResponseDto
             {
-                Id = user.Id,
-                Username = user.Username,
-                Email = user.Email,
-                AvatarPath = user.AvatarPath,
-                IsOnline = user.IsOnline,
-                LastLoginAt = user.LastLoginAt
+                id = user.id,
+                username = user.username,
+                email = user.email,
+                avatar_path = user.avatar_path,
+                is_online = user.is_online,
+                last_login_at = user.last_login_at
             };
         }
 
@@ -294,12 +294,12 @@ namespace VideoCallAPI.Services
     // 通话会话类
     public class CallSession
     {
-        public string Id { get; set; } = string.Empty;
-        public int CallerId { get; set; }
-        public int ReceiverId { get; set; }
+        public string id { get; set; } = string.Empty;
+        public int caller_id { get; set; }
+        public int receiver_id { get; set; }
         public CallType CallType { get; set; }
         public CallStatus Status { get; set; }
-        public DateTime StartTime { get; set; }
+        public DateTime start_time { get; set; }
         public int CallHistoryId { get; set; }
     }
 }

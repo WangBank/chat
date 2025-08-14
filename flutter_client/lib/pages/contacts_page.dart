@@ -211,7 +211,9 @@ class _ContactsPageState extends State<ContactsPage> {
                           style: TextStyle(fontSize: 16, color: Colors.grey),
                         ),
                       )
-                    : ListView.builder(
+                    : RefreshIndicator(
+                        onRefresh: _loadContacts,
+                        child: ListView.builder(
                         itemCount: _filteredContacts.length,
                         itemBuilder: (context, index) {
                           final contact = _filteredContacts[index];
@@ -288,7 +290,7 @@ class _ContactsPageState extends State<ContactsPage> {
                                     onPressed: () {
                                       widget.callManager.initiateCall(
                                         contact.contactUser,
-                                        CallType.audio,
+                                        CallType.voice,
                                       );
                                     },
                                     tooltip: '语音通话',
@@ -344,6 +346,7 @@ class _ContactsPageState extends State<ContactsPage> {
                           );
                         },
                       ),
+                    ),
           ),
         ],
       ),

@@ -11,7 +11,7 @@ using VideoCallAPI.Data;
 namespace VideoCallAPI.Migrations
 {
     [DbContext(typeof(VideoCallDbContext))]
-    [Migration("20250806090509_InitialCreate")]
+    [Migration("20250814080422_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -22,128 +22,128 @@ namespace VideoCallAPI.Migrations
 
             modelBuilder.Entity("VideoCallAPI.Models.CallHistory", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<int>("id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("CallType")
+                    b.Property<int>("call_type")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("CallerId")
+                    b.Property<int>("caller_id")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTime>("created_at")
                         .HasColumnType("TEXT");
 
-                    b.Property<int?>("Duration")
+                    b.Property<int?>("duration")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("EndReason")
+                    b.Property<string>("end_reason")
                         .HasMaxLength(255)
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("EndTime")
+                    b.Property<DateTime?>("end_time")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("ReceiverId")
+                    b.Property<int>("receiver_id")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("StartTime")
+                    b.Property<DateTime>("start_time")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("Status")
+                    b.Property<int>("status")
                         .HasColumnType("INTEGER");
 
-                    b.HasKey("Id");
+                    b.HasKey("id");
 
-                    b.HasIndex("CallerId");
+                    b.HasIndex("caller_id");
 
-                    b.HasIndex("ReceiverId");
+                    b.HasIndex("receiver_id");
 
                     b.ToTable("CallHistories");
                 });
 
             modelBuilder.Entity("VideoCallAPI.Models.ChatMessage", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<int>("id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("Content")
+                    b.Property<string>("content")
                         .IsRequired()
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTime>("created_at")
                         .HasColumnType("TEXT");
 
-                    b.Property<int?>("Duration")
+                    b.Property<int?>("duration")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("FilePath")
+                    b.Property<string>("file_path")
                         .HasMaxLength(255)
                         .HasColumnType("TEXT");
 
-                    b.Property<int?>("FileSize")
+                    b.Property<int?>("file_size")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("IsRead")
+                    b.Property<bool>("is_read")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("ReceiverId")
+                    b.Property<int>("receiver_id")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("SenderId")
+                    b.Property<int>("sender_id")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("Timestamp")
+                    b.Property<DateTime>("timestamp")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("Type")
+                    b.Property<int>("type")
                         .HasColumnType("INTEGER");
 
-                    b.HasKey("Id");
+                    b.HasKey("id");
 
-                    b.HasIndex("ReceiverId", "SenderId", "Timestamp");
+                    b.HasIndex("receiver_id", "sender_id", "timestamp");
 
-                    b.HasIndex("SenderId", "ReceiverId", "Timestamp");
+                    b.HasIndex("sender_id", "receiver_id", "timestamp");
 
                     b.ToTable("ChatMessages");
                 });
 
             modelBuilder.Entity("VideoCallAPI.Models.Contact", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<int>("id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("AddedAt")
+                    b.Property<DateTime>("added_at")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("ContactUserId")
+                    b.Property<int>("contact_user_id")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("DisplayName")
+                    b.Property<string>("display_name")
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("IsBlocked")
+                    b.Property<bool>("is_blocked")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime?>("LastMessageAt")
+                    b.Property<DateTime?>("last_message_at")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("UnreadCount")
+                    b.Property<int>("unread_count")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("UserId")
+                    b.Property<int>("user_id")
                         .HasColumnType("INTEGER");
 
-                    b.HasKey("Id");
+                    b.HasKey("id");
 
-                    b.HasIndex("ContactUserId");
+                    b.HasIndex("contact_user_id");
 
-                    b.HasIndex("UserId", "ContactUserId")
+                    b.HasIndex("user_id", "contact_user_id")
                         .IsUnique();
 
                     b.ToTable("Contacts");
@@ -151,36 +151,36 @@ namespace VideoCallAPI.Migrations
 
             modelBuilder.Entity("VideoCallAPI.Models.Room", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<int>("id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTime>("created_at")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("CreatedBy")
+                    b.Property<int>("created_by")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("IsActive")
+                    b.Property<bool>("is_active")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("MaxParticipants")
+                    b.Property<int>("max_participants")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("RoomCode")
+                    b.Property<string>("room_code")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("RoomName")
+                    b.Property<string>("room_name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
-                    b.HasKey("Id");
+                    b.HasKey("id");
 
-                    b.HasIndex("CreatedBy");
+                    b.HasIndex("created_by");
 
-                    b.HasIndex("RoomCode")
+                    b.HasIndex("room_code")
                         .IsUnique();
 
                     b.ToTable("Rooms");
@@ -188,164 +188,164 @@ namespace VideoCallAPI.Migrations
 
             modelBuilder.Entity("VideoCallAPI.Models.RoomParticipant", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<int>("id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("IsActive")
+                    b.Property<bool>("is_active")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("JoinedAt")
+                    b.Property<DateTime>("joined_at")
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("LeftAt")
+                    b.Property<DateTime?>("left_at")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("RoomId")
+                    b.Property<int>("room_id")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("UserId")
+                    b.Property<int>("user_id")
                         .HasColumnType("INTEGER");
 
-                    b.HasKey("Id");
+                    b.HasKey("id");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("user_id");
 
-                    b.HasIndex("RoomId", "UserId", "IsActive");
+                    b.HasIndex("room_id", "user_id", "is_active");
 
                     b.ToTable("RoomParticipants");
                 });
 
             modelBuilder.Entity("VideoCallAPI.Models.User", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<int>("id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("AvatarPath")
+                    b.Property<string>("avatar_path")
                         .HasMaxLength(255)
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTime>("created_at")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Email")
+                    b.Property<string>("email")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("IsOnline")
+                    b.Property<bool>("is_online")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime?>("LastLoginAt")
+                    b.Property<DateTime?>("last_login_at")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Nickname")
+                    b.Property<string>("nickname")
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("PasswordHash")
+                    b.Property<string>("password_hash")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTime>("updated_at")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Username")
+                    b.Property<string>("username")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
-                    b.HasKey("Id");
+                    b.HasKey("id");
 
-                    b.HasIndex("Email")
+                    b.HasIndex("email")
                         .IsUnique();
 
-                    b.HasIndex("Username")
+                    b.HasIndex("username")
                         .IsUnique();
 
-                    b.ToTable("Users");
+                    b.ToTable("users");
                 });
 
             modelBuilder.Entity("VideoCallAPI.Models.CallHistory", b =>
                 {
                     b.HasOne("VideoCallAPI.Models.User", "Caller")
                         .WithMany("InitiatedCalls")
-                        .HasForeignKey("CallerId")
+                        .HasForeignKey("caller_id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("VideoCallAPI.Models.User", "Receiver")
+                    b.HasOne("VideoCallAPI.Models.User", "receiver")
                         .WithMany("ReceivedCalls")
-                        .HasForeignKey("ReceiverId")
+                        .HasForeignKey("receiver_id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Caller");
 
-                    b.Navigation("Receiver");
+                    b.Navigation("receiver");
                 });
 
             modelBuilder.Entity("VideoCallAPI.Models.ChatMessage", b =>
                 {
-                    b.HasOne("VideoCallAPI.Models.User", "Receiver")
+                    b.HasOne("VideoCallAPI.Models.User", "receiver")
                         .WithMany("ReceivedMessages")
-                        .HasForeignKey("ReceiverId")
+                        .HasForeignKey("receiver_id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("VideoCallAPI.Models.User", "Sender")
+                    b.HasOne("VideoCallAPI.Models.User", "sender")
                         .WithMany("SentMessages")
-                        .HasForeignKey("SenderId")
+                        .HasForeignKey("sender_id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Receiver");
+                    b.Navigation("receiver");
 
-                    b.Navigation("Sender");
+                    b.Navigation("sender");
                 });
 
             modelBuilder.Entity("VideoCallAPI.Models.Contact", b =>
                 {
-                    b.HasOne("VideoCallAPI.Models.User", "ContactUser")
+                    b.HasOne("VideoCallAPI.Models.User", "contact_user")
                         .WithMany("ContactedBy")
-                        .HasForeignKey("ContactUserId")
+                        .HasForeignKey("contact_user_id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("VideoCallAPI.Models.User", "User")
                         .WithMany("Contacts")
-                        .HasForeignKey("UserId")
+                        .HasForeignKey("user_id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("ContactUser");
-
                     b.Navigation("User");
+
+                    b.Navigation("contact_user");
                 });
 
             modelBuilder.Entity("VideoCallAPI.Models.Room", b =>
                 {
-                    b.HasOne("VideoCallAPI.Models.User", "Creator")
+                    b.HasOne("VideoCallAPI.Models.User", "creator")
                         .WithMany()
-                        .HasForeignKey("CreatedBy")
+                        .HasForeignKey("created_by")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Creator");
+                    b.Navigation("creator");
                 });
 
             modelBuilder.Entity("VideoCallAPI.Models.RoomParticipant", b =>
                 {
                     b.HasOne("VideoCallAPI.Models.Room", "Room")
-                        .WithMany("Participants")
-                        .HasForeignKey("RoomId")
+                        .WithMany("participants")
+                        .HasForeignKey("room_id")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("VideoCallAPI.Models.User", "User")
                         .WithMany()
-                        .HasForeignKey("UserId")
+                        .HasForeignKey("user_id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -356,7 +356,7 @@ namespace VideoCallAPI.Migrations
 
             modelBuilder.Entity("VideoCallAPI.Models.Room", b =>
                 {
-                    b.Navigation("Participants");
+                    b.Navigation("participants");
                 });
 
             modelBuilder.Entity("VideoCallAPI.Models.User", b =>

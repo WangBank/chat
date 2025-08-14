@@ -63,7 +63,7 @@ namespace VideoCallAPI.Controllers
                     });
                 }
                 
-                var user = await _userService.GetUserAsync(userId.Value);
+                var user = await _userService.GetUserByIdAsync(userId.Value);
 
                 return Ok(new ApiResponse<object>
                 {
@@ -129,7 +129,7 @@ namespace VideoCallAPI.Controllers
             try
             {
                 var userId = GetUserId();
-                var user = await _userService.GetUserAsync(userId);
+                var user = await _userService.GetUserByIdAsync(userId);
                 
                 return Ok(new ApiResponse<UserResponseDto>
                 {
@@ -233,16 +233,16 @@ namespace VideoCallAPI.Controllers
         }
 
         [HttpGet("search-users")]
-        public async Task<ActionResult<ApiResponse<UserSearchResultDto>>> SearchUsers([FromQuery] string query = "", [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        public async Task<ActionResult<ApiResponse<UserSearchResultDto>>> SearchUsers([FromQuery] string query = "", [FromQuery] int page = 1, [FromQuery] int page_size = 20)
         {
             try
             {
                 var userId = GetUserId();
                 var searchDto = new SearchUsersDto
                 {
-                    Query = query,
-                    Page = page,
-                    PageSize = pageSize
+                    query = query,
+                    page = page,
+                    page_size = page_size
                 };
                 
                 var result = await _userService.SearchUsersAsync(userId, searchDto);

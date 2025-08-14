@@ -1,8 +1,8 @@
 import 'user.dart';
 
 enum CallType {
+  voice,
   video,
-  audio,
 }
 
 enum CallStatus {
@@ -37,85 +37,118 @@ class Call {
 
   factory Call.fromJson(Map<String, dynamic> json) {
     return Call(
-      callId: json['callId'] as String,
+      callId: json['call_id'] as String,
       caller: User.fromJson(json['caller'] as Map<String, dynamic>),
       receiver: User.fromJson(json['receiver'] as Map<String, dynamic>),
-      callType: _parseCallType(json['callType'] as String),
-      status: _parseCallStatus(json['status'] as String),
-      startTime: DateTime.parse(json['startTime'] as String),
-      endTime: json['endTime'] != null ? DateTime.parse(json['endTime'] as String) : null,
+      callType: _parseCallType(json['call_type'] as int),
+      status: _parseCallStatusFromDynamic(json['status']),
+      startTime: DateTime.parse(json['start_time'] as String),
+      endTime: json['end_time'] != null ? DateTime.parse(json['end_time'] as String) : null,
       duration: json['duration'] as int?,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'callId': callId,
+      'call_id': callId,
       'caller': caller.toJson(),
       'receiver': receiver.toJson(),
-      'callType': _callTypeToString(callType),
-      'status': _callStatusToString(status),
-      'startTime': startTime.toIso8601String(),
-      'endTime': endTime?.toIso8601String(),
+      'call_type': _callTypeToInt(callType),
+      'status': _callStatusToInt(status),
+      'start_time': startTime.toIso8601String(),
+      'end_time': endTime?.toIso8601String(),
       'duration': duration,
     };
   }
 
-  static CallType _parseCallType(String value) {
-    switch (value.toLowerCase()) {
-      case 'video':
+  static CallType _parseCallType(int value) {
+    switch (value) {
+      case 2:
         return CallType.video;
-      case 'audio':
-        return CallType.audio;
+      case 1:
+        return CallType.voice;
       default:
         return CallType.video;
     }
   }
 
-  static CallStatus _parseCallStatus(String value) {
-    switch (value.toLowerCase()) {
-      case 'initiated':
+  static CallStatus _parseCallStatus(int value) {
+    switch (value) {
+      case 1:
         return CallStatus.initiated;
-      case 'ringing':
+      case 2:
         return CallStatus.ringing;
-      case 'inprogress':
-        return CallStatus.inProgress;
-      case 'ended':
-        return CallStatus.ended;
-      case 'missed':
-        return CallStatus.missed;
-      case 'rejected':
+      case 3:
+        return CallStatus.inProgress; // Answered in backend
+      case 4:
         return CallStatus.rejected;
+      case 5:
+        return CallStatus.missed;
+      case 6:
+        return CallStatus.ended;
+      case 7:
+        return CallStatus.initiated; // Failed in backend, map to initiated
       default:
         return CallStatus.initiated;
     }
   }
 
-  static String _callTypeToString(CallType type) {
+  static CallStatus _parseCallStatusFromDynamic(dynamic value) {
+    if (value is int) {
+      return _parseCallStatus(value);
+    } else if (value is String) {
+      // 处理字符串类型的status（向后兼容）
+      switch (value.toLowerCase()) {
+        case 'initiated':
+          return CallStatus.initiated;
+        case 'ringing':
+          return CallStatus.ringing;
+        case 'answered':
+        case 'inprogress':
+          return CallStatus.inProgress;
+        case 'rejected':
+          return CallStatus.rejected;
+        case 'missed':
+          return CallStatus.missed;
+        case 'ended':
+          return CallStatus.ended;
+        case 'failed':
+          return CallStatus.initiated;
+        default:
+          return CallStatus.initiated;
+      }
+    } else {
+      return CallStatus.initiated;
+    }
+  }
+
+  static int _callTypeToInt(CallType type) {
     switch (type) {
       case CallType.video:
-        return 'Video';
-      case CallType.audio:
-        return 'Audio';
+        return 2;
+      case CallType.voice:
+        return 1;
     }
   }
 
-  static String _callStatusToString(CallStatus status) {
+  static int _callStatusToInt(CallStatus status) {
     switch (status) {
       case CallStatus.initiated:
-        return 'Initiated';
+        return 1;
       case CallStatus.ringing:
-        return 'Ringing';
+        return 2;
       case CallStatus.inProgress:
-        return 'InProgress';
-      case CallStatus.ended:
-        return 'Ended';
-      case CallStatus.missed:
-        return 'Missed';
+        return 3;
       case CallStatus.rejected:
-        return 'Rejected';
+        return 4;
+      case CallStatus.missed:
+        return 5;
+      case CallStatus.ended:
+        return 6;
     }
   }
+
+
 
   Call copyWith({
     String? callId,
@@ -151,8 +184,8 @@ class InitiateCallRequest {
 
   Map<String, dynamic> toJson() {
     return {
-      'receiverId': receiverId,
-      'callType': Call._callTypeToString(callType),
+      'receiver_id': receiverId,
+      'call_type': Call._callTypeToInt(callType),
     };
   }
 }
@@ -168,7 +201,7 @@ class AnswerCallRequest {
 
   Map<String, dynamic> toJson() {
     return {
-      'callId': callId,
+      'call_id': callId,
       'accept': accept,
     };
   }

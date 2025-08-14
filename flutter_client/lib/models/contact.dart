@@ -22,26 +22,26 @@ class Contact {
   factory Contact.fromJson(Map<String, dynamic> json) {
     return Contact(
       id: json['id'] as int,
-      contactUser: User.fromJson(json['contactUser'] as Map<String, dynamic>),
-      displayName: json['displayName'] as String?,
-      addedAt: DateTime.parse(json['addedAt'] as String),
-      isBlocked: json['isBlocked'] as bool? ?? false,
-      lastMessageAt: json['lastMessageAt'] != null 
-          ? DateTime.parse(json['lastMessageAt'] as String) 
+      contactUser: User.fromJson(json['contact_user'] as Map<String, dynamic>),
+      displayName: json['display_name'] as String?,
+      addedAt: DateTime.parse(json['added_at'] as String),
+      isBlocked: json['is_blocked'] as bool? ?? false,
+      lastMessageAt: json['last_message_at'] != null 
+          ? DateTime.parse(json['last_message_at'] as String) 
           : null,
-      unreadCount: json['unreadCount'] as int? ?? 0,
+      unreadCount: json['unread_count'] as int? ?? 0,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'contactUser': contactUser.toJson(),
-      'displayName': displayName,
-      'addedAt': addedAt.toIso8601String(),
-      'isBlocked': isBlocked,
-      'lastMessageAt': lastMessageAt?.toIso8601String(),
-      'unreadCount': unreadCount,
+      'contact_user': contactUser.toJson(),
+      'display_name': displayName,
+      'added_at': addedAt.toIso8601String(),
+      'is_blocked': isBlocked,
+      'last_message_at': lastMessageAt?.toIso8601String(),
+      'unread_count': unreadCount,
     };
   }
 

@@ -24,7 +24,7 @@ namespace VideoCallAPI.Hubs
 
         public override async Task OnConnectedAsync()
         {
-            _logger.LogInformation("客户端连接: {ConnectionId}", Context.ConnectionId);
+            _logger.LogInformation("客户端连接: {connection_id}", Context.ConnectionId);
             await base.OnConnectedAsync();
         }
 
@@ -34,7 +34,7 @@ namespace VideoCallAPI.Hubs
             if (_connectionUserMap.TryGetValue(connectionId, out var userId))
             {
                 _connectionUserMap.Remove(connectionId);
-                _logger.LogInformation("用户断开连接: {UserId}, 连接: {ConnectionId}", userId, connectionId);
+                _logger.LogInformation("用户断开连接: {user_id}, 连接: {connection_id}", userId, connectionId);
             }
             await base.OnDisconnectedAsync(exception);
         }
@@ -44,7 +44,7 @@ namespace VideoCallAPI.Hubs
         {
             _connectionUserMap[Context.ConnectionId] = userId;
             await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
-            _logger.LogInformation("用户认证: {UserId}, 连接: {ConnectionId}", userId, Context.ConnectionId);
+            _logger.LogInformation("用户认证: {user_id}, 连接: {connection_id}", userId, Context.ConnectionId);
         }
 
         // 发起通话
@@ -59,19 +59,49 @@ namespace VideoCallAPI.Hubs
                     return;
                 }
 
-                var session = await _webRTCService.CreateSessionAsync(callerId.Value, request.ReceiverId, request.CallType);
+                var session = await _webRTCService.CreateSessionAsync(callerId.Value, request.receiver_id, request.call_type);
                 
                 // 通知接收者
-                await Clients.Group($"user_{request.ReceiverId}").SendAsync("IncomingCall", new
+                var caller = await _userService.GetUserByIdAsync(callerId.Value);
+                var receiver = await _userService.GetUserByIdAsync(request.receiver_id);
+                
+                if (caller != null && receiver != null)
                 {
-                    CallId = session.CallId,
-                    CallerId = callerId,
-                    CallType = request.CallType,
-                    Timestamp = session.StartTime
-                });
+                    await Clients.Group($"user_{request.receiver_id}").SendAsync("IncomingCall", new
+                    {
+                        call_id = session.call_id,
+                        caller = new
+                        {
+                            id = caller.id,
+                            username = caller.username,
+                            email = caller.email,
+                            nickname = caller.nickname,
+                            avatar_path = caller.avatar_path,
+                            is_online = caller.is_online,
+                            last_login_at = caller.last_login_at,
+                            created_at = caller.created_at,
+                            updated_at = caller.updated_at
+                        },
+                        receiver = new
+                        {
+                            id = receiver.id,
+                            username = receiver.username,
+                            email = receiver.email,
+                            nickname = receiver.nickname,
+                            avatar_path = receiver.avatar_path,
+                            is_online = receiver.is_online,
+                            last_login_at = receiver.last_login_at,
+                            created_at = receiver.created_at,
+                            updated_at = receiver.updated_at
+                        },
+                        call_type = request.call_type,
+                        status = 1, // Initiated
+                        start_time = session.start_time
+                    });
+                }
 
-                _logger.LogInformation("发起通话: {CallId}, 呼叫者: {CallerId}, 接收者: {ReceiverId}", 
-                    session.CallId, callerId, request.ReceiverId);
+                _logger.LogInformation("发起通话: {call_id}, 呼叫者: {caller_id}, 接收者: {receiver_id}", 
+                    session.call_id, callerId, request.receiver_id);
             }
             catch (Exception ex)
             {
@@ -92,41 +122,41 @@ namespace VideoCallAPI.Hubs
                     return;
                 }
 
-                if (request.Accept)
+                if (request.accept)
                 {
-                    var success = await _webRTCService.AcceptCallAsync(request.CallId, userId.Value);
+                    var success = await _webRTCService.AcceptCallAsync(request.call_id, userId.Value);
                     if (success)
                     {
-                        var session = await _webRTCService.GetSessionAsync(request.CallId);
+                        var session = await _webRTCService.GetSessionAsync(request.call_id);
                         if (session != null)
                         {
                             // 通知呼叫者通话被接受
-                            await Clients.Group($"user_{session.CallerId}").SendAsync("CallAccepted", new
+                            await Clients.Group($"user_{session.caller_id}").SendAsync("CallAccepted", new
                             {
-                                CallId = request.CallId,
-                                ReceiverId = userId
+                                call_id = request.call_id,
+                                receiver_id = userId
                             });
 
-                            _logger.LogInformation("通话被接受: {CallId}, 接收者: {UserId}", request.CallId, userId);
+                            _logger.LogInformation("通话被接受: {call_id}, 接收者: {user_id}", request.call_id, userId);
                         }
                     }
                 }
                 else
                 {
-                    var success = await _webRTCService.RejectCallAsync(request.CallId, userId.Value);
+                    var success = await _webRTCService.RejectCallAsync(request.call_id, userId.Value);
                     if (success)
                     {
-                        var session = await _webRTCService.GetSessionAsync(request.CallId);
+                        var session = await _webRTCService.GetSessionAsync(request.call_id);
                         if (session != null)
                         {
                             // 通知呼叫者通话被拒绝
-                            await Clients.Group($"user_{session.CallerId}").SendAsync("CallRejected", new
+                            await Clients.Group($"user_{session.caller_id}").SendAsync("CallRejected", new
                             {
-                                CallId = request.CallId,
-                                ReceiverId = userId
+                                call_id = request.call_id,
+                                receiver_id = userId
                             });
 
-                            _logger.LogInformation("通话被拒绝: {CallId}, 接收者: {UserId}", request.CallId, userId);
+                            _logger.LogInformation("通话被拒绝: {call_id}, 接收者: {user_id}", request.call_id, userId);
                         }
                     }
                 }
@@ -157,18 +187,18 @@ namespace VideoCallAPI.Hubs
                     if (session != null)
                     {
                         // 通知所有参与者通话结束
-                        await Clients.Group($"user_{session.CallerId}").SendAsync("CallEnded", new
+                        await Clients.Group($"user_{session.caller_id}").SendAsync("CallEnded", new
                         {
-                            CallId = callId,
+                            call_id = callId,
                             EndedBy = userId
                         });
-                        await Clients.Group($"user_{session.ReceiverId}").SendAsync("CallEnded", new
+                        await Clients.Group($"user_{session.receiver_id}").SendAsync("CallEnded", new
                         {
-                            CallId = callId,
+                            call_id = callId,
                             EndedBy = userId
                         });
 
-                        _logger.LogInformation("通话结束: {CallId}, 结束者: {UserId}", callId, userId);
+                        _logger.LogInformation("通话结束: {call_id}, 结束者: {user_id}", callId, userId);
                     }
                 }
             }
@@ -191,18 +221,18 @@ namespace VideoCallAPI.Hubs
                     return;
                 }
 
-                message.SenderId = userId.Value;
+                message.sender_id = userId.Value;
                 await _webRTCService.SendMessageAsync(message);
 
-                var session = await _webRTCService.GetSessionAsync(message.CallId);
+                var session = await _webRTCService.GetSessionAsync(message.call_id);
                 if (session != null)
                 {
                     // 转发消息给通话中的其他用户
-                    var targetUserId = message.SenderId == session.CallerId ? session.ReceiverId : session.CallerId;
+                    var targetUserId = message.sender_id == session.caller_id ? session.receiver_id : session.caller_id;
                     await Clients.Group($"user_{targetUserId}").SendAsync("WebRTCMessage", message);
 
-                    _logger.LogDebug("转发WebRTC消息: {CallId}, 类型: {Type}, 从: {SenderId}, 到: {TargetUserId}", 
-                        message.CallId, message.Type, message.SenderId, targetUserId);
+                    _logger.LogDebug("转发WebRTC消息: {call_id}, 类型: {type}, 从: {sender_id}, 到: {TargetUserId}", 
+                        message.call_id, message.type, message.sender_id, targetUserId);
                 }
             }
             catch (Exception ex)
@@ -225,9 +255,9 @@ namespace VideoCallAPI.Hubs
                 }
 
                 await _webRTCService.ConnectUserAsync(callId, userId.Value, Context.ConnectionId);
-                await Clients.Caller.SendAsync("JoinedCall", new { CallId = callId, UserId = userId });
+                await Clients.Caller.SendAsync("JoinedCall", new { call_id = callId, user_id = userId });
 
-                _logger.LogInformation("用户加入通话: {CallId}, 用户: {UserId}", callId, userId);
+                _logger.LogInformation("用户加入通话: {call_id}, 用户: {user_id}", callId, userId);
             }
             catch (Exception ex)
             {
@@ -249,9 +279,9 @@ namespace VideoCallAPI.Hubs
                 }
 
                 await _webRTCService.DisconnectUserAsync(callId, userId.Value);
-                await Clients.Caller.SendAsync("LeftCall", new { CallId = callId, UserId = userId });
+                await Clients.Caller.SendAsync("LeftCall", new { call_id = callId, user_id = userId });
 
-                _logger.LogInformation("用户离开通话: {CallId}, 用户: {UserId}", callId, userId);
+                _logger.LogInformation("用户离开通话: {call_id}, 用户: {user_id}", callId, userId);
             }
             catch (Exception ex)
             {

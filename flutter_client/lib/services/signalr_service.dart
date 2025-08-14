@@ -52,12 +52,26 @@ class SignalRService {
     }
   }
 
+  // 用户认证
+  Future<void> authenticate(int userId) async {
+    if (!isConnected) throw Exception('SignalR未连接');
+    
+    try {
+      await _connection!.invoke('Authenticate', args: [userId]);
+      print('User authenticated: $userId');
+    } catch (e) {
+      print('Error authenticating user: $e');
+      throw Exception('用户认证失败: $e');
+    }
+  }
+
   // 设置事件监听器
   void _setupEventListeners() {
     if (_connection == null) return;
 
     // 接收来电
     _connection!.on('IncomingCall', (arguments) {
+      print('IncomingCall: $arguments');
       try {
         final data = arguments?[0] as Map<String, dynamic>;
         final call = Call.fromJson(data);
@@ -72,7 +86,7 @@ class SignalRService {
     _connection!.on('CallAccepted', (arguments) {
       try {
         final data = arguments?[0] as Map<String, dynamic>;
-        final callId = data['CallId'] as String;
+        final callId = data['call_id'] as String;
         print('Call accepted: $callId');
         onCallAccepted?.call(callId);
       } catch (e) {
@@ -84,7 +98,7 @@ class SignalRService {
     _connection!.on('CallRejected', (arguments) {
       try {
         final data = arguments?[0] as Map<String, dynamic>;
-        final callId = data['CallId'] as String;
+        final callId = data['call_id'] as String;
         print('Call rejected: $callId');
         onCallRejected?.call(callId);
       } catch (e) {
@@ -96,7 +110,7 @@ class SignalRService {
     _connection!.on('CallEnded', (arguments) {
       try {
         final data = arguments?[0] as Map<String, dynamic>;
-        final callId = data['CallId'] as String;
+        final callId = data['call_id'] as String;
         print('Call ended: $callId');
         onCallEnded?.call(callId);
       } catch (e) {
@@ -104,45 +118,32 @@ class SignalRService {
       }
     });
 
-    // 接收WebRTC Offer
-    _connection!.on('ReceiveOffer', (arguments) {
+    // 接收WebRTC消息
+    _connection!.on('WebRTCMessage', (arguments) {
       try {
         final data = arguments?[0] as Map<String, dynamic>;
-        final callId = data['CallId'] as String;
-        final offer = data['Offer'] as String;
-        final senderId = data['SenderId'] as int;
-        print('Received offer for call: $callId');
-        onOfferReceived?.call(callId, offer, senderId);
+        final callId = data['call_id'] as String;
+        final type = data['type'] as String;
+        final messageData = data['data'] as String;
+        final senderId = data['sender_id'] as int;
+        
+        print('Received WebRTC message for call: $callId, type: $type');
+        
+        switch (type) {
+          case 'Offer':
+            onOfferReceived?.call(callId, messageData, senderId);
+            break;
+          case 'Answer':
+            onAnswerReceived?.call(callId, messageData, senderId);
+            break;
+          case 'IceCandidate':
+            onIceCandidateReceived?.call(callId, messageData, senderId);
+            break;
+          default:
+            print('Unknown WebRTC message type: $type');
+        }
       } catch (e) {
-        print('Error parsing offer: $e');
-      }
-    });
-
-    // 接收WebRTC Answer
-    _connection!.on('ReceiveAnswer', (arguments) {
-      try {
-        final data = arguments?[0] as Map<String, dynamic>;
-        final callId = data['CallId'] as String;
-        final answer = data['Answer'] as String;
-        final senderId = data['SenderId'] as int;
-        print('Received answer for call: $callId');
-        onAnswerReceived?.call(callId, answer, senderId);
-      } catch (e) {
-        print('Error parsing answer: $e');
-      }
-    });
-
-    // 接收ICE Candidate
-    _connection!.on('ReceiveIceCandidate', (arguments) {
-      try {
-        final data = arguments?[0] as Map<String, dynamic>;
-        final callId = data['CallId'] as String;
-        final candidate = data['Candidate'] as String;
-        final senderId = data['SenderId'] as int;
-        print('Received ICE candidate for call: $callId');
-        onIceCandidateReceived?.call(callId, candidate, senderId);
-      } catch (e) {
-        print('Error parsing ICE candidate: $e');
+        print('Error parsing WebRTC message: $e');
       }
     });
   }
@@ -152,10 +153,12 @@ class SignalRService {
     if (!isConnected) throw Exception('SignalR未连接');
     
     try {
-      await _connection!.invoke('InitiateCall', args: [request.toJson()]);
-      print('Call initiated to user: ${request.receiverId}');
+      final requestData = request.toJson();
+      print('📤 发送InitiateCall请求: $requestData');
+      await _connection!.invoke('InitiateCall', args: [requestData]);
+      print('✅ Call initiated to user: ${request.receiverId}');
     } catch (e) {
-      print('Error initiating call: $e');
+      print('❌ Error initiating call: $e');
       throw Exception('发起通话失败: $e');
     }
   }
@@ -186,42 +189,63 @@ class SignalRService {
     }
   }
 
-  // 发送WebRTC Offer
-  Future<void> sendOffer(WebRTCOffer offer) async {
+  // 发送WebRTC消息
+  Future<void> sendWebRTCMessage(String callId, String type, String data, int receiverId) async {
     if (!isConnected) throw Exception('SignalR未连接');
     
     try {
-      await _connection!.invoke('SendOffer', args: [offer.toJson()]);
-      print('Offer sent for call: ${offer.callId}');
+      final message = {
+        'call_id': callId,
+        'type': type,
+        'data': data,
+        'receiver_id': receiverId,
+      };
+      await _connection!.invoke('SendWebRTCMessage', args: [message]);
+      print('WebRTC message sent for call: $callId, type: $type');
     } catch (e) {
-      print('Error sending offer: $e');
-      throw Exception('发送Offer失败: $e');
+      print('Error sending WebRTC message: $e');
+      throw Exception('发送WebRTC消息失败: $e');
     }
+  }
+
+  // 发送WebRTC Offer
+  Future<void> sendOffer(WebRTCOffer offer, int receiverId) async {
+    await sendWebRTCMessage(offer.callId, 'Offer', offer.offer, receiverId);
   }
 
   // 发送WebRTC Answer
-  Future<void> sendAnswer(WebRTCAnswer answer) async {
-    if (!isConnected) throw Exception('SignalR未连接');
-    
-    try {
-      await _connection!.invoke('SendAnswer', args: [answer.toJson()]);
-      print('Answer sent for call: ${answer.callId}');
-    } catch (e) {
-      print('Error sending answer: $e');
-      throw Exception('发送Answer失败: $e');
-    }
+  Future<void> sendAnswer(WebRTCAnswer answer, int receiverId) async {
+    await sendWebRTCMessage(answer.callId, 'Answer', answer.answer, receiverId);
   }
 
   // 发送ICE Candidate
-  Future<void> sendIceCandidate(WebRTCCandidate candidate) async {
+  Future<void> sendIceCandidate(WebRTCCandidate candidate, int receiverId) async {
+    await sendWebRTCMessage(candidate.callId, 'IceCandidate', candidate.candidate, receiverId);
+  }
+
+  // 加入通话
+  Future<void> joinCall(String callId) async {
     if (!isConnected) throw Exception('SignalR未连接');
     
     try {
-      await _connection!.invoke('SendIceCandidate', args: [candidate.toJson()]);
-      print('ICE candidate sent for call: ${candidate.callId}');
+      await _connection!.invoke('JoinCall', args: [callId]);
+      print('Joined call: $callId');
     } catch (e) {
-      print('Error sending ICE candidate: $e');
-      throw Exception('发送ICE候选失败: $e');
+      print('Error joining call: $e');
+      throw Exception('加入通话失败: $e');
+    }
+  }
+
+  // 离开通话
+  Future<void> leaveCall(String callId) async {
+    if (!isConnected) throw Exception('SignalR未连接');
+    
+    try {
+      await _connection!.invoke('LeaveCall', args: [callId]);
+      print('Left call: $callId');
+    } catch (e) {
+      print('Error leaving call: $e');
+      throw Exception('离开通话失败: $e');
     }
   }
 

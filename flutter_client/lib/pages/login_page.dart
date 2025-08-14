@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
+import '../services/storage_service.dart';
 
 class LoginPage extends StatefulWidget {
   final Function(User user)? onLoginSuccess;
@@ -30,6 +31,7 @@ class _LoginPageState extends State<LoginPage> {
   
   bool _isLogin = true;
   bool _isLoading = false;
+  bool _rememberMe = true; // 记住登录状态
   String? _errorMessage;
 
   Future<void> _handleSubmit() async {
@@ -37,7 +39,7 @@ class _LoginPageState extends State<LoginPage> {
     final password = _passwordController.text.trim();
     final email = _emailController.text.trim();
 
-    print('🔐 开始登录流程...');
+    print('🔐 开始${_isLogin ? '登录' : '注册'}流程...');
     print(' 用户名: $username');
     print('📧 邮箱: $email');
 
@@ -45,6 +47,11 @@ class _LoginPageState extends State<LoginPage> {
       setState(() {
         _errorMessage = '请填写所有必填字段';
       });
+      return;
+    }
+
+    // 防止重复提交
+    if (_isLoading) {
       return;
     }
 
@@ -62,7 +69,7 @@ class _LoginPageState extends State<LoginPage> {
           username: username,
           password: password,
         );
-        print('✅ 登录API调用完成: $result');
+        print('✅ 登录API调用完成');
       } else {
         print('🚀 调用注册API...');
         result = await _apiService.register(
@@ -70,26 +77,66 @@ class _LoginPageState extends State<LoginPage> {
           email: email,
           password: password,
         );
-        print('✅ 注册API调用完成: $result');
+        print('✅ 注册API调用完成');
       }
 
-      // 重置loading状态
-      setState(() {
-        _isLoading = false;
-      });
-
-      // 处理登录成功
+      // 处理成功响应
       if (result['success'] == true && result['data'] != null) {
-        final userData = result['data']['user'];
-        if (userData != null) {
-          final user = User.fromJson(userData);
-          widget.onLoginSuccess?.call(user);
+        if (_isLogin) {
+          // 登录成功：获取token和用户信息
+          final data = result['data'];
+          if (data['user'] != null) {
+            final user = User.fromJson(data['user']);
+            
+            // 如果选择记住登录状态，保存到本地存储
+            if (_rememberMe) {
+              try {
+                await StorageService.saveLoginInfo(user, _apiService.token ?? '');
+              } catch (e) {
+                print('❌ 保存登录信息失败: $e');
+              }
+            }
+            
+            widget.onLoginSuccess?.call(user);
+          }
+        } else {
+          // 注册成功：显示成功消息并切换到登录模式
+          setState(() {
+            _isLoading = false;
+            _errorMessage = null;
+          });
+          
+          // 显示成功消息
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('注册成功！请使用新账号登录'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          
+          // 清空密码字段，切换到登录模式
+          _passwordController.clear();
+          setState(() {
+            _isLogin = true;
+          });
         }
+      } else {
+        // 处理响应格式错误
+        setState(() {
+          _errorMessage = '操作失败，请重试';
+          _isLoading = false;
+        });
       }
     } catch (e) {
-      print('❌ 登录/注册失败: $e');
+      print('❌ ${_isLogin ? '登录' : '注册'}失败: $e');
       setState(() {
-        _errorMessage = e.toString();
+        // 移除Exception前缀，只显示错误信息
+        String errorMsg = e.toString();
+        if (errorMsg.startsWith('Exception: ')) {
+          errorMsg = errorMsg.substring(11);
+        }
+        _errorMessage = errorMsg;
         _isLoading = false;
       });
     }
@@ -241,6 +288,24 @@ class _LoginPageState extends State<LoginPage> {
 
                     const SizedBox(height: 16),
 
+                    // 记住登录状态（仅登录时显示）
+                    if (_isLogin)
+                      Row(
+                        children: [
+                          Checkbox(
+                            value: _rememberMe,
+                            onChanged: (value) {
+                              setState(() {
+                                _rememberMe = value ?? true;
+                              });
+                            },
+                          ),
+                          const Text('记住登录状态'),
+                        ],
+                      ),
+
+                    const SizedBox(height: 16),
+
                     // 提交按钮
                     ElevatedButton(
                       onPressed: _isLoading ? null : _handleSubmit,
@@ -304,7 +369,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'testuser1 / password123\ntestuser2 / password123',
+                            'testuser1 / 123\ntestuser2 / 123',
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.blue[600],

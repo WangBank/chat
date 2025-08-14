@@ -8,32 +8,32 @@ namespace VideoCallAPI.Models
     public class User
     {
         [Key]
-        public int Id { get; set; }
+        public int id { get; set; }
         
         [Required]
         [StringLength(50)]
-        public string Username { get; set; } = string.Empty;
+        public string username { get; set; } = string.Empty;
         
         [Required]
         [StringLength(100)]
-        public string Email { get; set; } = string.Empty;
+        public string email { get; set; } = string.Empty;
         
         [Required]
-        public string PasswordHash { get; set; } = string.Empty;
+        public string password_hash { get; set; } = string.Empty;
         
         [StringLength(50)]
-        public string? Nickname { get; set; } // 昵称
+        public string? nickname { get; set; } // 昵称
         
         [StringLength(255)]
-        public string? AvatarPath { get; set; }
+        public string? avatar_path { get; set; }
         
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime created_at { get; set; } = DateTime.UtcNow;
         
-        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime updated_at { get; set; } = DateTime.UtcNow;
         
-        public DateTime? LastLoginAt { get; set; }
+        public DateTime? last_login_at { get; set; }
         
-        public bool IsOnline { get; set; } = false;
+        public bool is_online { get; set; } = false;
         
         // 导航属性
         public virtual ICollection<Contact> Contacts { get; set; } = new List<Contact>();
@@ -48,162 +48,162 @@ namespace VideoCallAPI.Models
     public class Contact
     {
         [Key]
-        public int Id { get; set; }
+        public int id { get; set; }
         
         [Required]
-        public int UserId { get; set; }
+        public int user_id { get; set; }
         
         [Required]
-        public int ContactUserId { get; set; }
+        public int contact_user_id { get; set; }
         
         [StringLength(50)]
-        public string? DisplayName { get; set; }
+        public string? display_name { get; set; }
         
-        public DateTime AddedAt { get; set; } = DateTime.UtcNow;
+        public DateTime added_at { get; set; } = DateTime.UtcNow;
         
-        public bool IsBlocked { get; set; } = false;
+        public bool is_blocked { get; set; } = false;
         
-        public DateTime? LastMessageAt { get; set; } // 最后消息时间
+        public DateTime? last_message_at { get; set; } // 最后消息时间
         
-        public int UnreadCount { get; set; } = 0; // 未读消息数
+        public int unread_count { get; set; } = 0; // 未读消息数
         
         // 导航属性
-        [ForeignKey("UserId")]
+        [ForeignKey("user_id")]
         public virtual User User { get; set; } = null!;
         
-        [ForeignKey("ContactUserId")]
-        public virtual User ContactUser { get; set; } = null!;
+        [ForeignKey("contact_user_id")]
+        public virtual User contact_user { get; set; } = null!;
     }
 
     // 聊天消息表
     public class ChatMessage
     {
         [Key]
-        public int Id { get; set; }
+        public int id { get; set; }
         
         [Required]
-        public int SenderId { get; set; }
+        public int sender_id { get; set; }
         
         [Required]
-        public int ReceiverId { get; set; }
+        public int receiver_id { get; set; }
         
         [Required]
         [StringLength(1000)]
-        public string Content { get; set; } = string.Empty;
+        public string content { get; set; } = string.Empty;
         
         [Required]
-        public MessageType Type { get; set; } = MessageType.Text;
+        public MessageType type { get; set; } = MessageType.Text;
         
-        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+        public DateTime timestamp { get; set; } = DateTime.UtcNow;
         
-        public bool IsRead { get; set; } = false;
+        public bool is_read { get; set; } = false;
         
         [StringLength(255)]
-        public string? FilePath { get; set; } // 文件路径
+        public string? file_path { get; set; } // 文件路径
         
-        public int? FileSize { get; set; } // 文件大小
+        public int? file_size { get; set; } // 文件大小
         
-        public int? Duration { get; set; } // 语音/视频时长（秒）
+        public int? duration { get; set; } // 语音/视频时长（秒）
         
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime created_at { get; set; } = DateTime.UtcNow;
         
         // 导航属性
-        [ForeignKey("SenderId")]
-        public virtual User Sender { get; set; } = null!;
+        [ForeignKey("sender_id")]
+        public virtual User sender { get; set; } = null!;
         
-        [ForeignKey("ReceiverId")]
-        public virtual User Receiver { get; set; } = null!;
+        [ForeignKey("receiver_id")]
+        public virtual User receiver { get; set; } = null!;
     }
 
     // 通话历史表
     public class CallHistory
     {
         [Key]
-        public int Id { get; set; }
+        public int id { get; set; }
         
         [Required]
-        public int CallerId { get; set; }
+        public int caller_id { get; set; }
         
         [Required]
-        public int ReceiverId { get; set; }
+        public int receiver_id { get; set; }
         
         [Required]
-        public CallType CallType { get; set; }
+        public CallType call_type { get; set; }
         
         [Required]
-        public CallStatus Status { get; set; }
+        public CallStatus status { get; set; }
         
-        public DateTime StartTime { get; set; } = DateTime.UtcNow;
+        public DateTime start_time { get; set; } = DateTime.UtcNow;
         
-        public DateTime? EndTime { get; set; }
+        public DateTime? end_time { get; set; }
         
-        public int? Duration { get; set; } // 秒
+        public int? duration { get; set; } // 秒
         
         [StringLength(255)]
-        public string? EndReason { get; set; }
+        public string? end_reason { get; set; }
         
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime created_at { get; set; } = DateTime.UtcNow;
         
         // 导航属性
-        [ForeignKey("CallerId")]
+        [ForeignKey("caller_id")]
         public virtual User Caller { get; set; } = null!;
         
-        [ForeignKey("ReceiverId")]
-        public virtual User Receiver { get; set; } = null!;
+        [ForeignKey("receiver_id")]
+        public virtual User receiver { get; set; } = null!;
     }
 
     // 房间表（用于群组通话）
     public class Room
     {
         [Key]
-        public int Id { get; set; }
+        public int id { get; set; }
         
         [Required]
         [StringLength(100)]
-        public string RoomName { get; set; } = string.Empty;
+        public string room_name { get; set; } = string.Empty;
         
         [Required]
-        public string RoomCode { get; set; } = Guid.NewGuid().ToString();
+        public string room_code { get; set; } = Guid.NewGuid().ToString();
         
         [Required]
-        public int CreatedBy { get; set; }
+        public int created_by { get; set; }
         
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime created_at { get; set; } = DateTime.UtcNow;
         
-        public bool IsActive { get; set; } = true;
+        public bool is_active { get; set; } = true;
         
-        public int MaxParticipants { get; set; } = 10;
+        public int max_participants { get; set; } = 10;
         
         // 导航属性
-        [ForeignKey("CreatedBy")]
-        public virtual User Creator { get; set; } = null!;
+        [ForeignKey("created_by")]
+        public virtual User creator { get; set; } = null!;
         
-        public virtual ICollection<RoomParticipant> Participants { get; set; } = new List<RoomParticipant>();
+        public virtual ICollection<RoomParticipant> participants { get; set; } = new List<RoomParticipant>();
     }
 
     // 房间参与者表
     public class RoomParticipant
     {
         [Key]
-        public int Id { get; set; }
+        public int id { get; set; }
         
         [Required]
-        public int RoomId { get; set; }
+        public int room_id { get; set; }
         
         [Required]
-        public int UserId { get; set; }
+        public int user_id { get; set; }
         
-        public DateTime JoinedAt { get; set; } = DateTime.UtcNow;
+        public DateTime joined_at { get; set; } = DateTime.UtcNow;
         
-        public DateTime? LeftAt { get; set; }
+        public DateTime? left_at { get; set; }
         
-        public bool IsActive { get; set; } = true;
+        public bool is_active { get; set; } = true;
         
         // 导航属性
-        [ForeignKey("RoomId")]
+        [ForeignKey("room_id")]
         public virtual Room Room { get; set; } = null!;
         
-        [ForeignKey("UserId")]
+        [ForeignKey("user_id")]
         public virtual User User { get; set; } = null!;
     }
 

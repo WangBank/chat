@@ -3,7 +3,7 @@ class AppConfig {
   static String get baseUrl {
     // 手机访问时需要使用电脑的实际IP地址
     // 步骤1: 运行 `ifconfig | grep inet` 查找你的IP地址
-    // 步骤2: 将下面的 172.27.2.52 替换为你的IP地址
+    // 步骤2: 将下面的 172.27.2.41 替换为你的IP地址
     
     // 示例：如果你的IP是 192.168.1.100，则改为：
     // return 'http://192.168.1.100:7001/api';
@@ -11,7 +11,7 @@ class AppConfig {
     // 如果在模拟器上测试，使用localhost
     // return 'http://localhost:7001/api';
     
-    return 'http://172.27.2.52:7001/api'; // 使用172.27.2.52，适用于Android模拟器
+    return 'http://172.27.2.41:7001/api'; // 使用127.0.0.1，适用于Android模拟器
   }
   
   static String get signalRUrl {
@@ -33,8 +33,8 @@ class AppConfig {
   static List<String> getAvailableIPs() {
     return [
       'localhost',
-      '172.27.2.52',
-      '172.27.2.52', // 当前IP
+      '172.27.2.41',
+      '172.27.2.41', // 当前IP
       '192.168.1.100', // 常见家庭网络IP
       '192.168.0.100', // 常见家庭网络IP
     ];
@@ -52,7 +52,7 @@ class ConfigurationInstructions {
    - 例如：192.168.1.100
 
 2. 更新 AppConfig.baseUrl：
-   将 'http://172.27.2.52:7001/api' 
+   将 'http://172.27.2.41:7001/api' 
    改为 'http://192.168.1.100:7001/api'
 
 3. 确保防火墙允许端口7001的访问

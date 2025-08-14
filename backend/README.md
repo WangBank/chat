@@ -65,9 +65,9 @@ flutter run
 
 ## API 端点
 
-- **基础URL**: `https://172.27.2.52:7000/api`
-- **Swagger文档**: `https://172.27.2.52:7000/swagger`
-- **SignalR Hub**: `https://172.27.2.52:7000/videocallhub`
+- **基础URL**: `https://172.27.2.41:7000/api`
+- **Swagger文档**: `https://172.27.2.41:7000/swagger`
+- **SignalR Hub**: `https://172.27.2.41:7000/videocallhub`
 
 ### 认证相关
 - `POST /api/auth/register` - 用户注册
@@ -88,8 +88,8 @@ flutter run
 ## 测试账号
 
 系统会自动创建以下测试账号：
-- **用户名**: `testuser1`, **密码**: `password123`
-- **用户名**: `testuser2`, **密码**: `password123`
+- **用户名**: `testuser1`, **密码**: `123`
+- **用户名**: `testuser2`, **密码**: `123`
 
 ## Flutter客户端集成
 
@@ -114,14 +114,14 @@ import 'package:signalr_netcore/signalr_client.dart';
 import 'package:http/http.dart' as http;
 
 class VideoCallService {
-  static const String baseUrl = 'https://172.27.2.52:7000/api';
-  static const String hubUrl = 'https://172.27.2.52:7000/videocallhub';
+  static const String baseUrl = 'https://172.27.2.41:7000/api';
+  static const String hubUrl = 'https://172.27.2.41:7000/videocallhub';
   
   // 登录获取Token
   Future<String?> login(String username, String password) async {
     final response = await http.post(
       Uri.parse('$baseUrl/auth/login'),
-      headers: {'Content-Type': 'application/json'},
+      headers: {'content-type': 'application/json'},
       body: jsonEncode({
         'username': username,
         'password': password,
@@ -205,8 +205,8 @@ flutter build ios       # 构建iOS (需要macOS)
 # 命令行查看
 sqlite3 videocall_dev.db
 .tables          # 查看所有表
-.schema Users    # 查看用户表结构
-SELECT * FROM Users;  # 查询所有用户
+.schema users    # 查看用户表结构
+SELECT * FROM users;  # 查询所有用户
 ```
 
 ### 重置数据库
@@ -225,10 +225,10 @@ dotnet run           # 重新运行，会自动创建新数据库
   "Kestrel": {
     "Endpoints": {
       "Http": {
-        "Url": "http://172.27.2.52:5000"
+        "Url": "http://172.27.2.41:5000"
       },
       "Https": {
-        "Url": "https://172.27.2.52:5001"
+        "Url": "https://172.27.2.41:5001"
       }
     }
   }

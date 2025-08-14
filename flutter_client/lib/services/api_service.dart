@@ -22,10 +22,15 @@ class ApiService {
     _token = token;
   }
 
+  // 设置当前用户
+  void setCurrentUser(User user) {
+    _currentUser = user;
+  }
+
   // 获取HTTP请求头
   Map<String, String> get _headers {
     final headers = {
-      'Content-Type': 'application/json',
+      'content-type': 'application/json',
     };
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
@@ -43,6 +48,7 @@ class ApiService {
     required String password,
   }) async {
     try {
+      print('🚀 调用注册API...');
       final response = await http.post(
         Uri.parse('$baseUrl/auth/register'),
         headers: _headers,
@@ -53,20 +59,58 @@ class ApiService {
         }),
       );
 
+      print('📡 注册响应状态码: ${response.statusCode}');
+      print('📄 注册响应内容: ${response.body}');
+
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
-        if (data['token'] != null) {
-          _token = data['token'];
-          if (data['user'] != null) {
-            _currentUser = User.fromJson(data['user']);
-          }
-        }
+        print('✅ 注册成功');
         return data;
       } else {
-        throw Exception('注册失败: ${response.body}');
+        // 解析错误信息，提供用户友好的错误提示
+        String errorMessage = '注册失败';
+        try {
+          final errorData = jsonDecode(response.body);
+          if (errorData['errors'] != null) {
+            // 处理验证错误
+            final errors = errorData['errors'] as Map<String, dynamic>;
+            final errorList = <String>[];
+            
+            if (errors['username'] != null) {
+              final usernameErrors = errors['username'] as List;
+              errorList.addAll(usernameErrors.cast<String>());
+            }
+            if (errors['email'] != null) {
+              final emailErrors = errors['email'] as List;
+              errorList.addAll(emailErrors.cast<String>());
+            }
+            if (errors['password'] != null) {
+              final passwordErrors = errors['password'] as List;
+              errorList.addAll(passwordErrors.cast<String>());
+            }
+            
+            if (errorList.isNotEmpty) {
+              errorMessage = errorList.join('\n');
+            } else {
+              errorMessage = errorData['message'] ?? '注册失败，请检查输入信息';
+            }
+          } else {
+            errorMessage = errorData['message'] ?? '注册失败，请检查输入信息';
+          }
+        } catch (e) {
+          errorMessage = '注册失败，请检查网络连接';
+        }
+        throw Exception(errorMessage);
       }
     } catch (e) {
-      throw Exception('注册错误: $e');
+      print('❌ 注册错误: $e');
+      if (e.toString().contains('SocketException')) {
+        throw Exception('网络连接失败，请检查服务器地址和网络连接');
+      } else if (e.toString().contains('TimeoutException')) {
+        throw Exception('请求超时，请检查网络连接');
+      } else {
+        throw Exception(e.toString().replaceAll('Exception: ', ''));
+      }
     }
   }
 
@@ -122,15 +166,53 @@ class ApiService {
         }
       } else {
         print('❌ HTTP错误: ${response.statusCode}');
-        String errorMessage;
+        String errorMessage = '登录失败';
         try {
           final errorData = jsonDecode(response.body);
-          errorMessage = errorData['message'] ?? errorData['errors']?.join(', ') ?? response.body;
+          print('📄 错误响应数据: $errorData');
+          
+          if (errorData['errors'] != null) {
+            // 处理错误信息
+            final errors = errorData['errors'];
+            if (errors is List) {
+              // errors是数组格式
+              final errorList = errors.cast<String>();
+              if (errorList.isNotEmpty) {
+                errorMessage = errorList.join('\n');
+              } else {
+                errorMessage = errorData['message'] ?? '登录失败，请检查用户名和密码';
+              }
+            } else if (errors is Map) {
+              // errors是对象格式（用于验证错误）
+              final errorMap = errors as Map<String, dynamic>;
+              final errorList = <String>[];
+              
+              if (errorMap['username'] != null) {
+                final usernameErrors = errorMap['username'] as List;
+                errorList.addAll(usernameErrors.cast<String>());
+              }
+              if (errorMap['password'] != null) {
+                final passwordErrors = errorMap['password'] as List;
+                errorList.addAll(passwordErrors.cast<String>());
+              }
+              
+              if (errorList.isNotEmpty) {
+                errorMessage = errorList.join('\n');
+              } else {
+                errorMessage = errorData['message'] ?? '登录失败，请检查用户名和密码';
+              }
+            } else {
+              errorMessage = errorData['message'] ?? '登录失败，请检查用户名和密码';
+            }
+          } else {
+            errorMessage = errorData['message'] ?? '登录失败，请检查用户名和密码';
+          }
         } catch (e) {
-          errorMessage = response.body;
+          print('❌ 解析错误响应失败: $e');
+          errorMessage = '登录失败，请检查网络连接';
         }
         print('❌ 错误详情: $errorMessage');
-        throw Exception('登录失败: $errorMessage');
+        throw Exception(errorMessage);
       }
     } catch (e) {
       print(' 异常详情: $e');
@@ -341,14 +423,14 @@ class ApiService {
   Future<Map<String, dynamic>> searchUsers({
     required String query,
     int page = 1,
-    int pageSize = 20,
+    int page_size = 20,
   }) async {
     try {
       final uri = Uri.parse('${AppConfig.baseUrl}/auth/search-users')
           .replace(queryParameters: {
         'query': query,
         'page': page.toString(),
-        'pageSize': pageSize.toString(),
+        'page_size': page_size.toString(),
       });
 
       final response = await http.get(uri, headers: currentHeaders);
@@ -398,7 +480,7 @@ class ApiService {
         Uri.parse('$baseUrl/chat/send'),
         headers: _headers,
         body: jsonEncode({
-          'receiverId': receiverId,
+          'receiver_id': receiverId,
           'content': content,
           'type': typeString,
         }),

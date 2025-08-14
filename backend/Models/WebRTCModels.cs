@@ -14,54 +14,54 @@ namespace VideoCallAPI.Models
     // WebRTC 信令消息
     public class WebRTCMessage
     {
-        public string Id { get; set; } = Guid.NewGuid().ToString();
-        public WebRTCMessageType Type { get; set; }
-        public string CallId { get; set; } = string.Empty;
-        public int SenderId { get; set; }
-        public int ReceiverId { get; set; }
-        public string Data { get; set; } = string.Empty;
-        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+        public string id { get; set; } = Guid.NewGuid().ToString();
+        public WebRTCMessageType type { get; set; }
+        public string call_id { get; set; } = string.Empty;
+        public int sender_id { get; set; }
+        public int receiver_id { get; set; }
+        public string data { get; set; } = string.Empty;
+        public DateTime timestamp { get; set; } = DateTime.UtcNow;
     }
 
     // 通话请求
     public class CallRequest
     {
-        public string CallId { get; set; } = string.Empty;
-        public int CallerId { get; set; }
-        public int ReceiverId { get; set; }
-        public CallType CallType { get; set; }
-        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+        public string call_id { get; set; } = string.Empty;
+        public int caller_id { get; set; }
+        public int receiver_id { get; set; }
+        public CallType call_type { get; set; }
+        public DateTime timestamp { get; set; } = DateTime.UtcNow;
     }
 
     // 通话响应
     public class CallResponse
     {
-        public string CallId { get; set; } = string.Empty;
-        public bool Accepted { get; set; }
-        public string? Reason { get; set; }
-        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+        public string call_id { get; set; } = string.Empty;
+        public bool accepted { get; set; }
+        public string? reason { get; set; }
+        public DateTime timestamp { get; set; } = DateTime.UtcNow;
     }
 
     // ICE 候选
     public class IceCandidate
     {
-        public string Candidate { get; set; } = string.Empty;
-        public string SdpMid { get; set; } = string.Empty;
-        public int SdpMLineIndex { get; set; }
+        public string candidate { get; set; } = string.Empty;
+        public string sdp_mid { get; set; } = string.Empty;
+        public int sdp_m_line_index { get; set; }
     }
 
     // WebRTC 会话
     public class WebRTCSession
     {
-        public string CallId { get; set; } = string.Empty;
-        public int CallerId { get; set; }
-        public int ReceiverId { get; set; }
-        public CallType CallType { get; set; }
-        public CallStatus Status { get; set; }
-        public DateTime StartTime { get; set; } = DateTime.UtcNow;
-        public DateTime? EndTime { get; set; }
-        public Dictionary<int, string> UserConnections { get; set; } = new();
-        public List<WebRTCMessage> MessageHistory { get; set; } = new();
+        public string call_id { get; set; } = string.Empty;
+        public int caller_id { get; set; }
+        public int receiver_id { get; set; }
+        public CallType call_type { get; set; }
+        public CallStatus status { get; set; }
+        public DateTime start_time { get; set; } = DateTime.UtcNow;
+        public DateTime? end_time { get; set; }
+        public Dictionary<int, string> user_connections { get; set; } = new();
+        public List<WebRTCMessage> message_history { get; set; } = new();
     }
 
     // WebRTC 连接状态
@@ -78,10 +78,10 @@ namespace VideoCallAPI.Models
     // 用户连接信息
     public class UserConnection
     {
-        public int UserId { get; set; }
-        public string ConnectionId { get; set; } = string.Empty;
-        public WebRTCConnectionState State { get; set; } = WebRTCConnectionState.New;
-        public DateTime ConnectedAt { get; set; } = DateTime.UtcNow;
-        public DateTime? DisconnectedAt { get; set; }
+        public int user_id { get; set; }
+        public string connection_id { get; set; } = string.Empty;
+        public WebRTCConnectionState state { get; set; } = WebRTCConnectionState.New;
+        public DateTime connected_at { get; set; } = DateTime.UtcNow;
+        public DateTime? disconnected_at { get; set; }
     }
 } 

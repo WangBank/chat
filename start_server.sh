@@ -4,7 +4,7 @@ echo "🚀 启动 ForeverLove 视频通话应用"
 echo "================================"
 
 # 检查网络配置
-COMPUTER_IP=$(ifconfig | grep "inet " | grep -v 172.27.2.52 | awk '{print $2}' | head -1)
+COMPUTER_IP=$(ifconfig | grep "inet " | grep -v 172.27.2.41 | awk '{print $2}' | head -1)
 echo "📱 你的电脑IP地址: $COMPUTER_IP"
 echo "📱 手机应该可以通过 http://$COMPUTER_IP:7001 访问服务器"
 echo ""
@@ -23,7 +23,7 @@ fi
 
 # 启动后端服务器
 echo "🔧 启动后端服务器..."
-cd /Users/wangzhen/codes/ForeverLove/chat/backend
+cd /users/wangzhen/codes/ForeverLove/chat/backend
 
 # 检查 dotnet 是否可用
 if ! command -v dotnet &> /dev/null; then
@@ -46,7 +46,7 @@ echo "⏳ 等待服务器启动..."
 sleep 5
 
 # 测试服务器是否可访问
-if curl -s "http://172.27.2.52:7001" > /dev/null; then
+if curl -s "http://172.27.2.41:7001" > /dev/null; then
     echo "✅ 服务器启动成功"
 else
     echo "⚠️  服务器可能还在启动中..."

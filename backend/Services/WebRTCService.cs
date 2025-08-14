@@ -20,12 +20,12 @@ namespace VideoCallAPI.Services
             var callId = Guid.NewGuid().ToString();
             var session = new WebRTCSession
             {
-                CallId = callId,
-                CallerId = callerId,
-                ReceiverId = receiverId,
-                CallType = callType,
-                Status = CallStatus.Initiated,
-                StartTime = DateTime.UtcNow
+                call_id = callId,
+                caller_id = callerId,
+                receiver_id = receiverId,
+                call_type = callType,
+                status = CallStatus.Initiated,
+                start_time = DateTime.UtcNow
             };
 
             lock (_lock)
@@ -33,7 +33,7 @@ namespace VideoCallAPI.Services
                 _sessions[callId] = session;
             }
 
-            _logger.LogInformation("创建WebRTC会话: {CallId}, 呼叫者: {CallerId}, 接收者: {ReceiverId}, 类型: {CallType}", 
+            _logger.LogInformation("创建WebRTC会话: {call_id}, 呼叫者: {caller_id}, 接收者: {receiver_id}, 类型: {CallType}", 
                 callId, callerId, receiverId, callType);
 
             return await Task.FromResult(session);
@@ -53,23 +53,23 @@ namespace VideoCallAPI.Services
             {
                 if (_sessions.TryGetValue(callId, out var session))
                 {
-                    session.Status = CallStatus.Ended;
-                    session.EndTime = DateTime.UtcNow;
+                    session.status = CallStatus.Ended;
+                    session.end_time = DateTime.UtcNow;
                     _sessions.Remove(callId);
                     
                     // 清理用户连接
                     var userConnections = _userConnections.Values
-                        .Where(uc => uc.ConnectionId.StartsWith(callId))
+                        .Where(uc => uc.connection_id.StartsWith(callId))
                         .ToList();
                     
                     foreach (var connection in userConnections)
                     {
-                        connection.State = WebRTCConnectionState.Closed;
-                        connection.DisconnectedAt = DateTime.UtcNow;
-                        _userConnections.Remove(connection.ConnectionId);
+                        connection.state = WebRTCConnectionState.Closed;
+                        connection.disconnected_at = DateTime.UtcNow;
+                        _userConnections.Remove(connection.connection_id);
                     }
 
-                    _logger.LogInformation("结束WebRTC会话: {CallId}", callId);
+                    _logger.LogInformation("结束WebRTC会话: {call_id}", callId);
                     return true;
                 }
                 return false;
@@ -78,16 +78,16 @@ namespace VideoCallAPI.Services
 
         public async Task SendMessageAsync(WebRTCMessage message)
         {
-            var session = await GetSessionAsync(message.CallId);
+            var session = await GetSessionAsync(message.call_id);
             if (session != null)
             {
                 lock (_lock)
                 {
-                    session.MessageHistory.Add(message);
+                    session.message_history.Add(message);
                 }
 
-                _logger.LogDebug("发送WebRTC消息: {CallId}, 类型: {Type}, 发送者: {SenderId}", 
-                    message.CallId, message.Type, message.SenderId);
+                _logger.LogDebug("发送WebRTC消息: {call_id}, 类型: {type}, 发送者: {sender_id}", 
+                    message.call_id, message.type, message.sender_id);
             }
         }
 
@@ -98,7 +98,7 @@ namespace VideoCallAPI.Services
             {
                 lock (_lock)
                 {
-                    return session.MessageHistory.ToList();
+                    return session.message_history.ToList();
                 }
             }
             return new List<WebRTCMessage>();
@@ -111,20 +111,20 @@ namespace VideoCallAPI.Services
             {
                 lock (_lock)
                 {
-                    session.UserConnections[userId] = connectionId;
+                    session.user_connections[userId] = connectionId;
                     
                     var userConnection = new UserConnection
                     {
-                        UserId = userId,
-                        ConnectionId = connectionId,
-                        State = WebRTCConnectionState.Connecting,
-                        ConnectedAt = DateTime.UtcNow
+                        user_id = userId,
+                        connection_id = connectionId,
+                        state = WebRTCConnectionState.Connecting,
+                        connected_at = DateTime.UtcNow
                     };
                     
                     _userConnections[connectionId] = userConnection;
                 }
 
-                _logger.LogInformation("用户连接: {CallId}, 用户: {UserId}, 连接: {ConnectionId}", 
+                _logger.LogInformation("用户连接: {call_id}, 用户: {user_id}, 连接: {connection_id}", 
                     callId, userId, connectionId);
             }
         }
@@ -136,19 +136,19 @@ namespace VideoCallAPI.Services
             {
                 lock (_lock)
                 {
-                    if (session.UserConnections.TryGetValue(userId, out var connectionId))
+                    if (session.user_connections.TryGetValue(userId, out var connectionId))
                     {
-                        session.UserConnections.Remove(userId);
+                        session.user_connections.Remove(userId);
                         
                         if (_userConnections.TryGetValue(connectionId, out var userConnection))
                         {
-                            userConnection.State = WebRTCConnectionState.Disconnected;
-                            userConnection.DisconnectedAt = DateTime.UtcNow;
+                            userConnection.state = WebRTCConnectionState.Disconnected;
+                            userConnection.disconnected_at = DateTime.UtcNow;
                         }
                     }
                 }
 
-                _logger.LogInformation("用户断开连接: {CallId}, 用户: {UserId}", callId, userId);
+                _logger.LogInformation("用户断开连接: {call_id}, 用户: {user_id}", callId, userId);
             }
         }
 
@@ -159,7 +159,7 @@ namespace VideoCallAPI.Services
             {
                 lock (_lock)
                 {
-                    return session.UserConnections.ContainsKey(userId);
+                    return session.user_connections.ContainsKey(userId);
                 }
             }
             return false;
@@ -168,14 +168,14 @@ namespace VideoCallAPI.Services
         public async Task<bool> AcceptCallAsync(string callId, int userId)
         {
             var session = await GetSessionAsync(callId);
-            if (session != null && session.ReceiverId == userId)
+            if (session != null && session.receiver_id == userId)
             {
                 lock (_lock)
                 {
-                    session.Status = CallStatus.Answered;
+                    session.status = CallStatus.Answered;
                 }
 
-                _logger.LogInformation("接受通话: {CallId}, 用户: {UserId}", callId, userId);
+                _logger.LogInformation("接受通话: {call_id}, 用户: {user_id}", callId, userId);
                 return true;
             }
             return false;
@@ -184,15 +184,15 @@ namespace VideoCallAPI.Services
         public async Task<bool> RejectCallAsync(string callId, int userId)
         {
             var session = await GetSessionAsync(callId);
-            if (session != null && session.ReceiverId == userId)
+            if (session != null && session.receiver_id == userId)
             {
                 lock (_lock)
                 {
-                    session.Status = CallStatus.Rejected;
-                    session.EndTime = DateTime.UtcNow;
+                    session.status = CallStatus.Rejected;
+                    session.end_time = DateTime.UtcNow;
                 }
 
-                _logger.LogInformation("拒绝通话: {CallId}, 用户: {UserId}", callId, userId);
+                _logger.LogInformation("拒绝通话: {call_id}, 用户: {user_id}", callId, userId);
                 return true;
             }
             return false;
@@ -201,7 +201,7 @@ namespace VideoCallAPI.Services
         public async Task<bool> EndCallAsync(string callId, int userId)
         {
             var session = await GetSessionAsync(callId);
-            if (session != null && (session.CallerId == userId || session.ReceiverId == userId))
+            if (session != null && (session.caller_id == userId || session.receiver_id == userId))
             {
                 return await EndSessionAsync(callId);
             }
@@ -217,7 +217,7 @@ namespace VideoCallAPI.Services
             {
                 foreach (var kvp in _sessions)
                 {
-                    if (kvp.Value.StartTime < cutoffTime)
+                    if (kvp.Value.start_time < cutoffTime)
                     {
                         expiredSessions.Add(kvp.Key);
                     }

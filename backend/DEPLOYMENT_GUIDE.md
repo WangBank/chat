@@ -34,7 +34,7 @@ sqlite3 videocall.db ".tables"
 ```
 
 应该看到以下表：
-- Users
+- users
 - Contacts
 - CallHistories
 - Rooms
@@ -62,7 +62,7 @@ dotnet run
 ```bash
 # 发送消息
 curl -X POST "http://localhost:7001/api/chat/send" \
-  -H "Content-Type: application/json" \
+  -H "content-type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
     "receiverId": 2,
@@ -83,7 +83,7 @@ curl -X GET "http://localhost:7001/api/chat/unread" \
 ```bash
 # 修改联系人备注
 curl -X PATCH "http://localhost:7001/api/contacts/1/display-name" \
-  -H "Content-Type: application/json" \
+  -H "content-type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '"新备注名"'
 ```

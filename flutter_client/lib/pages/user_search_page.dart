@@ -73,7 +73,7 @@ class _UserSearchPageState extends State<UserSearchPage> {
       final result = await widget.apiService.searchUsers(
         query: query,
         page: _currentPage,
-        pageSize: 20,
+        page_size: 20,
       );
 
       final users = (result['users'] as List)
@@ -106,7 +106,7 @@ class _UserSearchPageState extends State<UserSearchPage> {
       final result = await widget.apiService.searchUsers(
         query: '',
         page: 1,
-        pageSize: 20,
+        page_size: 20,
       );
 
       final users = (result['users'] as List)
@@ -141,7 +141,7 @@ class _UserSearchPageState extends State<UserSearchPage> {
       final result = await widget.apiService.searchUsers(
         query: _currentQuery,
         page: _currentPage + 1,
-        pageSize: 20,
+        page_size: 20,
       );
 
       final newUsers = (result['users'] as List)

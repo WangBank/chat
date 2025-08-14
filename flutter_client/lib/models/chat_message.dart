@@ -20,12 +20,12 @@ class ChatMessage {
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     return ChatMessage(
       id: json['id'].toString(), // 后端返回的是 int，但 Flutter 期望 String
-      senderId: json['senderId'] as int,
-      receiverId: json['receiverId'] as int,
+      senderId: json['sender_id'] as int,
+      receiverId: json['receiver_id'] as int,
       content: json['content'] as String,
       type: _parseMessageType(json['type']),
       timestamp: DateTime.parse(json['timestamp'] as String),
-      isRead: json['isRead'] as bool? ?? false,
+      isRead: json['is_read'] as bool? ?? false,
     );
   }
 
@@ -58,12 +58,12 @@ class ChatMessage {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'senderId': senderId,
-      'receiverId': receiverId,
+      'sender_id': senderId,
+      'receiver_id': receiverId,
       'content': content,
       'type': type.toString().split('.').last,
       'timestamp': timestamp.toIso8601String(),
-      'isRead': isRead,
+      'is_read': isRead,
     };
   }
 

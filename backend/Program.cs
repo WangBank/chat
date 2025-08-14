@@ -17,6 +17,7 @@ builder.Services.AddControllers()
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         options.JsonSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
+        // 枚举默认序列化为数字，不需要特殊配置
     });
 
 // 添加模型验证
@@ -79,7 +80,10 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddSingleton<IWebRTCService, WebRTCService>();
 
 // 配置SignalR
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = true;
+});
 
 // 配置CORS
 builder.Services.AddCors(options =>
@@ -94,12 +98,12 @@ builder.Services.AddCors(options =>
     options.AddPolicy("SignalRCors", policy =>
     {
         policy.WithOrigins(
-                  "http://172.27.2.52:3000", 
-                  "https://172.27.2.52:3000", // Flutter web 地址
-                  "http://172.27.2.52:7001",   // Android 模拟器
-                  "http://172.27.2.52:7001",  // 本地回环
+                  "http://172.27.2.41:3000", 
+                  "https://172.27.2.41:3000", // Flutter web 地址
+                  "http://172.27.2.41:7001",   // Android 模拟器
+                  "http://172.27.2.41:7001",  // 本地回环
                   "http://localhost:7001",  // 本地地址
-                  "http://172.27.2.52:7001" // 你的电脑IP地址
+                  "http://172.27.2.41:7001" // 你的电脑IP地址
               )
               .AllowAnyHeader()
               .AllowAnyMethod()

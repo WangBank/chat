@@ -82,11 +82,14 @@ class _ChatPageState extends State<ChatPage> {
     });
 
     try {
+      print('📤 发送消息: $message 给用户: ${widget.contact.contactUser.id}');
       final newMessage = await widget.apiService.sendMessage(
         widget.contact.contactUser.id,
         message,
         MessageType.text,
       );
+
+      print('✅ 消息发送成功: senderId=${newMessage.senderId}, currentUserId=${widget.apiService.currentUser?.id}');
 
       setState(() {
         _messages.add(newMessage);
@@ -218,6 +221,9 @@ class _ChatPageState extends State<ChatPage> {
                           final message = _messages[index];
                           final isMe = message.senderId == widget.apiService.currentUser?.id;
                           
+                          // 调试信息
+                          print('📱 消息显示: senderId=${message.senderId}, currentUserId=${widget.apiService.currentUser?.id}, isMe=$isMe');
+                          
                           return _buildMessageBubble(message, isMe);
                         },
                       ),
@@ -275,6 +281,8 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget _buildMessageBubble(ChatMessage message, bool isMe) {
+    print('🎨 构建消息气泡: isMe=$isMe, content=${message.content}');
+    
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
