@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/call.dart';
 import '../services/call_manager.dart';
 
-class CallPage extends StatelessWidget {
+class CallPage extends StatefulWidget {
   final Call call;
   final CallManager callManager;
 
@@ -11,6 +11,36 @@ class CallPage extends StatelessWidget {
     required this.call,
     required this.callManager,
   });
+
+  @override
+  State<CallPage> createState() => _CallPageState();
+}
+
+class _CallPageState extends State<CallPage> {
+  @override
+  void initState() {
+    super.initState();
+    // 监听CallManager状态变化
+    widget.callManager.addListener(_onCallManagerChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.callManager.removeListener(_onCallManagerChanged);
+    super.dispose();
+  }
+
+  void _onCallManagerChanged() {
+    print('📞 CallPage: 状态变化 - isInCall=${widget.callManager.isInCall}');
+    
+    // 如果通话已结束，关闭页面
+    if (!widget.callManager.isInCall && widget.callManager.currentCall == null) {
+      print('📞 CallPage: 通话已结束，关闭页面');
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,17 +59,17 @@ class CallPage extends StatelessWidget {
                 color: Colors.blue,
                 border: Border.all(color: Colors.white, width: 3),
               ),
-              child: call.caller.avatarPath != null
+              child: widget.call.caller.avatarPath != null
                   ? ClipOval(
                       child: Image.network(
-                        call.caller.avatarPath!,
+                        widget.call.caller.avatarPath!,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
                           return Center(
                             child: Text(
-                              (call.caller.nickname?.isNotEmpty == true
-                                      ? call.caller.nickname![0]
-                                      : call.caller.username[0])
+                              (widget.call.caller.nickname?.isNotEmpty == true
+                                      ? widget.call.caller.nickname![0]
+                                      : widget.call.caller.username[0])
                                   .toUpperCase(),
                               style: const TextStyle(
                                 color: Colors.white,
@@ -53,9 +83,9 @@ class CallPage extends StatelessWidget {
                     )
                   : Center(
                       child: Text(
-                        (call.caller.nickname?.isNotEmpty == true
-                                ? call.caller.nickname![0]
-                                : call.caller.username[0])
+                        (widget.call.caller.nickname?.isNotEmpty == true
+                                ? widget.call.caller.nickname![0]
+                                : widget.call.caller.username[0])
                             .toUpperCase(),
                         style: const TextStyle(
                           color: Colors.white,
@@ -68,9 +98,9 @@ class CallPage extends StatelessWidget {
             const SizedBox(height: 32),
             // 通话信息
             Text(
-              call.caller.nickname?.isNotEmpty == true
-                  ? call.caller.nickname!
-                  : call.caller.username,
+              widget.call.caller.nickname?.isNotEmpty == true
+                  ? widget.call.caller.nickname!
+                  : widget.call.caller.username,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 28,
@@ -79,7 +109,7 @@ class CallPage extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              call.callType == CallType.voice ? '语音通话' : '视频通话',
+              widget.call.callType == CallType.voice ? '语音通话' : '视频通话',
               style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 18,
@@ -101,7 +131,7 @@ class CallPage extends StatelessWidget {
                 onTap: () async {
                   print('📞 用户结束通话');
                   try {
-                    await callManager.endCall();
+                    await widget.callManager.endCall();
                     if (context.mounted) {
                       Navigator.of(context).pop();
                     }

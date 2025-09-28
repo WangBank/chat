@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../models/call.dart';
 import '../services/call_manager.dart';
 
-class WaitingCallPage extends StatelessWidget {
+class WaitingCallPage extends StatefulWidget {
   final Call call;
   final CallManager callManager;
 
@@ -13,6 +14,42 @@ class WaitingCallPage extends StatelessWidget {
   });
 
   @override
+  State<WaitingCallPage> createState() => _WaitingCallPageState();
+}
+
+class _WaitingCallPageState extends State<WaitingCallPage> {
+  @override
+  void initState() {
+    super.initState();
+    // 监听CallManager状态变化
+    widget.callManager.addListener(_onCallManagerChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.callManager.removeListener(_onCallManagerChanged);
+    super.dispose();
+  }
+
+  void _onCallManagerChanged() {
+    print('📞 WaitingCallPage收到状态变化: isInCall=${widget.callManager.isInCall}, isWaitingForAnswer=${widget.callManager.isWaitingForAnswer}');
+    
+    // 如果通话已开始，等待MainApp处理页面跳转，不要主动pop
+    if (widget.callManager.isInCall) {
+      print('📞 WaitingCallPage: 通话已开始，等待MainApp处理页面跳转');
+      // 不要主动pop，让MainApp的pushReplacement来处理
+    } else if (!widget.callManager.isWaitingForAnswer && widget.callManager.currentCall == null) {
+      // 通话被拒绝或结束，关闭等待页面
+      print('📞 WaitingCallPage: 通话结束或被拒绝，关闭等待页面');
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } else {
+      print('📞 WaitingCallPage: 继续等待');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black87,
@@ -20,57 +57,39 @@ class WaitingCallPage extends StatelessWidget {
         child: Column(
           children: [
             const Spacer(),
-            // 头像
+            // 本地视频流（呼叫者自己的视频）
             Container(
-              width: 120,
-              height: 120,
+              width: 200,
+              height: 150,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.blue,
-                border: Border.all(color: Colors.white, width: 3),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white, width: 2),
               ),
-              child: call.caller.avatarPath != null
-                  ? ClipOval(
-                      child: Image.network(
-                        call.caller.avatarPath!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Center(
-                            child: Text(
-                              (call.caller.nickname?.isNotEmpty == true
-                                      ? call.caller.nickname![0]
-                                      : call.caller.username[0])
-                                  .toUpperCase(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 48,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    )
-                  : Center(
-                      child: Text(
-                        (call.caller.nickname?.isNotEmpty == true
-                                ? call.caller.nickname![0]
-                                : call.caller.username[0])
-                            .toUpperCase(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 48,
-                          fontWeight: FontWeight.bold,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: widget.callManager.webRTCService.localRenderer != null
+                    ? RTCVideoView(
+                        widget.callManager.webRTCService.localRenderer!,
+                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                      )
+                    : Container(
+                        color: Colors.grey[800],
+                        child: const Center(
+                          child: Icon(
+                            Icons.videocam_off,
+                            color: Colors.white54,
+                            size: 48,
+                          ),
                         ),
                       ),
-                    ),
+              ),
             ),
             const SizedBox(height: 32),
             // 通话信息
             Text(
-              call.caller.nickname?.isNotEmpty == true
-                  ? call.caller.nickname!
-                  : call.caller.username,
+              widget.call.receiver.nickname?.isNotEmpty == true
+                  ? widget.call.receiver.nickname!
+                  : widget.call.receiver.username,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 28,
@@ -79,7 +98,7 @@ class WaitingCallPage extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              call.callType == CallType.voice ? '语音通话' : '视频通话',
+              widget.call.callType == CallType.voice ? '语音通话' : '视频通话',
               style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 18,
@@ -115,7 +134,7 @@ class WaitingCallPage extends StatelessWidget {
                 onTap: () async {
                   print('📞 用户取消通话');
                   try {
-                    await callManager.endCall();
+                    await widget.callManager.endCall();
                     if (context.mounted) {
                       Navigator.of(context).pop();
                     }

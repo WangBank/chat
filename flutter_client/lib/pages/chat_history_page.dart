@@ -214,6 +214,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
                                   builder: (context) => ChatPage(
                                     contact: contact,
                                     apiService: widget.apiService,
+                                    callManager: widget.callManager,
                                   ),
                                 ),
                               );

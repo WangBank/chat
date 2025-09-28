@@ -37,9 +37,9 @@ chmod +x start.sh
 ./start.sh
 ```
 
-后端将在 `https://172.27.2.41:7000` 启动
-- **API文档**: `https://172.27.2.41:7000/swagger`
-- **SignalR Hub**: `https://172.27.2.41:7000/videocallhub`
+后端将在 `https://192.168.124.7:7000` 启动
+- **API文档**: `https://192.168.124.7:7000/swagger`
+- **SignalR Hub**: `https://192.168.124.7:7000/videocallhub`
 
 ### 2. 启动Flutter客户端
 

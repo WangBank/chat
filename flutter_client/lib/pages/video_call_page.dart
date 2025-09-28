@@ -21,6 +21,31 @@ class _VideoCallPageState extends State<VideoCallPage> {
   bool _isMuted = false;
   bool _isCameraOff = false;
   bool _isSpeakerOn = true;
+  bool _isLocalVideoExpanded = false; // 新增：控制本地视频是否放大
+
+  @override
+  void initState() {
+    super.initState();
+    // 监听CallManager状态变化
+    widget.callManager.addListener(_onCallManagerChanged);
+  }
+
+  @override
+  void dispose() {
+    // 移除监听器
+    widget.callManager.removeListener(_onCallManagerChanged);
+    super.dispose();
+  }
+
+  void _onCallManagerChanged() {
+    // 如果通话结束，自动关闭页面
+    if (widget.callManager.currentCall == null || !widget.callManager.isInCall) {
+      print('📞 VideoCallPage: 检测到通话结束，自动关闭页面');
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,68 +54,11 @@ class _VideoCallPageState extends State<VideoCallPage> {
       body: SafeArea(
         child: Stack(
           children: [
-            // 远程视频流（全屏）
-            if (widget.callManager.webRTCService.remoteRenderer != null)
-              RTCVideoView(
-                widget.callManager.webRTCService.remoteRenderer!,
-                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-              )
-            else
-              Container(
-                color: Colors.black,
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.videocam_off,
-                        size: 80,
-                        color: Colors.white.withOpacity(0.5),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '等待对方视频...',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
-                          fontSize: 18,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            // 主视频流（根据状态显示本地或远程视频）
+            _buildMainVideoStream(),
 
-            // 本地视频流（小窗口）
-            Positioned(
-              top: 60,
-              right: 20,
-              child: Container(
-                width: 120,
-                height: 160,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white, width: 2),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: widget.callManager.webRTCService.localRenderer != null
-                      ? RTCVideoView(
-                          widget.callManager.webRTCService.localRenderer!,
-                          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                        )
-                      : Container(
-                          color: Colors.grey[800],
-                          child: const Center(
-                            child: Icon(
-                              Icons.person,
-                              color: Colors.white,
-                              size: 40,
-                            ),
-                          ),
-                        ),
-                ),
-              ),
-            ),
+            // 小视频流（根据状态显示本地或远程视频）
+            _buildSmallVideoStream(),
 
             // 顶部信息栏
             Positioned(
@@ -112,8 +80,18 @@ class _VideoCallPageState extends State<VideoCallPage> {
                 child: Row(
                   children: [
                     IconButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
+                      onPressed: () async {
+                        try {
+                          await widget.callManager.endCall();
+                          if (context.mounted) {
+                            Navigator.of(context).pop();
+                          }
+                        } catch (e) {
+                          print('❌ 返回时结束通话失败: $e');
+                          if (context.mounted) {
+                            Navigator.of(context).pop();
+                          }
+                        }
                       },
                       icon: const Icon(
                         Icons.arrow_back,
@@ -214,6 +192,7 @@ class _VideoCallPageState extends State<VideoCallPage> {
                       color: Colors.red,
                       onTap: () async {
                         try {
+                          print('📞 用户点击结束通话');
                           await widget.callManager.endCall();
                           if (context.mounted) {
                             Navigator.of(context).pop();
@@ -231,6 +210,121 @@ class _VideoCallPageState extends State<VideoCallPage> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // 构建主视频流
+  Widget _buildMainVideoStream() {
+    final isLocalMain = _isLocalVideoExpanded;
+    final renderer = isLocalMain 
+        ? widget.callManager.webRTCService.localRenderer
+        : widget.callManager.webRTCService.remoteRenderer;
+
+    if (renderer != null) {
+      return RTCVideoView(
+        renderer,
+        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+      );
+    } else {
+      return Container(
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isLocalMain ? Icons.person : Icons.videocam_off,
+                size: 80,
+                color: Colors.white.withOpacity(0.5),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                isLocalMain ? '本地视频' : '等待对方视频...',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 18,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
+  // 构建小视频流
+  Widget _buildSmallVideoStream() {
+    final isLocalSmall = !_isLocalVideoExpanded;
+    final renderer = isLocalSmall 
+        ? widget.callManager.webRTCService.localRenderer
+        : widget.callManager.webRTCService.remoteRenderer;
+
+    return Positioned(
+      top: 60,
+      right: 20,
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _isLocalVideoExpanded = !_isLocalVideoExpanded;
+          });
+        },
+        child: Container(
+          width: 120,
+          height: 160,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Stack(
+              children: [
+                // 视频内容
+                renderer != null
+                    ? RTCVideoView(
+                        renderer,
+                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                      )
+                    : Container(
+                        color: Colors.grey[800],
+                        child: Center(
+                          child: Icon(
+                            isLocalSmall ? Icons.person : Icons.videocam_off,
+                            color: Colors.white,
+                            size: 40,
+                          ),
+                        ),
+                      ),
+                
+                // 点击提示覆盖层
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Icon(
+                      Icons.fullscreen,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

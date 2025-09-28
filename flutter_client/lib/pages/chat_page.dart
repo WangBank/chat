@@ -61,6 +61,12 @@ class _ChatPageState extends State<ChatPage> {
           });
         }
       };
+      
+      // 监听通话相关事件
+      widget.callManager!.webRTCService.signalRService.onIncomingCall = (call) {
+        print('📞 在聊天页面收到来电: ${call.caller.username}');
+        // 这里不需要做任何处理，主应用会自动处理来电显示
+      };
     }
   }
 

@@ -12,7 +12,7 @@ class CallManager extends ChangeNotifier {
   User? _currentUser;
 
   CallManager(this._webRTCService) {
-    _setupWebRTCHandlers();
+    // 在构造函数中不设置处理器，等待initialize时设置
   }
 
   // Getters
@@ -27,21 +27,36 @@ class CallManager extends ChangeNotifier {
     _webRTCService.onIncomingCall = (call) {
       _currentCall = call;
       _isInCall = false; // 收到来电时，还没有接听，所以不是通话中
+      _isWaitingForAnswer = false; // 被叫方不是等待状态
       notifyListeners();
       print('📞 收到来电: ${call.caller.username}');
     };
 
     _webRTCService.onCallAccepted = (call) {
-      print('📞 收到通话接受事件: ${call.callId}');
+      print('📞 CallManager收到通话接受事件: ${call.callId}');
+      print('📞 当前状态: isInCall=$_isInCall, isWaitingForAnswer=$_isWaitingForAnswer');
       
       // 更新当前通话信息
       _currentCall = call;
       _isInCall = true;
       _isWaitingForAnswer = false;
       
-      print('📞 状态更新: isInCall=$_isInCall, isWaitingForAnswer=$_isWaitingForAnswer');
+      print('📞 状态更新后: isInCall=$_isInCall, isWaitingForAnswer=$_isWaitingForAnswer');
+      print('📞 准备通知监听器...');
       notifyListeners();
-      print('📞 通话被接受: ${call.callId}');
+      print('📞 监听器已通知，通话被接受: ${call.callId}');
+      
+      // 强制触发状态更新，确保页面跳转
+      Future.delayed(const Duration(milliseconds: 100), () {
+        print('📞 强制触发状态更新 1');
+        notifyListeners();
+      });
+      
+      // 再次延迟触发，确保页面跳转
+      Future.delayed(const Duration(milliseconds: 300), () {
+        print('📞 强制触发状态更新 2');
+        notifyListeners();
+      });
     };
 
     _webRTCService.onCallRejected = (call) {
@@ -54,10 +69,22 @@ class CallManager extends ChangeNotifier {
 
     _webRTCService.onCallEnded = (call) {
       print('📞 通话结束: ${call.callId}');
+      // 无论当前状态如何，都重置所有状态
       _currentCall = null;
       _isInCall = false;
       _isWaitingForAnswer = false;
       notifyListeners();
+      print('📞 通话状态已重置');
+      
+      // 强制触发状态更新
+      Future.delayed(const Duration(milliseconds: 100), () {
+        notifyListeners();
+      });
+      
+      // 再次延迟触发，确保页面关闭
+      Future.delayed(const Duration(milliseconds: 300), () {
+        notifyListeners();
+      });
     };
 
     _webRTCService.onError = (error) {
@@ -69,7 +96,17 @@ class CallManager extends ChangeNotifier {
   Future<void> initialize(String token, User user) async {
     try {
       _currentUser = user;
-      await _webRTCService.initialize(token, user.id);
+      await _webRTCService.initialize(token, user);
+      
+      // 在WebRTCService初始化后设置处理器
+      _setupWebRTCHandlers();
+      
+      // 验证回调是否正确设置
+      print('🔍 CallManager: 验证回调设置');
+      print('🔍 onCallAccepted回调: ${_webRTCService.onCallAccepted != null ? "已设置" : "未设置"}');
+      print('🔍 onCallRejected回调: ${_webRTCService.onCallRejected != null ? "已设置" : "未设置"}');
+      print('🔍 onCallEnded回调: ${_webRTCService.onCallEnded != null ? "已设置" : "未设置"}');
+      
       print('✅ CallManager初始化成功');
     } catch (e) {
       print('❌ CallManager初始化失败: $e');
@@ -135,14 +172,25 @@ class CallManager extends ChangeNotifier {
   // 结束通话
   Future<void> endCall() async {
     try {
+      print('📞 开始结束通话');
       await _webRTCService.endCall();
       _currentCall = null;
       _isInCall = false;
       _isWaitingForAnswer = false;
       notifyListeners();
-      print('📞 结束通话');
+      print('📞 结束通话成功');
+      
+      // 强制触发状态更新
+      Future.delayed(const Duration(milliseconds: 100), () {
+        notifyListeners();
+      });
     } catch (e) {
       print('❌ 结束通话失败: $e');
+      // 即使失败也要重置状态
+      _currentCall = null;
+      _isInCall = false;
+      _isWaitingForAnswer = false;
+      notifyListeners();
       rethrow;
     }
   }

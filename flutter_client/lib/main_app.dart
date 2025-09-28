@@ -104,7 +104,7 @@ class _MainAppState extends State<MainApp> {
   }
 
   void _onCallManagerChanged() {
-    print('🔄 CallManager状态变化: currentCall=${_callManager.currentCall?.callId}, isInCall=${_callManager.isInCall}, isWaitingForAnswer=${_callManager.isWaitingForAnswer}');
+    print('🔄 MainApp收到CallManager状态变化: currentCall=${_callManager.currentCall?.callId}, isInCall=${_callManager.isInCall}, isWaitingForAnswer=${_callManager.isWaitingForAnswer}');
     
     // 当CallManager状态变化时，检查是否有来电
     if (_callManager.currentCall != null && !_callManager.isInCall && !_callManager.isWaitingForAnswer && !_showingIncomingCall) {
@@ -122,52 +122,77 @@ class _MainAppState extends State<MainApp> {
           // 触发重建以隐藏来电界面
         });
       }
+      
+      // 关闭所有通话相关页面
+      if (_navigatorKey.currentState != null) {
+        print('📞 关闭所有通话相关页面');
+        try {
+          // 延迟执行，确保状态更新完成
+          Future.delayed(const Duration(milliseconds: 200), () {
+            if (_navigatorKey.currentState != null) {
+              _navigatorKey.currentState!.popUntil((route) => route.isFirst);
+            }
+          });
+        } catch (e) {
+          print('⚠️ 关闭通话页面时出错: $e');
+        }
+      }
     }
     
     // 检查是否需要显示通话页面
     if (_callManager.currentCall != null && _callManager.isInCall) {
-      print('📞 显示通话页面');
+      print('📞 MainApp: 准备显示通话页面 - 当前状态: isInCall=${_callManager.isInCall}, isWaitingForAnswer=${_callManager.isWaitingForAnswer}');
+      // 立即显示通话页面，不要延迟
+      print('📞 MainApp: 立即执行显示通话页面');
       _showCallPage();
     }
     
-    // 检查是否需要显示等待接听页面
-    if (_callManager.currentCall != null && _callManager.isWaitingForAnswer) {
+    // 检查是否需要显示等待接听页面 (只有在不是通话中的情况下)
+    if (_callManager.currentCall != null && _callManager.isWaitingForAnswer && !_callManager.isInCall) {
       print('📞 显示等待接听页面');
       _showWaitingCallPage();
     }
   }
 
   void _showCallPage() {
-    if (_callManager.currentCall != null) {
+    final currentCall = _callManager.currentCall;
+    if (currentCall != null) {
+      print('📞 MainApp: 准备跳转到通话页面，通话类型: ${currentCall.callType}');
+      
       // 根据通话类型显示不同的页面
-      if (_callManager.currentCall!.callType == CallType.video) {
-        _navigatorKey.currentState?.push(
+      if (currentCall.callType == CallType.video) {
+        print('📞 MainApp: 跳转到视频通话页面');
+        _navigatorKey.currentState?.pushReplacement(
           MaterialPageRoute(
             builder: (context) => VideoCallPage(
-              call: _callManager.currentCall!,
+              call: currentCall,
               callManager: _callManager,
             ),
           ),
         );
       } else {
-        _navigatorKey.currentState?.push(
+        print('📞 MainApp: 跳转到语音通话页面');
+        _navigatorKey.currentState?.pushReplacement(
           MaterialPageRoute(
             builder: (context) => CallPage(
-              call: _callManager.currentCall!,
+              call: currentCall,
               callManager: _callManager,
             ),
           ),
         );
       }
+    } else {
+      print('⚠️ MainApp: 当前通话为null，无法跳转');
     }
   }
 
   void _showWaitingCallPage() {
-    if (_callManager.currentCall != null) {
-      _navigatorKey.currentState?.push(
+    final currentCall = _callManager.currentCall;
+    if (currentCall != null) {
+      _navigatorKey.currentState?.pushReplacement(
         MaterialPageRoute(
           builder: (context) => WaitingCallPage(
-            call: _callManager.currentCall!,
+            call: currentCall,
             callManager: _callManager,
           ),
         ),
