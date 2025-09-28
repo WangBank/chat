@@ -98,12 +98,12 @@ builder.Services.AddCors(options =>
     options.AddPolicy("SignalRCors", policy =>
     {
         policy.WithOrigins(
-                  "http://192.168.124.7:3000", 
-                  "https://192.168.124.7:3000", // Flutter web 地址
-                  "http://192.168.124.7:7001",   // Android 模拟器
-                  "http://192.168.124.7:7001",  // 本地回环
+                  "http://172.27.2.8:3000", 
+                  "https://172.27.2.8:3000", // Flutter web 地址
+                  "http://172.27.2.8:7001",   // Android 模拟器
+                  "http://172.27.2.8:7001",  // 本地回环
                   "http://localhost:7001",  // 本地地址
-                  "http://192.168.124.7:7001" // 你的电脑IP地址
+                  "http://172.27.2.8:7001" // 你的电脑IP地址
               )
               .AllowAnyHeader()
               .AllowAnyMethod()

@@ -11,11 +11,12 @@ import 'chat_page.dart';
 class ContactsPage extends StatefulWidget {
   final ApiService apiService;
   final CallManager callManager;
-
+  final int refreshToken; // 新增：刷新令牌
   const ContactsPage({
     super.key,
     required this.apiService,
     required this.callManager,
+    required this.refreshToken, // 新增：构造入参
   });
 
   @override
@@ -32,6 +33,15 @@ class _ContactsPageState extends State<ContactsPage> {
   void initState() {
     super.initState();
     _loadContacts();
+  }
+
+  @override
+  void didUpdateWidget(covariant ContactsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 新增：当刷新令牌变化时，触发重新加载
+    if (widget.refreshToken != oldWidget.refreshToken) {
+      _loadContacts();
+    }
   }
 
   Future<void> _loadContacts() async {

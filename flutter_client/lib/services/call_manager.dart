@@ -68,21 +68,23 @@ class CallManager extends ChangeNotifier {
     };
 
     _webRTCService.onCallEnded = (call) {
-      print('📞 通话结束: ${call.callId}');
+      print('📞 通话结束: ${call.callId}, current_user=${_currentUser?.id}/${_currentUser?.username}, prev_isInCall=$_isInCall, prev_isWaitingForAnswer=$_isWaitingForAnswer');
       // 无论当前状态如何，都重置所有状态
       _currentCall = null;
       _isInCall = false;
       _isWaitingForAnswer = false;
       notifyListeners();
-      print('📞 通话状态已重置');
+      print('📞 通话状态已重置: current_call=${_currentCall?.callId}, isInCall=$_isInCall, isWaitingForAnswer=$_isWaitingForAnswer');
       
       // 强制触发状态更新
       Future.delayed(const Duration(milliseconds: 100), () {
+        print('📞 通话状态强制刷新(100ms): user=${_currentUser?.id}');
         notifyListeners();
       });
       
       // 再次延迟触发，确保页面关闭
       Future.delayed(const Duration(milliseconds: 300), () {
+        print('📞 通话状态强制刷新(300ms): user=${_currentUser?.id}');
         notifyListeners();
       });
     };

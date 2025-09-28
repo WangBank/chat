@@ -267,7 +267,7 @@ class ApiService {
         headers: _headers,
         body: jsonEncode({
           'username': username,
-          'displayName': displayName,
+          'display_name': displayName, // 修正为后端的字段命名
         }),
       );
 
@@ -321,7 +321,7 @@ class ApiService {
         Uri.parse('$baseUrl/contacts/$contactId'),
         headers: _headers,
         body: jsonEncode({
-          'displayName': displayName,
+          'display_name': displayName,
         }),
       );
 
@@ -531,7 +531,7 @@ class ApiService {
         Uri.parse('$baseUrl/calls/rooms'),
         headers: _headers,
         body: jsonEncode({
-          'roomName': roomName,
+          'room_name': roomName,
         }),
       );
 
@@ -590,7 +590,7 @@ class ApiService {
         headers: _headers,
         body: jsonEncode({
           if (nickname != null) 'nickname': nickname,
-          if (avatarPath != null) 'avatarPath': avatarPath,
+          if (avatarPath != null) 'avatar_path': avatarPath,
         }),
       );
 
@@ -669,8 +669,8 @@ class ApiService {
         Uri.parse('$baseUrl/auth/change-password'),
         headers: _headers,
         body: jsonEncode({
-          'oldPassword': oldPassword,
-          'newPassword': newPassword,
+          'old_password': oldPassword,
+          'new_password': newPassword,
         }),
       );
 

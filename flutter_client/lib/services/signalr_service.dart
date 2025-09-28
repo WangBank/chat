@@ -2,6 +2,7 @@ import 'package:signalr_netcore/signalr_client.dart';
 import '../models/call.dart';
 import '../models/chat_message.dart';
 import '../config/app_config.dart';
+import 'dart:convert';
 
 typedef OnIncomingCallCallback = void Function(Call call);
 typedef OnCallAcceptedCallback = void Function(String callId);
@@ -16,6 +17,7 @@ class SignalRService {
   static String get hubUrl => AppConfig.signalRUrl;
   
   HubConnection? _connection;
+  int? _currentUserId; // 当前用户ID（用于日志）
   
   // 回调函数
   OnIncomingCallCallback? onIncomingCall;
@@ -44,6 +46,27 @@ class SignalRService {
           .withAutomaticReconnect()
           .build();
 
+      // 新增：重连相关事件，确保重认证并恢复组关系
+      _connection!.onreconnecting(({Exception? error}) {
+        print('🔄 SignalR正在重连: $error');
+      });
+      _connection!.onreconnected(({String? connectionId}) {
+        print('✅ SignalR重连成功: connectionId=$connectionId, 当前用户=$_currentUserId');
+        final uid = _currentUserId;
+        if (uid != null) {
+          authenticate(uid).then((_) {
+            print('🔐 重连后已重新认证用户: $uid');
+          }).catchError((e) {
+            print('❌ 重连后重新认证失败: $e');
+          });
+        } else {
+          print('⚠️ 重连后无法重新认证：当前用户ID为空');
+        }
+      });
+      _connection!.onclose(({Exception? error}) {
+        print('🛑 SignalR连接关闭: $error');
+      });
+
       // 设置事件监听器
       _setupEventListeners();
 
@@ -61,6 +84,7 @@ class SignalRService {
     
     try {
       await _connection!.invoke('Authenticate', args: [userId]);
+      _currentUserId = userId;
       print('User authenticated: $userId');
     } catch (e) {
       print('Error authenticating user: $e');
@@ -111,13 +135,41 @@ class SignalRService {
 
     // 通话结束
     _connection!.on('CallEnded', (arguments) {
+      print('CallEnded 11: $arguments');
       try {
-        final data = arguments?[0] as Map<String, dynamic>;
-        final callId = data['call_id'] as String;
-        print('Call ended: $callId');
-        onCallEnded?.call(callId);
+        final dynamic arg0 = arguments?[0];
+    
+        String? callId;
+        int? endedBy;
+    
+        Map<String, dynamic>? dataMap;
+        if (arg0 is Map) {
+          dataMap = Map<String, dynamic>.from(arg0 as Map);
+        } else if (arg0 is String) {
+          dataMap = Map<String, dynamic>.from(jsonDecode(arg0) as Map);
+        }
+    
+        if (dataMap != null) {
+          callId = dataMap['call_id'] as String?;
+          final dynamic endedRaw = dataMap['endedBy'] ?? dataMap['EndedBy'] ?? dataMap['ended_by'];
+          if (endedRaw is int) {
+            endedBy = endedRaw;
+          } else if (endedRaw is num) {
+            endedBy = endedRaw.toInt();
+          } else if (endedRaw is String) {
+            endedBy = int.tryParse(endedRaw);
+          }
+        }
+    
+        print('📨 CallEnded事件: call_id=$callId, current_user=$_currentUserId, ended_by=$endedBy, raw=$arg0');
+    
+        if (callId != null) {
+          onCallEnded?.call(callId);
+        } else {
+          print('⚠️ CallEnded负载缺少call_id，无法触发回调');
+        }
       } catch (e) {
-        print('Error parsing call ended: $e');
+        print('❌ 解析CallEnded事件失败: $e, arguments=$arguments');
       }
     });
 
@@ -126,11 +178,16 @@ class SignalRService {
       try {
         final data = arguments?[0] as Map<String, dynamic>;
         final callId = data['call_id'] as String;
-        final type = data['type'] as String;
+    
+        final dynamic typeVal = data['type'];
+        final String type = typeVal is String
+            ? typeVal
+            : _webRTCTypeIntToString((typeVal as num).toInt());
+    
         final messageData = data['data'] as String;
         final senderId = data['sender_id'] as int;
         
-        print('Received WebRTC message for call: $callId, type: $type');
+        print('Received WebRTC message: call=$callId, type=$type, sender_id=$senderId, current_user=$_currentUserId');
         
         switch (type) {
           case 'Offer':
@@ -212,7 +269,8 @@ class SignalRService {
     try {
       final message = {
         'call_id': callId,
-        'type': type,
+        // 用枚举数值发送，满足后端的绑定要求
+        'type': _webRTCTypeToInt(type),
         'data': data,
         'receiver_id': receiverId,
       };
@@ -289,5 +347,43 @@ class SignalRService {
     onAnswerReceived = null;
     onIceCandidateReceived = null;
     onNewMessage = null;
+  }
+
+  int _webRTCTypeToInt(String type) {
+    switch (type) {
+      case 'Offer':
+        return 0;
+      case 'Answer':
+        return 1;
+      case 'IceCandidate':
+        return 2;
+      case 'CallRequest':
+        return 3;
+      case 'CallResponse':
+        return 4;
+      case 'CallEnd':
+        return 5;
+      default:
+        return 0;
+    }
+  }
+
+  String _webRTCTypeIntToString(int value) {
+    switch (value) {
+      case 0:
+        return 'Offer';
+      case 1:
+        return 'Answer';
+      case 2:
+        return 'IceCandidate';
+      case 3:
+        return 'CallRequest';
+      case 4:
+        return 'CallResponse';
+      case 5:
+        return 'CallEnd';
+      default:
+        return 'Offer';
+    }
   }
 }

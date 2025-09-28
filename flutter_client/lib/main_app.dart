@@ -34,6 +34,8 @@ class _MainAppState extends State<MainApp> {
   
   User? _currentUser;
   int _currentIndex = 1; // 默认显示联系人页面
+  int _contactsRefreshToken = 0; // 新增：联系人刷新令牌
+  int _chatRefreshToken = 0;     // 新增：聊天刷新令牌
   bool _showingIncomingCall = false; // 防止重复显示来电界面
   
   // 全局NavigatorKey，用于在MaterialApp外部进行导航
@@ -162,7 +164,7 @@ class _MainAppState extends State<MainApp> {
       // 根据通话类型显示不同的页面
       if (currentCall.callType == CallType.video) {
         print('📞 MainApp: 跳转到视频通话页面');
-        _navigatorKey.currentState?.pushReplacement(
+        _navigatorKey.currentState?.push(
           MaterialPageRoute(
             builder: (context) => VideoCallPage(
               call: currentCall,
@@ -172,7 +174,7 @@ class _MainAppState extends State<MainApp> {
         );
       } else {
         print('📞 MainApp: 跳转到语音通话页面');
-        _navigatorKey.currentState?.pushReplacement(
+        _navigatorKey.currentState?.push(
           MaterialPageRoute(
             builder: (context) => CallPage(
               call: currentCall,
@@ -189,7 +191,7 @@ class _MainAppState extends State<MainApp> {
   void _showWaitingCallPage() {
     final currentCall = _callManager.currentCall;
     if (currentCall != null) {
-      _navigatorKey.currentState?.pushReplacement(
+      _navigatorKey.currentState?.push(
         MaterialPageRoute(
           builder: (context) => WaitingCallPage(
             call: currentCall,
@@ -249,13 +251,17 @@ class _MainAppState extends State<MainApp> {
               children: [
                 // 聊天历史页面
                 ChatHistoryPage(
+                  key: ValueKey(_chatRefreshToken), // 新增：令牌驱动的 Key，强制重建
                   apiService: _apiService,
                   callManager: _callManager,
+                  refreshToken: _chatRefreshToken,
                 ),
                 // 联系人页面
                 ContactsPage(
+                  key: ValueKey(_contactsRefreshToken), // 新增：令牌驱动的 Key，强制重建
                   apiService: _apiService,
                   callManager: _callManager,
+                  refreshToken: _contactsRefreshToken,
                 ),
                 // 个人资料页面
                 ProfilePage(
@@ -277,6 +283,12 @@ class _MainAppState extends State<MainApp> {
           onTap: (index) {
             setState(() {
               _currentIndex = index;
+              // 新增：在切换到对应标签时递增令牌以触发刷新
+              if (index == 1) {
+                _contactsRefreshToken++; // 点击「联系人」令牌+1
+              } else if (index == 0) {
+                _chatRefreshToken++; // 点击「聊天」令牌+1
+              }
             });
           },
           type: BottomNavigationBarType.fixed,
@@ -307,4 +319,4 @@ class _MainAppState extends State<MainApp> {
     _callManager.disconnect();
     super.dispose();
   }
-} 
+}

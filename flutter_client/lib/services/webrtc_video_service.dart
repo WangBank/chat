@@ -149,10 +149,17 @@ class WebRTCVideoService extends ChangeNotifier {
 
   // 设置SignalR事件处理器
   void _setupSignalRHandlers() {
-    _signalRService.onIncomingCall = (call) {
+    _signalRService.onIncomingCall = (Call call) {
       _currentCall = call;
       onIncomingCall?.call(call);
       notifyListeners();
+
+      // 来电侧：立即加入通话组，确保后续能收到 CallEnded 广播
+      _signalRService.joinCall(call.callId).then((_) {
+        print('🔗 已加入通话组(来电侧): ${call.callId}, user=${_currentUser?.id}');
+      }).catchError((e) {
+        print('❌ 加入通话组失败(来电侧): $e');
+      });
     };
 
     _signalRService.onCallAccepted = (callId) {
@@ -162,7 +169,6 @@ class WebRTCVideoService extends ChangeNotifier {
       if (_currentCall != null) {
         _isInCall = true;
         
-        // 立即更新当前通话的callId为真实的callId
         _currentCall = Call(
           callId: callId,
           caller: _currentCall!.caller,
@@ -175,15 +181,19 @@ class WebRTCVideoService extends ChangeNotifier {
         print('📞 WebRTCService更新后状态: _currentCall=${_currentCall?.callId}, _isInCall=$_isInCall');
         print('📞 WebRTCService准备调用onCallAccepted回调');
         
-        // 立即通知CallManager状态变化
         onCallAccepted?.call(_currentCall!);
         notifyListeners();
         
         print('📞 WebRTCService已调用onCallAccepted和notifyListeners');
+
+        // 双方：确认加入通话组
+        _signalRService.joinCall(callId).then((_) {
+          print('🔗 已加入通话组(接受侧): $callId, user=${_currentUser?.id}');
+        }).catchError((e) {
+          print('❌ 加入通话组失败(接受侧): $e');
+        });
         
-        // 然后启动视频通话
         _startVideoCall().then((_) {
-          // 主叫方接听后创建Offer
           if (_peerConnection != null) {
             _peerConnection!.createOffer().then((offer) {
               _peerConnection!.setLocalDescription(offer).then((_) {
@@ -214,10 +224,15 @@ class WebRTCVideoService extends ChangeNotifier {
       if (call != null) {
         onCallRejected?.call(call);
       }
+      _signalRService.leaveCall(callId).then((_) {
+        print('🔗 已离开通话组(拒绝): $callId, user=${_currentUser?.id}');
+      }).catchError((e) {
+        print('❌ 离开通话组失败(拒绝): $e');
+      });
     };
 
     _signalRService.onCallEnded = (callId) {
-      print('📞 收到通话结束事件: $callId');
+      print('📞 收到通话结束事件: $callId, current_user=${_currentUser?.id}/${_currentUser?.username}, prev_call=${_currentCall?.callId}, prev_isInCall=$_isInCall');
       _endVideoCall();
       final call = _currentCall;
       _currentCall = null;
@@ -226,7 +241,12 @@ class WebRTCVideoService extends ChangeNotifier {
       if (call != null) {
         onCallEnded?.call(call);
       }
-      print('📞 通话结束事件处理完成');
+      print('📞 通话结束事件处理完成: current_call=${_currentCall?.callId}, isInCall=$_isInCall');
+      _signalRService.leaveCall(callId).then((_) {
+        print('🔗 已离开通话组(被动结束): $callId, user=${_currentUser?.id}');
+      }).catchError((e) {
+        print('❌ 离开通话组失败(被动结束): $e');
+      });
     };
 
     // 处理WebRTC信令消息
@@ -457,27 +477,22 @@ class WebRTCVideoService extends ChangeNotifier {
   // 结束视频通话
   Future<void> _endVideoCall() async {
     try {
-      print('📹 结束视频通话');
-      
+      print('📹 结束视频通话: call=${_currentCall?.callId}, user=${_currentUser?.id}/${_currentUser?.username}, isInCall=$_isInCall');
       // 关闭本地流
       _localStream?.getTracks().forEach((track) => track.stop());
       _localStream = null;
-      
       // 关闭远程流
       _remoteStream = null;
-      
       // 关闭PeerConnection
       await _peerConnection?.close();
       _peerConnection = null;
-      
-      // 清空渲染器内容，但不释放渲染器本身
+      // 清空渲染器
       _safeSetRendererSrcObject(_localRenderer, null);
       _safeSetRendererSrcObject(_remoteRenderer, null);
-      
       notifyListeners();
-      print('✅ 视频通话结束成功');
+      print('✅ 视频通话结束成功: user=${_currentUser?.id}, call_cleared=${_currentCall == null}, isInCall=$_isInCall');
     } catch (e) {
-      print('❌ 结束视频通话失败: $e');
+      print('❌ 结束视频通话失败: $e, user=${_currentUser?.id}');
     }
   }
 
@@ -487,13 +502,22 @@ class WebRTCVideoService extends ChangeNotifier {
       if (_peerConnection == null) {
         await _startVideoCall();
       }
-      
-      final offerDesc = RTCSessionDescription(offer, 'offer');
+
+      // 兼容两种格式：JSON 包含 {"sdp": "..."} 或者纯 SDP 字符串
+      String sdp;
+      try {
+        final decoded = jsonDecode(offer);
+        sdp = decoded is Map && decoded['sdp'] is String ? decoded['sdp'] as String : offer;
+      } catch (_) {
+        sdp = offer;
+      }
+
+      final offerDesc = RTCSessionDescription(sdp, 'offer');
       await _peerConnection!.setRemoteDescription(offerDesc);
-      
+
       final answer = await _peerConnection!.createAnswer();
       await _peerConnection!.setLocalDescription(answer);
-      
+
       _signalRService.sendAnswer(
         WebRTCAnswer(
           callId: callId,
@@ -501,7 +525,7 @@ class WebRTCVideoService extends ChangeNotifier {
         ),
         senderId,
       );
-      
+
       print('✅ Offer处理成功');
     } catch (e) {
       print('❌ Offer处理失败: $e');
@@ -512,7 +536,16 @@ class WebRTCVideoService extends ChangeNotifier {
   // 处理Answer
   Future<void> _handleAnswer(String callId, String answer, int senderId) async {
     try {
-      final answerDesc = RTCSessionDescription(answer, 'answer');
+      // 兼容两种格式：JSON 包含 {"sdp": "..."} 或者纯 SDP 字符串
+      String sdp;
+      try {
+        final decoded = jsonDecode(answer);
+        sdp = decoded is Map && decoded['sdp'] is String ? decoded['sdp'] as String : answer;
+      } catch (_) {
+        sdp = answer;
+      }
+
+      final answerDesc = RTCSessionDescription(sdp, 'answer');
       await _peerConnection!.setRemoteDescription(answerDesc);
       print('✅ Answer处理成功');
     } catch (e) {
@@ -524,16 +557,56 @@ class WebRTCVideoService extends ChangeNotifier {
   // 处理ICE候选
   Future<void> _handleIceCandidate(String callId, String candidate, int senderId) async {
     try {
-      final candidateMap = jsonDecode(candidate);
-      final iceCandidate = RTCIceCandidate(
-        candidateMap['candidate'],
-        candidateMap['sdpMid'],
-        candidateMap['sdpMLineIndex'],
-      );
+      // PeerConnection 未就绪时直接忽略，避免异常
+      if (_peerConnection == null) {
+        print('⚠️ ICE候选到达但PeerConnection为空，忽略: call=$callId, user=${_currentUser?.id}/${_currentUser?.username}');
+        return;
+      }
+  
+      // 尝试解析 JSON；兼容纯字符串或类型不匹配情况
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(candidate);
+      } catch (_) {
+        decoded = null;
+      }
+  
+      String candStr;
+      String? sdpMid;
+      int? sdpMLineIndex;
+  
+      if (decoded is Map) {
+        final rawCandidate = decoded['candidate'];
+        candStr = rawCandidate is String ? rawCandidate : candidate;
+  
+        final rawMid = decoded['sdpMid'];
+        sdpMid = rawMid is String ? rawMid : (rawMid?.toString());
+  
+        final rawIndex = decoded['sdpMLineIndex'];
+        if (rawIndex is int) {
+          sdpMLineIndex = rawIndex;
+        } else if (rawIndex is String) {
+          sdpMLineIndex = int.tryParse(rawIndex);
+        } else {
+          sdpMLineIndex = null;
+        }
+      } else {
+        // 纯字符串候选
+        candStr = candidate;
+        sdpMid = null;
+        sdpMLineIndex = null;
+      }
+  
+      // 记录解析后的关键信息
+      print('🔧 解析ICE候选: call=$callId, mid=$sdpMid, index=$sdpMLineIndex, user=${_currentUser?.id}/${_currentUser?.username}');
+  
+      final iceCandidate = RTCIceCandidate(candStr, sdpMid, sdpMLineIndex);
       await _peerConnection!.addCandidate(iceCandidate);
-      print('✅ ICE候选处理成功');
+      print('✅ ICE候选处理成功: call=$callId');
     } catch (e) {
-      print('❌ ICE候选处理失败: $e');
+      // 打印原始数据片段便于调试
+      final snippet = candidate.length > 120 ? '${candidate.substring(0, 120)}...' : candidate;
+      print('❌ ICE候选处理失败: $e, user=${_currentUser?.id}/${_currentUser?.username}, raw="$snippet"');
       onError?.call('ICE候选处理失败: $e');
     }
   }
@@ -648,6 +721,7 @@ class WebRTCVideoService extends ChangeNotifier {
       if (_currentCall == null) return;
 
       final callId = _currentCall!.callId;
+      print('📞 本端主动结束通话: call=$callId, user=${_currentUser?.id}/${_currentUser?.username}');
 
       // 结束视频通话
       await _endVideoCall();
@@ -659,9 +733,9 @@ class WebRTCVideoService extends ChangeNotifier {
       _isInCall = false;
       notifyListeners();
 
-      print('📞 结束通话: $callId');
+      print('📞 结束通话完成: call=$callId, user=${_currentUser?.id}, isInCall=$_isInCall');
     } catch (e) {
-      print('❌ 结束通话失败: $e');
+      print('❌ 结束通话失败: $e, user=${_currentUser?.id}');
       onError?.call('结束通话失败: $e');
       rethrow;
     }

@@ -17,6 +17,8 @@ class CallPage extends StatefulWidget {
 }
 
 class _CallPageState extends State<CallPage> {
+  bool _hasPopped = false;
+
   @override
   void initState() {
     super.initState();
@@ -30,15 +32,27 @@ class _CallPageState extends State<CallPage> {
     super.dispose();
   }
 
+  void _safePop() {
+    if (!mounted || _hasPopped) return;
+    _hasPopped = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final rootNav = Navigator.of(context, rootNavigator: true);
+      if (rootNav.canPop()) {
+        rootNav.pop();
+      } else {
+        rootNav.popUntil((route) => route.isFirst);
+      }
+    });
+  }
+
   void _onCallManagerChanged() {
     print('📞 CallPage: 状态变化 - isInCall=${widget.callManager.isInCall}');
     
     // 如果通话已结束，关闭页面
     if (!widget.callManager.isInCall && widget.callManager.currentCall == null) {
       print('📞 CallPage: 通话已结束，关闭页面');
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
+      _safePop();
     }
   }
 
@@ -132,14 +146,10 @@ class _CallPageState extends State<CallPage> {
                   print('📞 用户结束通话');
                   try {
                     await widget.callManager.endCall();
-                    if (context.mounted) {
-                      Navigator.of(context).pop();
-                    }
+                    // 不再在此直接 pop，交由监听器统一处理
                   } catch (e) {
                     print('❌ 结束通话失败: $e');
-                    if (context.mounted) {
-                      Navigator.of(context).pop();
-                    }
+                    // 保持一致，不在此 pop，避免重复导航
                   }
                 },
                 child: Container(

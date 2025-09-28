@@ -18,6 +18,8 @@ class WaitingCallPage extends StatefulWidget {
 }
 
 class _WaitingCallPageState extends State<WaitingCallPage> {
+  bool _hasPopped = false;
+
   @override
   void initState() {
     super.initState();
@@ -31,19 +33,30 @@ class _WaitingCallPageState extends State<WaitingCallPage> {
     super.dispose();
   }
 
+  void _safePop() {
+    if (!mounted || _hasPopped) return;
+    _hasPopped = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final rootNav = Navigator.of(context, rootNavigator: true);
+      if (rootNav.canPop()) {
+        rootNav.pop();
+      } else {
+        rootNav.popUntil((route) => route.isFirst);
+      }
+    });
+  }
+
   void _onCallManagerChanged() {
     print('📞 WaitingCallPage收到状态变化: isInCall=${widget.callManager.isInCall}, isWaitingForAnswer=${widget.callManager.isWaitingForAnswer}');
     
     // 如果通话已开始，等待MainApp处理页面跳转，不要主动pop
     if (widget.callManager.isInCall) {
       print('📞 WaitingCallPage: 通话已开始，等待MainApp处理页面跳转');
-      // 不要主动pop，让MainApp的pushReplacement来处理
     } else if (!widget.callManager.isWaitingForAnswer && widget.callManager.currentCall == null) {
       // 通话被拒绝或结束，关闭等待页面
       print('📞 WaitingCallPage: 通话结束或被拒绝，关闭等待页面');
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
+      _safePop();
     } else {
       print('📞 WaitingCallPage: 继续等待');
     }
@@ -132,17 +145,12 @@ class _WaitingCallPageState extends State<WaitingCallPage> {
               padding: const EdgeInsets.all(32.0),
               child: GestureDetector(
                 onTap: () async {
-                  print('📞 用户取消通话');
                   try {
                     await widget.callManager.endCall();
-                    if (context.mounted) {
-                      Navigator.of(context).pop();
-                    }
+                    // 不在此 pop，交由监听器处理
                   } catch (e) {
                     print('❌ 取消通话失败: $e');
-                    if (context.mounted) {
-                      Navigator.of(context).pop();
-                    }
+                    // 同样不在此 pop
                   }
                 },
                 child: Container(

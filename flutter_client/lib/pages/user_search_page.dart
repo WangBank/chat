@@ -83,7 +83,7 @@ class _UserSearchPageState extends State<UserSearchPage> {
       setState(() {
         _users = users;
         _isLoading = false;
-        _hasMore = result['totalPages'] > _currentPage;
+        _hasMore = result['total_pages'] > _currentPage;
       });
     } catch (e) {
       setState(() {
@@ -116,7 +116,7 @@ class _UserSearchPageState extends State<UserSearchPage> {
       setState(() {
         _users = users;
         _isLoading = false;
-        _hasMore = result['totalPages'] > 1;
+        _hasMore = result['total_pages'] > 1;
       });
     } catch (e) {
       setState(() {
@@ -152,7 +152,7 @@ class _UserSearchPageState extends State<UserSearchPage> {
         _users.addAll(newUsers);
         _currentPage++;
         _isLoading = false;
-        _hasMore = result['totalPages'] > _currentPage;
+        _hasMore = result['total_pages'] > _currentPage;
       });
     } catch (e) {
       setState(() {
@@ -284,4 +284,4 @@ class _UserSearchPageState extends State<UserSearchPage> {
       ),
     );
   }
-} 
+}

@@ -1,6 +1,9 @@
 namespace VideoCallAPI.Models
 {
     // WebRTC 信令消息类型
+    using System.Text.Json.Serialization;
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum WebRTCMessageType
     {
         Offer,
@@ -84,4 +87,4 @@ namespace VideoCallAPI.Models
         public DateTime connected_at { get; set; } = DateTime.UtcNow;
         public DateTime? disconnected_at { get; set; }
     }
-} 
+}
