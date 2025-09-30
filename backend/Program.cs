@@ -97,27 +97,32 @@ builder.Services.AddCors(options =>
     
     options.AddPolicy("SignalRCors", policy =>
     {
-        policy.WithOrigins(
-                  "http://172.27.2.8:3000", 
-                  "https://172.27.2.8:3000", // Flutter web 地址
-                  "http://172.27.2.8:7001",   // Android 模拟器
-                  "http://172.27.2.8:7001",  // 本地回环
-                  "http://localhost:7001",  // 本地地址
-                  "http://172.27.2.8:7001" // 你的电脑IP地址
-              )
+        // 允许指定主机的任何端口（localhost 和 49.235.52.76）
+        policy.SetIsOriginAllowed(origin =>
+        {
+            try
+            {
+                var uri = new Uri(origin);
+                return uri.Host == "localhost" || uri.Host == "49.235.52.76";
+            }
+            catch
+            {
+                return false;
+            }
+        })
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials();
+    });
+    
+    // 开发环境下的完全开放策略（仅用于开发）
+    options.AddPolicy("Development", policy =>
+    {
+        policy.SetIsOriginAllowed(origin => true)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
     });
-    
-// 开发环境下的完全开放策略（仅用于开发）
-options.AddPolicy("Development", policy =>
-{
-    policy.SetIsOriginAllowed(origin => true) // 允许任何来源
-          .AllowAnyHeader()
-          .AllowAnyMethod()
-          .AllowCredentials();
-});
 });
 
 var app = builder.Build();

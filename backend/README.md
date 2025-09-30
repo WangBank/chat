@@ -65,9 +65,9 @@ flutter run
 
 ## API 端点
 
-- **基础URL**: `https://172.27.2.8:7000/api`
-- **Swagger文档**: `https://172.27.2.8:7000/swagger`
-- **SignalR Hub**: `https://172.27.2.8:7000/videocallhub`
+- **基础URL**: `https://49.235.52.76:7000/api`
+- **Swagger文档**: `https://49.235.52.76:7000/swagger`
+- **SignalR Hub**: `https://49.235.52.76:7000/videocallhub`
 
 ### 认证相关
 - `POST /api/auth/register` - 用户注册
@@ -114,8 +114,8 @@ import 'package:signalr_netcore/signalr_client.dart';
 import 'package:http/http.dart' as http;
 
 class VideoCallService {
-  static const String baseUrl = 'https://172.27.2.8:7000/api';
-  static const String hubUrl = 'https://172.27.2.8:7000/videocallhub';
+  static const String baseUrl = 'https://49.235.52.76:7000/api';
+  static const String hubUrl = 'https://49.235.52.76:7000/videocallhub';
   
   // 登录获取Token
   Future<String?> login(String username, String password) async {
@@ -225,10 +225,10 @@ dotnet run           # 重新运行，会自动创建新数据库
   "Kestrel": {
     "Endpoints": {
       "Http": {
-        "Url": "http://172.27.2.8:5000"
+        "Url": "http://49.235.52.76:5000"
       },
       "Https": {
-        "Url": "https://172.27.2.8:5001"
+        "Url": "https://49.235.52.76:5001"
       }
     }
   }

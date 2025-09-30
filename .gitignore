@@ -101,7 +101,7 @@ backend/[Bb]in/
 backend/[Oo]bj/
 backend/[Ll]og/
 backend/[Ll]ogs/
-
+backend/publish/
 # Visual Studio / Rider
 backend/.vs/
 backend/.vscode/
