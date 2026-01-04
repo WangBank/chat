@@ -11,14 +11,14 @@ using VideoCallAPI.Data;
 namespace VideoCallAPI.Migrations
 {
     [DbContext(typeof(VideoCallDbContext))]
-    [Migration("20250814080422_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20260104083647_InitDB")]
+    partial class InitDB
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.0");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.1");
 
             modelBuilder.Entity("VideoCallAPI.Models.CallHistory", b =>
                 {
@@ -229,6 +229,10 @@ namespace VideoCallAPI.Migrations
                     b.Property<DateTime>("created_at")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("display_name")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("email")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -238,10 +242,6 @@ namespace VideoCallAPI.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime?>("last_login_at")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("nickname")
-                        .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("password_hash")

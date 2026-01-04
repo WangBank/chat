@@ -89,8 +89,8 @@ namespace VideoCallAPI.Services
             if (user == null)
                 throw new ArgumentException("用户不存在");
 
-            if (!string.IsNullOrWhiteSpace(updateProfileDto.nickname))
-                user.nickname = updateProfileDto.nickname;
+            if (!string.IsNullOrWhiteSpace(updateProfileDto.display_name))
+                user.display_name = updateProfileDto.display_name;
             
             if (!string.IsNullOrWhiteSpace(updateProfileDto.avatar_path))
                 user.avatar_path = updateProfileDto.avatar_path;
@@ -107,16 +107,16 @@ namespace VideoCallAPI.Services
             if (user == null)
                 throw new ArgumentException("用户不存在");
 
-            // 创建头像存储目录
-            var uploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "avatars");
-            if (!Directory.Exists(uploadsDir))
+            // 创建头像存储目录 - 存放到api/avatar文件夹
+            var avatarDir = Path.Combine(Directory.GetCurrentDirectory(), "avatar");
+            if (!Directory.Exists(avatarDir))
             {
-                Directory.CreateDirectory(uploadsDir);
+                Directory.CreateDirectory(avatarDir);
             }
 
             // 生成唯一文件名
             var fileName = $"{userId}_{DateTime.UtcNow:yyyyMMddHHmmss}{Path.GetExtension(avatar.FileName)}";
-            var filePath = Path.Combine(uploadsDir, fileName);
+            var filePath = Path.Combine(avatarDir, fileName);
 
             // 保存文件
             using (var stream = new FileStream(filePath, FileMode.Create))
@@ -125,7 +125,7 @@ namespace VideoCallAPI.Services
             }
 
             // 更新用户头像路径
-            user.avatar_path = $"/uploads/avatars/{fileName}";
+            user.avatar_path = $"/avatar/{fileName}";
             user.updated_at = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
@@ -139,7 +139,7 @@ namespace VideoCallAPI.Services
                 id = user.id,
                 username = user.username,
                 email = user.email,
-                nickname = user.nickname,
+                display_name = user.display_name,
                 avatar_path = user.avatar_path,
                 is_online = user.is_online,
                 last_login_at = user.last_login_at,
@@ -169,8 +169,8 @@ namespace VideoCallAPI.Services
                 var searchTerm = searchDto.query.ToLower();
                 query = query.Where(u => 
                     u.username.ToLower().Contains(searchTerm) ||
-                    u.nickname.ToLower().Contains(searchTerm) ||
-                    u.email.ToLower().Contains(searchTerm));
+                    (u.display_name != null && u.display_name.ToLower().Contains(searchTerm)) ||
+                    (u.email != null && u.email.ToLower().Contains(searchTerm)));
             }
 
             // 获取总数
@@ -281,8 +281,8 @@ namespace VideoCallAPI.Services
                 .Include(c => c.contact_user)
                 .Where(c => c.user_id == userId && 
                            (c.contact_user.username.Contains(query) || 
-                            c.contact_user.nickname.Contains(query) ||
-                            c.display_name.Contains(query)))
+                            (c.contact_user.display_name != null && c.contact_user.display_name.Contains(query)) ||
+                            (c.display_name != null && c.display_name.Contains(query))))
                 .OrderBy(c => c.display_name ?? c.contact_user.username)
                 .ToListAsync();
 
@@ -614,7 +614,7 @@ public async Task<ChatMessageDto> SendMessageAsync(int senderId, SendMessageDto 
                 id = user.id,
                 username = user.username,
                 email = user.email,
-                nickname = user.nickname,
+                display_name = user.display_name,
                 avatar_path = user.avatar_path,
                 is_online = user.is_online,
                 last_login_at = user.last_login_at,

@@ -1,10 +1,15 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.SignalR;
 using VideoCallAPI.Models.DTOs;
 using VideoCallAPI.Services;
 using System.Security.Claims;
 using VideoCallAPI.Models;
 using Newtonsoft.Json;
+using VideoCallAPI.Data;
+using Microsoft.EntityFrameworkCore;
+using VideoCallAPI.Hubs;
+using BCrypt.Net;
 
 namespace VideoCallAPI.Controllers
 {
@@ -456,10 +461,12 @@ namespace VideoCallAPI.Controllers
     public class ChatController : ControllerBase
     {
         private readonly IChatService _chatService;
+        private readonly IHubContext<VideoCallHub> _hubContext;
 
-        public ChatController(IChatService chatService)
+        public ChatController(IChatService chatService, IHubContext<VideoCallHub> hubContext)
         {
             _chatService = chatService;
+            _hubContext = hubContext;
         }
 
         [HttpPost("send")]
@@ -484,6 +491,11 @@ namespace VideoCallAPI.Controllers
             {
                 var userId = GetUserId();
                 var message = await _chatService.SendMessageAsync(userId, sendMessageDto);
+                
+                // 通过SignalR发送新消息给接收者
+                await _hubContext.Clients.Group($"user_{sendMessageDto.receiver_id}").SendAsync("NewMessage", message);
+                // 同时发送给发送者（用于同步显示）
+                await _hubContext.Clients.Group($"user_{userId}").SendAsync("NewMessage", message);
                 
                 return Ok(new ApiResponse<ChatMessageDto>
                 {
@@ -695,6 +707,204 @@ namespace VideoCallAPI.Controllers
                 {
                     Success = false,
                     Message = "房间创建失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        private int GetUserId()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                return userId;
+            }
+            throw new UnauthorizedAccessException("用户未登录");
+        }
+    }
+
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class AdminController : ControllerBase
+    {
+        private readonly IUserService _userService;
+        private readonly VideoCallDbContext _context;
+
+        public AdminController(IUserService userService, VideoCallDbContext context)
+        {
+            _userService = userService;
+            _context = context;
+        }
+
+        [HttpGet("online-users")]
+        public async Task<ActionResult<ApiResponse<List<UserResponseDto>>>> GetOnlineUsers()
+        {
+            try
+            {
+                // 检查是否是管理员
+                var userId = GetUserId();
+                var user = await _userService.GetUserByIdAsync(userId);
+                if (user == null || user.username != "admin")
+                {
+                    return Unauthorized(new ApiResponse<List<UserResponseDto>>
+                    {
+                        Success = false,
+                        Message = "无权访问"
+                    });
+                }
+
+                var onlineUsers = await _context.users
+                    .Where(u => u.is_online)
+                    .Select(u => new UserResponseDto
+                    {
+                        id = u.id,
+                        username = u.username,
+                        email = u.email,
+                        display_name = u.display_name,
+                        avatar_path = u.avatar_path,
+                        is_online = u.is_online,
+                        last_login_at = u.last_login_at,
+                        created_at = u.created_at,
+                        updated_at = u.updated_at
+                    })
+                    .ToListAsync();
+
+                return Ok(new ApiResponse<List<UserResponseDto>>
+                {
+                    Success = true,
+                    Data = onlineUsers
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse<List<UserResponseDto>>
+                {
+                    Success = false,
+                    Message = "获取在线用户失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpGet("users")]
+        public async Task<ActionResult<ApiResponse<object>>> GetAllUsers([FromQuery] int page = 1, [FromQuery] int page_size = 20)
+        {
+            try
+            {
+                // 检查是否是管理员
+                var userId = GetUserId();
+                var user = await _userService.GetUserByIdAsync(userId);
+                if (user == null || user.username != "admin")
+                {
+                    return Unauthorized(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "无权访问"
+                    });
+                }
+
+                var query = _context.users.AsQueryable();
+                var totalCount = await query.CountAsync();
+
+                var users = await query
+                    .OrderBy(u => u.id)
+                    .Skip((page - 1) * page_size)
+                    .Take(page_size)
+                    .Select(u => new UserResponseDto
+                    {
+                        id = u.id,
+                        username = u.username,
+                        email = u.email,
+                        display_name = u.display_name,
+                        avatar_path = u.avatar_path,
+                        is_online = u.is_online,
+                        last_login_at = u.last_login_at,
+                        created_at = u.created_at,
+                        updated_at = u.updated_at
+                    })
+                    .ToListAsync();
+
+                var totalPages = (int)Math.Ceiling((double)totalCount / page_size);
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Data = new
+                    {
+                        users = users,
+                        total_count = totalCount,
+                        page = page,
+                        page_size = page_size,
+                        total_pages = totalPages
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "获取用户列表失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("change-user-password")]
+        public async Task<ActionResult<ApiResponse>> ChangeUserPassword([FromBody] AdminChangePasswordDto dto)
+        {
+            try
+            {
+                // 检查是否是管理员
+                var adminUserId = GetUserId();
+                var adminUser = await _userService.GetUserByIdAsync(adminUserId);
+                if (adminUser == null || adminUser.username != "admin")
+                {
+                    return Unauthorized(new ApiResponse
+                    {
+                        Success = false,
+                        Message = "无权访问"
+                    });
+                }
+
+                // 管理员可以直接修改其他用户的密码，不需要原密码
+                var targetUser = await _context.users.FindAsync(dto.user_id);
+                if (targetUser == null)
+                {
+                    return BadRequest(new ApiResponse
+                    {
+                        Success = false,
+                        Message = "用户不存在"
+                    });
+                }
+
+                // 不允许修改admin用户的密码
+                if (targetUser.username == "admin")
+                {
+                    return BadRequest(new ApiResponse
+                    {
+                        Success = false,
+                        Message = "不允许修改管理员密码"
+                    });
+                }
+
+                targetUser.password_hash = BCrypt.Net.BCrypt.HashPassword(dto.new_password);
+                targetUser.updated_at = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse
+                {
+                    Success = true,
+                    Message = "密码修改成功"
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse
+                {
+                    Success = false,
+                    Message = "密码修改失败",
                     Errors = new List<string> { ex.Message }
                 });
             }

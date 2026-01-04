@@ -124,8 +124,8 @@ class _VideoCallPageState extends State<VideoCallPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            widget.call.caller.nickname?.isNotEmpty == true
-                                ? widget.call.caller.nickname!
+                            widget.call.caller.display_name?.isNotEmpty == true
+                                ? widget.call.caller.display_name!
                                 : widget.call.caller.username,
                             style: const TextStyle(
                               color: Colors.white,
@@ -375,8 +375,8 @@ class _VideoCallPageState extends State<VideoCallPage> {
 
   // 辅助：构建首字母头像
   Widget _buildInitialAvatar(User user) {
-    final String initial = (user.nickname?.isNotEmpty == true
-            ? user.nickname![0]
+    final String initial = (user.display_name?.isNotEmpty == true
+            ? user.display_name![0]
             : user.username.isNotEmpty
                 ? user.username[0]
                 : '?')

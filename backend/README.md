@@ -63,12 +63,6 @@ flutter pub get
 flutter run
 ```
 
-## API 端点
-
-- **基础URL**: `https://49.235.52.76:7000/api`
-- **Swagger文档**: `https://49.235.52.76:7000/swagger`
-- **SignalR Hub**: `https://49.235.52.76:7000/videocallhub`
-
 ### 认证相关
 - `POST /api/auth/register` - 用户注册
 - `POST /api/auth/login` - 用户登录
@@ -105,48 +99,6 @@ dependencies:
   flutter_webrtc: ^0.9.46
   http: ^1.1.0
   permission_handler: ^11.0.1
-```
-
-### 2. 使用示例
-
-```dart
-import 'package:signalr_netcore/signalr_client.dart';
-import 'package:http/http.dart' as http;
-
-class VideoCallService {
-  static const String baseUrl = 'https://49.235.52.76:7000/api';
-  static const String hubUrl = 'https://49.235.52.76:7000/videocallhub';
-  
-  // 登录获取Token
-  Future<String?> login(String username, String password) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/login'),
-      headers: {'content-type': 'application/json'},
-      body: jsonEncode({
-        'username': username,
-        'password': password,
-      }),
-    );
-    
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['data']['token'];
-    }
-    return null;
-  }
-  
-  // 连接SignalR
-  Future<HubConnection> connectSignalR(String token) async {
-    final connection = HubConnectionBuilder()
-        .withUrl(hubUrl, options: HttpConnectionOptions(
-          accessTokenFactory: () => Future.value(token),
-        ))
-        .build();
-    
-    await connection.start();
-    return connection;
-  }
-}
 ```
 
 ## 开发特性
@@ -220,20 +172,7 @@ dotnet run           # 重新运行，会自动创建新数据库
 
 ### 1. 端口占用
 如果7000端口被占用，修改 `appsettings.json`：
-```json
-{
-  "Kestrel": {
-    "Endpoints": {
-      "Http": {
-        "Url": "http://49.235.52.76:5000"
-      },
-      "Https": {
-        "Url": "https://49.235.52.76:5001"
-      }
-    }
-  }
-}
-```
+
 
 ### 2. 数据库权限问题
 确保应用对数据库文件所在目录有读写权限：

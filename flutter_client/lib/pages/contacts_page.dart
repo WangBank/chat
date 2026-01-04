@@ -76,12 +76,12 @@ class _ContactsPageState extends State<ContactsPage> {
         _filteredContacts = _contacts.where((contact) {
           final displayName = contact.displayName?.toLowerCase() ?? '';
           final username = contact.contactUser.username.toLowerCase();
-          final nickname = contact.contactUser.nickname?.toLowerCase() ?? '';
+          final display_name = contact.contactUser.display_name?.toLowerCase() ?? '';
           final searchQuery = query.toLowerCase();
           
           return displayName.contains(searchQuery) ||
                  username.contains(searchQuery) ||
-                 nickname.contains(searchQuery);
+                 display_name.contains(searchQuery);
         }).toList();
       }
     });
@@ -243,8 +243,8 @@ class _ContactsPageState extends State<ContactsPage> {
                                     ? Text(
                                         (contact.displayName?.isNotEmpty == true
                                                 ? contact.displayName![0]
-                                                : (contact.contactUser.nickname?.isNotEmpty == true
-                                                    ? contact.contactUser.nickname![0]
+                                                : (contact.contactUser.display_name?.isNotEmpty == true
+                                                    ? contact.contactUser.display_name![0]
                                                     : contact.contactUser.username[0]))
                                             .toUpperCase(),
                                         style: const TextStyle(
@@ -257,8 +257,8 @@ class _ContactsPageState extends State<ContactsPage> {
                               title: Text(
                                 contact.displayName?.isNotEmpty == true
                                     ? contact.displayName!
-                                    : (contact.contactUser.nickname?.isNotEmpty == true
-                                        ? contact.contactUser.nickname!
+                                    : (contact.contactUser.display_name?.isNotEmpty == true
+                                        ? contact.contactUser.display_name!
                                         : contact.contactUser.username),
                                 style: const TextStyle(fontWeight: FontWeight.bold),
                               ),
@@ -266,8 +266,8 @@ class _ContactsPageState extends State<ContactsPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text('用户名: ${contact.contactUser.username}'),
-                                  if (contact.contactUser.nickname?.isNotEmpty == true)
-                                    Text('昵称: ${contact.contactUser.nickname}'),
+                                  if (contact.contactUser.display_name?.isNotEmpty == true)
+                                    Text('昵称: ${contact.contactUser.display_name}'),
                                   if (contact.lastMessageAt != null)
                                     Text(
                                       '最后消息: ${_formatTime(contact.lastMessageAt!)}',

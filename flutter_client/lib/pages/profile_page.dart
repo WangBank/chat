@@ -124,14 +124,14 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _updateProfile() async {
-    final nicknameController = TextEditingController(text: _currentUser?.nickname ?? '');
+    final display_nameController = TextEditingController(text: _currentUser?.display_name ?? '');
     
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('修改昵称'),
         content: TextField(
-          controller: nicknameController,
+          controller: display_nameController,
           decoration: const InputDecoration(
             labelText: '昵称',
             hintText: '请输入昵称',
@@ -143,7 +143,7 @@ class _ProfilePageState extends State<ProfilePage> {
             child: const Text('取消'),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(nicknameController.text),
+            onPressed: () => Navigator.of(context).pop(display_nameController.text),
             child: const Text('确定'),
           ),
         ],
@@ -153,7 +153,7 @@ class _ProfilePageState extends State<ProfilePage> {
     if (result != null && result.isNotEmpty) {
       try {
         final updatedUser = await widget.apiService.updateProfile(
-          nickname: result,
+          display_name: result,
         );
         
         setState(() {
@@ -344,8 +344,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                         : null,
                                     child: _currentUser!.avatarPath == null
                                         ? Text(
-                                            (_currentUser!.nickname?.isNotEmpty == true
-                                                ? _currentUser!.nickname![0]
+                                            (_currentUser!.display_name?.isNotEmpty == true
+                                                ? _currentUser!.display_name![0]
                                                 : _currentUser!.username[0]).toUpperCase(),
                                             style: const TextStyle(fontSize: 32),
                                           )
@@ -353,7 +353,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                   ),
                                   const SizedBox(height: 16),
                                   Text(
-                                    _currentUser!.nickname ?? _currentUser!.username,
+                                    _currentUser!.display_name ?? _currentUser!.username,
                                     style: const TextStyle(
                                       fontSize: 24,
                                       fontWeight: FontWeight.bold,
@@ -379,7 +379,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ListTile(
                                   leading: const Icon(Icons.edit),
                                   title: const Text('修改昵称'),
-                                  subtitle: Text(_currentUser!.nickname ?? '未设置'),
+                                  subtitle: Text(_currentUser!.display_name ?? '未设置'),
                                   trailing: const Icon(Icons.arrow_forward_ios),
                                   onTap: _updateProfile,
                                 ),

@@ -22,7 +22,7 @@ namespace VideoCallAPI.Models
         public string password_hash { get; set; } = string.Empty;
         
         [StringLength(50)]
-        public string? nickname { get; set; } // 昵称
+        public string? display_name { get; set; } // 昵称
         
         [StringLength(255)]
         public string? avatar_path { get; set; }

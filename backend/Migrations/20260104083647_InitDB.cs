@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace VideoCallAPI.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class InitDB : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -20,7 +20,7 @@ namespace VideoCallAPI.Migrations
                     username = table.Column<string>(type: "TEXT", maxLength: 50, nullable: false),
                     email = table.Column<string>(type: "TEXT", maxLength: 100, nullable: false),
                     password_hash = table.Column<string>(type: "TEXT", nullable: false),
-                    nickname = table.Column<string>(type: "TEXT", maxLength: 50, nullable: true),
+                    display_name = table.Column<string>(type: "TEXT", maxLength: 50, nullable: true),
                     avatar_path = table.Column<string>(type: "TEXT", maxLength: 255, nullable: true),
                     created_at = table.Column<DateTime>(type: "TEXT", nullable: false),
                     updated_at = table.Column<DateTime>(type: "TEXT", nullable: false),

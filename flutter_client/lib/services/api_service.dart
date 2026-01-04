@@ -583,13 +583,13 @@ class ApiService {
   }
 
   // 更新个人资料
-  Future<User> updateProfile({String? nickname, String? avatarPath}) async {
+  Future<User> updateProfile({String? display_name, String? avatarPath}) async {
     try {
       final response = await http.put(
         Uri.parse('$baseUrl/auth/profile'),
         headers: _headers,
         body: jsonEncode({
-          if (nickname != null) 'nickname': nickname,
+          if (display_name != null) 'display_name': display_name,
           if (avatarPath != null) 'avatar_path': avatarPath,
         }),
       );

@@ -179,8 +179,8 @@ class _ChatPageState extends State<ChatPage> {
                   ? Text(
                       (widget.contact.displayName?.isNotEmpty == true
                               ? widget.contact.displayName![0]
-                              : (widget.contact.contactUser.nickname?.isNotEmpty == true
-                                  ? widget.contact.contactUser.nickname![0]
+                              : (widget.contact.contactUser.display_name?.isNotEmpty == true
+                                  ? widget.contact.contactUser.display_name![0]
                                   : widget.contact.contactUser.username[0]))
                           .toUpperCase(),
                       style: const TextStyle(
@@ -198,8 +198,8 @@ class _ChatPageState extends State<ChatPage> {
                   Text(
                     widget.contact.displayName?.isNotEmpty == true
                         ? widget.contact.displayName!
-                        : (widget.contact.contactUser.nickname?.isNotEmpty == true
-                            ? widget.contact.contactUser.nickname!
+                        : (widget.contact.contactUser.display_name?.isNotEmpty == true
+                            ? widget.contact.contactUser.display_name!
                             : widget.contact.contactUser.username),
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),

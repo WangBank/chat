@@ -1,0 +1,105 @@
+# ============================
+# 全局限流规则
+# ============================
+
+# 前端限流：每秒 50 次
+limit_req_zone $binary_remote_addr zone=frontend_limit:10m rate=50r/s;
+
+# API 限流：每秒 20 次
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=20r/s;
+
+# ============================
+# 自动跳转到 HTTPS
+# ============================
+server {
+    listen 80;
+    server_name common.wangbank.top;
+    return 301 https://$host$request_uri;
+}
+
+# ============================
+# 前端：HTTPS 7002
+# ============================
+server {
+    listen 7002 ssl;
+    server_name common.wangbank.top;
+
+    ssl_certificate /etc/letsencrypt/live/common.wangbank.top/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/common.wangbank.top/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    # 安全头
+    add_header X-Frame-Options "DENY";
+    add_header X-Content-Type-Options "nosniff";
+    add_header X-XSS-Protection "1; mode=block";
+    add_header Referrer-Policy "strict-origin-when-cross-origin";
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload";
+
+    # Gzip
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript application/xml image/svg+xml;
+    gzip_min_length 1024;
+
+    # 前端限流（不会影响正常用户）
+    limit_req zone=frontend_limit burst=40;
+
+    # 静态资源
+    root /websites/chat/website/dist;
+    index index.html;
+
+    # 缓存策略
+    location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?)$ {
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000";
+        try_files $uri =404;
+    }
+
+    # 前端路由
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+
+# ============================
+# API + SignalR：HTTPS 7000
+# ============================
+server {
+    listen 7000 ssl;
+    server_name common.wangbank.top;
+
+    ssl_certificate /etc/letsencrypt/live/common.wangbank.top/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/common.wangbank.top/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    # 安全头
+    add_header X-Frame-Options "DENY";
+    add_header X-Content-Type-Options "nosniff";
+    add_header X-XSS-Protection "1; mode=block";
+    add_header Referrer-Policy "strict-origin-when-cross-origin";
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload";
+
+    # API 限流（严格）
+    limit_req zone=api_limit burst=20 nodelay;
+
+    location / {
+        proxy_pass http://127.0.0.1:7001;
+
+        # WebSocket
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # 常规头部
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+        # 长连接优化
+        proxy_read_timeout 3600;
+        proxy_send_timeout 3600;
+    }
+}

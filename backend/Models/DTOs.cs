@@ -45,7 +45,7 @@ namespace VideoCallAPI.Models.DTOs
         public int id { get; set; }
         public string username { get; set; } = string.Empty;
         public string email { get; set; } = string.Empty;
-        public string? nickname { get; set; }
+        public string? display_name { get; set; }
         public string? avatar_path { get; set; }
         public bool is_online { get; set; }
         public DateTime? last_login_at { get; set; }
@@ -55,13 +55,19 @@ namespace VideoCallAPI.Models.DTOs
 
     public class UpdateProfileDto
     {
-        public string? nickname { get; set; }
+        public string? display_name { get; set; }
         public string? avatar_path { get; set; }
     }
 
     public class ChangePasswordDto
     {
         public string old_password { get; set; } = string.Empty;
+        public string new_password { get; set; } = string.Empty;
+    }
+
+    public class AdminChangePasswordDto
+    {
+        public int user_id { get; set; }
         public string new_password { get; set; } = string.Empty;
     }
 

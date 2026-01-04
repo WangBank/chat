@@ -2,7 +2,7 @@ class User {
   final int id;
   final String username;
   final String email;
-  final String? nickname;
+  final String? display_name;
   final String? avatarPath;
   final bool isOnline;
   final DateTime? lastLoginAt;
@@ -13,7 +13,7 @@ class User {
     required this.id,
     required this.username,
     required this.email,
-    this.nickname,
+    this.display_name,
     this.avatarPath,
     this.isOnline = false,
     this.lastLoginAt,
@@ -26,7 +26,7 @@ class User {
       id: json['id'] as int,
       username: json['username'] as String,
       email: json['email'] as String,
-      nickname: json['nickname'] as String?,
+      display_name: json['display_name'] as String?,
       avatarPath: json['avatar_path'] as String?,
       isOnline: json['is_online'] as bool? ?? false,
       lastLoginAt: json['last_login_at'] != null 
@@ -42,7 +42,7 @@ class User {
       'id': id,
       'username': username,
       'email': email,
-      'nickname': nickname,
+      'display_name': display_name,
       'avatar_path': avatarPath,
       'is_online': isOnline,
       'last_login_at': lastLoginAt?.toIso8601String(),
@@ -55,7 +55,7 @@ class User {
     int? id,
     String? username,
     String? email,
-    String? nickname,
+    String? display_name,
     String? avatarPath,
     bool? isOnline,
     DateTime? lastLoginAt,
@@ -66,7 +66,7 @@ class User {
       id: id ?? this.id,
       username: username ?? this.username,
       email: email ?? this.email,
-      nickname: nickname ?? this.nickname,
+      display_name: display_name ?? this.display_name,
       avatarPath: avatarPath ?? this.avatarPath,
       isOnline: isOnline ?? this.isOnline,
       lastLoginAt: lastLoginAt ?? this.lastLoginAt,

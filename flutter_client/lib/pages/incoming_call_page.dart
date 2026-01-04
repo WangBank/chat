@@ -38,8 +38,8 @@ class IncomingCallPage extends StatelessWidget {
                         errorBuilder: (context, error, stackTrace) {
                           return Center(
                             child: Text(
-                              (call.caller.nickname?.isNotEmpty == true
-                                      ? call.caller.nickname![0]
+                              (call.caller.display_name?.isNotEmpty == true
+                                      ? call.caller.display_name![0]
                                       : call.caller.username[0])
                                   .toUpperCase(),
                               style: const TextStyle(
@@ -54,8 +54,8 @@ class IncomingCallPage extends StatelessWidget {
                     )
                   : Center(
                       child: Text(
-                        (call.caller.nickname?.isNotEmpty == true
-                                ? call.caller.nickname![0]
+                        (call.caller.display_name?.isNotEmpty == true
+                                ? call.caller.display_name![0]
                                 : call.caller.username[0])
                             .toUpperCase(),
                         style: const TextStyle(
@@ -71,8 +71,8 @@ class IncomingCallPage extends StatelessWidget {
             
             // 来电信息
             Text(
-              call.caller.nickname?.isNotEmpty == true
-                  ? call.caller.nickname!
+              call.caller.display_name?.isNotEmpty == true
+                  ? call.caller.display_name!
                   : call.caller.username,
               style: const TextStyle(
                 color: Colors.white,

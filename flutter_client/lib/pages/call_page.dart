@@ -81,8 +81,8 @@ class _CallPageState extends State<CallPage> {
                         errorBuilder: (context, error, stackTrace) {
                           return Center(
                             child: Text(
-                              (widget.call.caller.nickname?.isNotEmpty == true
-                                      ? widget.call.caller.nickname![0]
+                              (widget.call.caller.display_name?.isNotEmpty == true
+                                      ? widget.call.caller.display_name![0]
                                       : widget.call.caller.username[0])
                                   .toUpperCase(),
                               style: const TextStyle(
@@ -97,8 +97,8 @@ class _CallPageState extends State<CallPage> {
                     )
                   : Center(
                       child: Text(
-                        (widget.call.caller.nickname?.isNotEmpty == true
-                                ? widget.call.caller.nickname![0]
+                        (widget.call.caller.display_name?.isNotEmpty == true
+                                ? widget.call.caller.display_name![0]
                                 : widget.call.caller.username[0])
                             .toUpperCase(),
                         style: const TextStyle(
@@ -112,8 +112,8 @@ class _CallPageState extends State<CallPage> {
             const SizedBox(height: 32),
             // 通话信息
             Text(
-              widget.call.caller.nickname?.isNotEmpty == true
-                  ? widget.call.caller.nickname!
+              widget.call.caller.display_name?.isNotEmpty == true
+                  ? widget.call.caller.display_name!
                   : widget.call.caller.username,
               style: const TextStyle(
                 color: Colors.white,

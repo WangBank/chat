@@ -67,7 +67,7 @@ namespace VideoCallAPI.Hubs
                 
                 if (caller != null && receiver != null)
                 {
-                    await Clients.Group($"user_{request.receiver_id}").SendAsync("IncomingCall", new
+                    var callData = new
                     {
                         call_id = session.call_id,
                         caller = new
@@ -75,7 +75,7 @@ namespace VideoCallAPI.Hubs
                             id = caller.id,
                             username = caller.username,
                             email = caller.email,
-                            nickname = caller.nickname,
+                            display_name = caller.display_name,
                             avatar_path = caller.avatar_path,
                             is_online = caller.is_online,
                             last_login_at = caller.last_login_at,
@@ -87,7 +87,7 @@ namespace VideoCallAPI.Hubs
                             id = receiver.id,
                             username = receiver.username,
                             email = receiver.email,
-                            nickname = receiver.nickname,
+                            display_name = receiver.display_name,
                             avatar_path = receiver.avatar_path,
                             is_online = receiver.is_online,
                             last_login_at = receiver.last_login_at,
@@ -97,7 +97,13 @@ namespace VideoCallAPI.Hubs
                         call_type = request.call_type,
                         status = 1, // Initiated
                         start_time = session.start_time
-                    });
+                    };
+
+                    // 通知接收者
+                    await Clients.Group($"user_{request.receiver_id}").SendAsync("IncomingCall", callData);
+                    
+                    // 同时通知呼叫者（返回call_id等信息）
+                    await Clients.Caller.SendAsync("CallInitiated", callData);
                 }
 
                 _logger.LogInformation("发起通话: {call_id}, 呼叫者: {caller_id}, 接收者: {receiver_id}", 

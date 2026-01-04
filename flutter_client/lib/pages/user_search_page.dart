@@ -228,8 +228,8 @@ class _UserSearchPageState extends State<UserSearchPage> {
                           leading: CircleAvatar(
                             backgroundColor: Colors.blue,
                             child: Text(
-                              user.nickname?.isNotEmpty == true
-                                  ? user.nickname![0].toUpperCase()
+                              user.display_name?.isNotEmpty == true
+                                  ? user.display_name![0].toUpperCase()
                                   : user.username[0].toUpperCase(),
                               style: const TextStyle(
                                 color: Colors.white,
@@ -238,8 +238,8 @@ class _UserSearchPageState extends State<UserSearchPage> {
                             ),
                           ),
                           title: Text(
-                            user.nickname?.isNotEmpty == true
-                                ? user.nickname!
+                            user.display_name?.isNotEmpty == true
+                                ? user.display_name!
                                 : user.username,
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),

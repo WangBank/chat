@@ -100,8 +100,8 @@ class _WaitingCallPageState extends State<WaitingCallPage> {
             const SizedBox(height: 32),
             // 通话信息
             Text(
-              widget.call.receiver.nickname?.isNotEmpty == true
-                  ? widget.call.receiver.nickname!
+              widget.call.receiver.display_name?.isNotEmpty == true
+                  ? widget.call.receiver.display_name!
                   : widget.call.receiver.username,
               style: const TextStyle(
                 color: Colors.white,

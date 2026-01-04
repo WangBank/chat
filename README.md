@@ -37,10 +37,6 @@ chmod +x start.sh
 ./start.sh
 ```
 
-后端将在 `https://49.235.52.76:7000` 启动
-- **API文档**: `https://49.235.52.76:7000/swagger`
-- **SignalR Hub**: `https://49.235.52.76:7000/videocallhub`
-
 ### 2. 启动Flutter客户端
 
 ```bash
@@ -137,7 +133,7 @@ cd flutter_client && flutter run
 ### 生产环境
 ```bash
 # 后端
-cd backend && dotnet publish -c Release
+cd backend && dotnet publish -c Release -o ./publish --self-contained false
 
 # 前端
 cd flutter_client && flutter build web    # Web版本
