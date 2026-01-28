@@ -133,8 +133,8 @@ flutter run            # 移动端
 ### 生产环境
 ```bash
 # 后端
-cd backend_new
-dotnet publish -c Release -o ./publish
+cd backend
+dotnet publish -c Release -o ./release --self-contained false
 cd publish
 dotnet VideoCallAPI.dll
 

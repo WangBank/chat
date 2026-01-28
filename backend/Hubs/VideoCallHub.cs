@@ -34,7 +34,18 @@ namespace VideoCallAPI.Hubs
             if (_connectionUserMap.TryGetValue(connectionId, out var userId))
             {
                 _connectionUserMap.Remove(connectionId);
-                _logger.LogInformation("用户断开连接: {user_id}, 连接: {connection_id}", userId, connectionId);
+                if (exception != null)
+                {
+                    _logger.LogError(exception, "用户异常断开连接: UserId={UserId}, ConnectionId={ConnectionId}", userId, connectionId);
+                }
+                else
+                {
+                    _logger.LogInformation("用户正常断开连接: UserId={UserId}, ConnectionId={ConnectionId}", userId, connectionId);
+                }
+            }
+            else if (exception != null)
+            {
+                _logger.LogError(exception, "未知用户异常断开连接: ConnectionId={ConnectionId}", connectionId);
             }
             await base.OnDisconnectedAsync(exception);
         }
@@ -42,9 +53,17 @@ namespace VideoCallAPI.Hubs
         // 用户认证
         public async Task Authenticate(int userId)
         {
-            _connectionUserMap[Context.ConnectionId] = userId;
-            await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
-            _logger.LogInformation("用户认证: {user_id}, 连接: {connection_id}", userId, Context.ConnectionId);
+            try
+            {
+                _connectionUserMap[Context.ConnectionId] = userId;
+                await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
+                _logger.LogInformation("用户认证成功: UserId={UserId}, ConnectionId={ConnectionId}", userId, Context.ConnectionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "用户认证失败: UserId={UserId}, ConnectionId={ConnectionId}", userId, Context.ConnectionId);
+                throw;
+            }
         }
 
         // 发起通话
@@ -177,33 +196,38 @@ namespace VideoCallAPI.Hubs
         // 结束通话
         public async Task EndCall(string callId)
         {
-            // 获取当前用户ID（按你的现有实现）
-            var userId = GetCurrentUserId();
-            if (!userId.HasValue)
+            try
             {
-                await Clients.Caller.SendAsync("Error", new { message = "Unauthorized" });
-                return;
+                // 获取当前用户ID（按你的现有实现）
+                var userId = GetCurrentUserId();
+                if (!userId.HasValue)
+                {
+                    _logger.LogWarning("结束通话失败，用户未认证: CallId={CallId}", callId);
+                    await Clients.Caller.SendAsync("Error", new { message = "Unauthorized" });
+                    return;
+                }
+                // 先广播，再清理，避免被动端漏消息
+                await Clients.Group($"call_{callId}").SendAsync("CallEnded", new
+                {
+                    call_id = callId,
+                    EndedBy = userId.Value
+                });
+
+                var success = await _webRTCService.EndCallAsync(callId, userId.Value);
+                if (!success)
+                {
+                    _logger.LogWarning("结束通话失败，通话不存在: CallId={CallId}, UserId={UserId}", callId, userId.Value);
+                    await Clients.Caller.SendAsync("Error", new { message = "End call failed" });
+                    return;
+                }
+
+                _logger.LogInformation("通话已结束: CallId={CallId}, UserId={UserId}", callId, userId.Value);
             }
-        // 先广播，再清理，避免被动端漏消息
-        await Clients.Group($"call_{callId}").SendAsync("CallEnded", new
-        {
-            call_id = callId,
-            EndedBy = /* 你的当前用户ID */ userId.Value
-        });
-
-        var success = await _webRTCService.EndCallAsync(callId, userId.Value);
-        if (!success)
-        {
-            await Clients.Caller.SendAsync("Error", new { message = "End call failed" });
-            return;
-        }
-
-        // 可选：移除当前连接出通话组或发到用户组兜底
-        // await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"call_{callId}");
-
-        // 可选：如需补发到用户组（防止通话组成员异常）可在清理前缓存两端ID并发送
-        // await Clients.Group($"user_{callerId}").SendAsync("CallEnded", new { call_id = callId, EndedBy = userId.Value });
-        // await Clients.Group($"user_{receiverId}").SendAsync("CallEnded", new { call_id = callId, EndedBy = userId.Value });
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "结束通话异常: CallId={CallId}", callId);
+                await Clients.Caller.SendAsync("CallError", "结束通话失败");
+            }
         }
 
         // WebRTC 信令消息

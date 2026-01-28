@@ -27,10 +27,16 @@ namespace VideoCallAPI.Services
             var receiver = await _context.users.FindAsync(receiverId);
 
             if (caller == null || receiver == null)
+            {
+                _logger.LogWarning("发起通话失败，用户不存在: CallerId={CallerId}, ReceiverId={ReceiverId}", callerId, receiverId);
                 throw new ArgumentException("用户不存在");
+            }
 
             if (!receiver.is_online)
+            {
+                _logger.LogWarning("发起通话失败，用户不在线: CallerId={CallerId}, ReceiverId={ReceiverId}", callerId, receiverId);
                 throw new InvalidOperationException("用户不在线");
+            }
 
             // 创建通话记录
             var callHistory = new CallHistory
@@ -60,6 +66,9 @@ namespace VideoCallAPI.Services
             };
 
             _activeCalls.TryAdd(callId, callSession);
+
+            _logger.LogInformation("发起通话: CallId={CallId}, CallerId={CallerId}, ReceiverId={ReceiverId}, CallType={CallType}", 
+                callId, callerId, receiverId, callType);
 
             return new CallResponseDto
             {
@@ -119,7 +128,10 @@ namespace VideoCallAPI.Services
         public async Task EndCallAsync(string callId, int userId)
         {
             if (!_activeCalls.TryRemove(callId, out var callSession))
+            {
+                _logger.LogWarning("结束通话失败，通话不存在: CallId={CallId}, UserId={UserId}", callId, userId);
                 throw new InvalidOperationException("通话不存在");
+            }
 
             // 更新数据库记录
             var callHistory = await _context.CallHistories.FindAsync(callSession.CallHistoryId);
@@ -136,6 +148,8 @@ namespace VideoCallAPI.Services
                 
                 await _context.SaveChangesAsync();
             }
+
+            _logger.LogInformation("结束通话: CallId={CallId}, UserId={UserId}", callId, userId);
         }
 
         public async Task UpdateUserOnlineStatus(int userId, bool isOnline)
@@ -174,6 +188,9 @@ namespace VideoCallAPI.Services
 
             _context.RoomParticipants.Add(participant);
             await _context.SaveChangesAsync();
+
+            _logger.LogInformation("创建房间: RoomId={RoomId}, RoomCode={RoomCode}, CreatorId={CreatorId}, RoomName={RoomName}", 
+                room.id, room.room_code, userId, room.room_name);
 
             var creator = await _context.users.FindAsync(userId);
             return new RoomResponseDto

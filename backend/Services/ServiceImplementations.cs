@@ -14,22 +14,30 @@ namespace VideoCallAPI.Services
     {
         private readonly VideoCallDbContext _context;
         private readonly IJwtService _jwtService;
+        private readonly ILogger<UserService> _logger;
 
-        public UserService(VideoCallDbContext context, IJwtService jwtService)
+        public UserService(VideoCallDbContext context, IJwtService jwtService, ILogger<UserService> logger)
         {
             _context = context;
             _jwtService = jwtService;
+            _logger = logger;
         }
 
         public async Task<UserResponseDto> RegisterAsync(UserRegistrationDto registrationDto)
         {
             // 检查用户名是否已存在
             if (await _context.users.AnyAsync(u => u.username == registrationDto.username))
+            {
+                _logger.LogWarning("注册失败，用户名已存在: {Username}", registrationDto.username);
                 throw new InvalidOperationException("用户名已存在");
+            }
 
             // 检查邮箱是否已存在
             if (await _context.users.AnyAsync(u => u.email == registrationDto.email))
+            {
+                _logger.LogWarning("注册失败，邮箱已存在: {Email}", registrationDto.email);
                 throw new InvalidOperationException("邮箱已存在");
+            }
 
             var user = new User
             {
@@ -42,6 +50,7 @@ namespace VideoCallAPI.Services
             _context.users.Add(user);
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("用户注册成功: UserId={UserId}, Username={Username}", user.id, user.username);
             return MapToUserResponse(user);
         }
 
@@ -49,13 +58,17 @@ namespace VideoCallAPI.Services
         {
             var user = await _context.users.FirstOrDefaultAsync(u => u.username == loginDto.username);
             if (user == null || !BCrypt.Net.BCrypt.Verify(loginDto.password, user.password_hash))
+            {
+                _logger.LogWarning("登录失败，用户名或密码错误: {Username}", loginDto.username);
                 throw new UnauthorizedAccessException("用户名或密码错误");
+            }
 
             // 更新最后登录时间
             user.last_login_at = DateTime.UtcNow;
             user.is_online = true;
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("用户登录成功: UserId={UserId}, Username={Username}", user.id, user.username);
             return _jwtService.GenerateToken(user);
         }
 
@@ -199,10 +212,12 @@ namespace VideoCallAPI.Services
     public class ContactService : IContactService
     {
         private readonly VideoCallDbContext _context;
+        private readonly ILogger<ContactService> _logger;
 
-        public ContactService(VideoCallDbContext context)
+        public ContactService(VideoCallDbContext context, ILogger<ContactService> logger)
         {
             _context = context;
+            _logger = logger;
         }
 
         public async Task<ContactResponseDto> AddContactAsync(int userId, AddContactDto addContactDto)
@@ -210,14 +225,23 @@ namespace VideoCallAPI.Services
             // 查找要添加的用户
             var contactUser = await _context.users.FirstOrDefaultAsync(u => u.username == addContactDto.username);
             if (contactUser == null)
+            {
+                _logger.LogWarning("添加联系人失败，用户不存在: UserId={UserId}, ContactUsername={ContactUsername}", userId, addContactDto.username);
                 throw new ArgumentException("用户不存在");
+            }
 
             if (contactUser.id == userId)
+            {
+                _logger.LogWarning("添加联系人失败，不能添加自己: UserId={UserId}", userId);
                 throw new InvalidOperationException("不能添加自己为联系人");
+            }
 
             // 检查是否已经是联系人
             if (await _context.Contacts.AnyAsync(c => c.user_id == userId && c.contact_user_id == contactUser.id))
+            {
+                _logger.LogWarning("添加联系人失败，已在联系人列表中: UserId={UserId}, ContactUserId={ContactUserId}", userId, contactUser.id);
                 throw new InvalidOperationException("用户已在联系人列表中");
+            }
 
             // 创建双向联系人关系
             var contact1 = new Contact
@@ -239,6 +263,9 @@ namespace VideoCallAPI.Services
             _context.Contacts.Add(contact1);
             _context.Contacts.Add(contact2);
             await _context.SaveChangesAsync();
+
+            _logger.LogInformation("添加联系人成功: UserId={UserId}, ContactUserId={ContactUserId}, ContactId={ContactId}", 
+                userId, contactUser.id, contact1.id);
 
             return new ContactResponseDto
             {
@@ -450,10 +477,12 @@ namespace VideoCallAPI.Services
     public class ChatService : IChatService
     {
         private readonly VideoCallDbContext _context;
+        private readonly ILogger<ChatService> _logger;
 
-        public ChatService(VideoCallDbContext context)
+        public ChatService(VideoCallDbContext context, ILogger<ChatService> logger)
         {
             _context = context;
+            _logger = logger;
         }
 
 public async Task<ChatMessageDto> SendMessageAsync(int senderId, SendMessageDto sendMessageDto)
@@ -486,6 +515,9 @@ public async Task<ChatMessageDto> SendMessageAsync(int senderId, SendMessageDto 
         .Include(m => m.sender)
         .Include(m => m.receiver)
         .FirstOrDefaultAsync(m => m.id == message.id);
+
+    _logger.LogInformation("消息发送成功: MessageId={MessageId}, SenderId={SenderId}, ReceiverId={ReceiverId}, Type={Type}", 
+        message.id, senderId, sendMessageDto.receiver_id, sendMessageDto.type);
 
     return MapToChatMessageDto(loadedMessage!);
 }

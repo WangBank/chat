@@ -19,11 +19,13 @@ namespace VideoCallAPI.Controllers
     {
         private readonly IUserService _userService;
         private readonly IJwtService _jwtService;
+        private readonly ILogger<AuthController> _logger;
 
-        public AuthController(IUserService userService, IJwtService jwtService)
+        public AuthController(IUserService userService, IJwtService jwtService, ILogger<AuthController> logger)
         {
             _userService = userService;
             _jwtService = jwtService;
+            _logger = logger;
         }
 
         [HttpPost("register")]
@@ -31,7 +33,9 @@ namespace VideoCallAPI.Controllers
         {
             try
             {
+                _logger.LogInformation("用户注册请求: {Username}, {Email}", registrationDto.username, registrationDto.email);
                 var user = await _userService.RegisterAsync(registrationDto);
+                _logger.LogInformation("用户注册成功: UserId={UserId}, Username={Username}", user.id, user.username);
                 return Ok(new ApiResponse<UserResponseDto>
                 {
                     Success = true,
@@ -41,6 +45,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "用户注册失败: Username={Username}, Email={Email}", registrationDto.username, registrationDto.email);
                 return BadRequest(new ApiResponse<UserResponseDto>
                 {
                     Success = false,
@@ -55,11 +60,13 @@ namespace VideoCallAPI.Controllers
         {
             try
             {
+                _logger.LogInformation("用户登录请求: {Username}", loginDto.username);
                 var token = await _userService.LoginAsync(loginDto);
                 var userId = _jwtService.GetUserIdFromToken(token);
                 
                 if (userId == null)
                 {
+                    _logger.LogWarning("登录失败，无法从Token中获取用户ID: {Username}", loginDto.username);
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
@@ -69,6 +76,7 @@ namespace VideoCallAPI.Controllers
                 }
                 
                 var user = await _userService.GetUserByIdAsync(userId.Value);
+                _logger.LogInformation("用户登录成功: UserId={UserId}, Username={Username}", userId.Value, loginDto.username);
 
                 return Ok(new ApiResponse<object>
                 {
@@ -83,6 +91,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "用户登录失败: Username={Username}", loginDto.username);
                 return BadRequest(new ApiResponse<object>
                 {
                     Success = false,
@@ -99,10 +108,12 @@ namespace VideoCallAPI.Controllers
             try
             {
                 var userId = GetUserId();
+                _logger.LogInformation("用户修改密码请求: UserId={UserId}", userId);
                 var success = await _userService.ChangePasswordAsync(userId, changePasswordDto);
                 
                 if (success)
                 {
+                    _logger.LogInformation("密码修改成功: UserId={UserId}", userId);
                     return Ok(new ApiResponse
                     {
                         Success = true,
@@ -110,6 +121,7 @@ namespace VideoCallAPI.Controllers
                     });
                 }
                 
+                _logger.LogWarning("密码修改失败: UserId={UserId}", userId);
                 return BadRequest(new ApiResponse
                 {
                     Success = false,
@@ -118,6 +130,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "密码修改失败: UserId={UserId}", GetUserId());
                 return BadRequest(new ApiResponse
                 {
                     Success = false,
@@ -144,6 +157,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "获取用户信息失败: UserId={UserId}", GetUserId());
                 return BadRequest(new ApiResponse<UserResponseDto>
                 {
                     Success = false,
@@ -159,7 +173,9 @@ namespace VideoCallAPI.Controllers
             try
             {
                 var userId = GetUserId();
+                _logger.LogInformation("更新用户个人资料: UserId={UserId}", userId);
                 var result = await _userService.UpdateProfileAsync(userId, updateProfileDto);
+                _logger.LogInformation("用户个人资料更新成功: UserId={UserId}", userId);
                 return Ok(new ApiResponse<UserResponseDto>
                 {
                     Success = true,
@@ -169,6 +185,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "更新用户个人资料失败: UserId={UserId}", GetUserId());
                 return BadRequest(new ApiResponse<UserResponseDto>
                 {
                     Success = false,
@@ -185,6 +202,7 @@ namespace VideoCallAPI.Controllers
             {
                 if (avatar == null || avatar.Length == 0)
                 {
+                    _logger.LogWarning("头像上传失败: 文件为空");
                     return BadRequest(new ApiResponse<UserResponseDto>
                     {
                         Success = false,
@@ -198,6 +216,7 @@ namespace VideoCallAPI.Controllers
                 var fileExtension = Path.GetExtension(avatar.FileName).ToLowerInvariant();
                 if (!allowedExtensions.Contains(fileExtension))
                 {
+                    _logger.LogWarning("头像上传失败: 不支持的文件格式 {Extension}", fileExtension);
                     return BadRequest(new ApiResponse<UserResponseDto>
                     {
                         Success = false,
@@ -209,6 +228,7 @@ namespace VideoCallAPI.Controllers
                 // 检查文件大小 (最大 5MB)
                 if (avatar.Length > 5 * 1024 * 1024)
                 {
+                    _logger.LogWarning("头像上传失败: 文件过大 {Size}MB", avatar.Length / (1024 * 1024));
                     return BadRequest(new ApiResponse<UserResponseDto>
                     {
                         Success = false,
@@ -218,7 +238,9 @@ namespace VideoCallAPI.Controllers
                 }
 
                 var userId = GetUserId();
+                _logger.LogInformation("用户上传头像: UserId={UserId}, FileName={FileName}, Size={Size}", userId, avatar.FileName, avatar.Length);
                 var result = await _userService.UploadAvatarAsync(userId, avatar);
+                _logger.LogInformation("头像上传成功: UserId={UserId}", userId);
                 return Ok(new ApiResponse<UserResponseDto>
                 {
                     Success = true,
@@ -228,6 +250,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "头像上传失败: UserId={UserId}", GetUserId());
                 return BadRequest(new ApiResponse<UserResponseDto>
                 {
                     Success = false,
@@ -260,6 +283,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "搜索用户失败: UserId={UserId}, Query={Query}", GetUserId(), query);
                 return BadRequest(new ApiResponse<UserSearchResultDto>
                 {
                     Success = false,
@@ -286,10 +310,12 @@ namespace VideoCallAPI.Controllers
     public class ContactsController : ControllerBase
     {
         private readonly IContactService _contactService;
+        private readonly ILogger<ContactsController> _logger;
 
-        public ContactsController(IContactService contactService)
+        public ContactsController(IContactService contactService, ILogger<ContactsController> logger)
         {
             _contactService = contactService;
+            _logger = logger;
         }
 
         [HttpGet]
@@ -308,6 +334,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "获取联系人列表失败: UserId={UserId}", GetUserId());
                 Console.WriteLine(ex.Message);
                 return BadRequest(new ApiResponse<List<ContactResponseDto>>
                 {
@@ -349,7 +376,9 @@ namespace VideoCallAPI.Controllers
             try
             {
                 var userId = GetUserId();
+                _logger.LogInformation("添加联系人请求: UserId={UserId}, ContactUsername={ContactUsername}", userId, addContactDto.username);
                 var contact = await _contactService.AddContactAsync(userId, addContactDto);
+                _logger.LogInformation("添加联系人成功: UserId={UserId}, ContactId={ContactId}", userId, contact.id);
                 
                 return Ok(new ApiResponse<ContactResponseDto>
                 {
@@ -360,6 +389,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "添加联系人失败: UserId={UserId}, ContactUsername={ContactUsername}", GetUserId(), addContactDto.username);
                 return BadRequest(new ApiResponse<ContactResponseDto>
                 {
                     Success = false,
@@ -375,7 +405,9 @@ namespace VideoCallAPI.Controllers
             try
             {
                 var userId = GetUserId();
+                _logger.LogInformation("删除联系人请求: UserId={UserId}, ContactId={ContactId}", userId, contactId);
                 await _contactService.RemoveContactAsync(userId, contactId);
+                _logger.LogInformation("删除联系人成功: UserId={UserId}, ContactId={ContactId}", userId, contactId);
                 return Ok(new ApiResponse
                 {
                     Success = true,
@@ -384,6 +416,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "删除联系人失败: UserId={UserId}, ContactId={ContactId}", GetUserId(), contactId);
                 return BadRequest(new ApiResponse
                 {
                     Success = false,
@@ -462,11 +495,13 @@ namespace VideoCallAPI.Controllers
     {
         private readonly IChatService _chatService;
         private readonly IHubContext<VideoCallHub> _hubContext;
+        private readonly ILogger<ChatController> _logger;
 
-        public ChatController(IChatService chatService, IHubContext<VideoCallHub> hubContext)
+        public ChatController(IChatService chatService, IHubContext<VideoCallHub> hubContext, ILogger<ChatController> logger)
         {
             _chatService = chatService;
             _hubContext = hubContext;
+            _logger = logger;
         }
 
         [HttpPost("send")]
@@ -490,6 +525,7 @@ namespace VideoCallAPI.Controllers
             try
             {
                 var userId = GetUserId();
+                _logger.LogInformation("发送消息: SenderId={SenderId}, ReceiverId={ReceiverId}, Type={Type}", userId, sendMessageDto.receiver_id, sendMessageDto.type);
                 var message = await _chatService.SendMessageAsync(userId, sendMessageDto);
                 
                 // 通过SignalR发送新消息给接收者
@@ -497,6 +533,7 @@ namespace VideoCallAPI.Controllers
                 // 同时发送给发送者（用于同步显示）
                 await _hubContext.Clients.Group($"user_{userId}").SendAsync("NewMessage", message);
                 
+                _logger.LogInformation("消息发送成功: MessageId={MessageId}", message.id);
                 return Ok(new ApiResponse<ChatMessageDto>
                 {
                     Success = true,
@@ -506,6 +543,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "发送消息失败: SenderId={SenderId}, ReceiverId={ReceiverId}", GetUserId(), sendMessageDto.receiver_id);
                 return BadRequest(new ApiResponse<ChatMessageDto>
                 {
                     Success = false,
@@ -531,6 +569,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "获取聊天记录失败: UserId={UserId}, ContactId={ContactId}", GetUserId(), contactId);
                 return BadRequest(new ApiResponse<List<ChatMessageDto>>
                 {
                     Success = false,
@@ -655,10 +694,12 @@ namespace VideoCallAPI.Controllers
     public class CallsController : ControllerBase
     {
         private readonly ICallService _callService;
+        private readonly ILogger<CallsController> _logger;
 
-        public CallsController(ICallService callService)
+        public CallsController(ICallService callService, ILogger<CallsController> logger)
         {
             _callService = callService;
+            _logger = logger;
         }
 
         [HttpGet("history")]
@@ -677,6 +718,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "获取通话记录失败: UserId={UserId}", GetUserId());
                 return BadRequest(new ApiResponse<List<CallHistory>>
                 {
                     Success = false,
@@ -692,7 +734,9 @@ namespace VideoCallAPI.Controllers
             try
             {
                 var userId = GetUserId();
+                _logger.LogInformation("创建房间请求: UserId={UserId}, RoomName={RoomName}", userId, createRoomDto.room_name);
                 var room = await _callService.CreateRoomAsync(userId, createRoomDto);
+                _logger.LogInformation("房间创建成功: RoomId={RoomId}", room.id);
                 
                 return Ok(new ApiResponse<RoomResponseDto>
                 {
@@ -703,6 +747,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "房间创建失败: UserId={UserId}", GetUserId());
                 return BadRequest(new ApiResponse<RoomResponseDto>
                 {
                     Success = false,
@@ -730,11 +775,13 @@ namespace VideoCallAPI.Controllers
     {
         private readonly IUserService _userService;
         private readonly VideoCallDbContext _context;
+        private readonly ILogger<AdminController> _logger;
 
-        public AdminController(IUserService userService, VideoCallDbContext context)
+        public AdminController(IUserService userService, VideoCallDbContext context, ILogger<AdminController> logger)
         {
             _userService = userService;
             _context = context;
+            _logger = logger;
         }
 
         [HttpGet("online-users")]
@@ -747,6 +794,7 @@ namespace VideoCallAPI.Controllers
                 var user = await _userService.GetUserByIdAsync(userId);
                 if (user == null || user.username != "admin")
                 {
+                    _logger.LogWarning("非管理员尝试访问在线用户列表: UserId={UserId}", userId);
                     return Unauthorized(new ApiResponse<List<UserResponseDto>>
                     {
                         Success = false,
@@ -778,6 +826,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "获取在线用户列表失败: UserId={UserId}", GetUserId());
                 return BadRequest(new ApiResponse<List<UserResponseDto>>
                 {
                     Success = false,
@@ -861,6 +910,7 @@ namespace VideoCallAPI.Controllers
                 var adminUser = await _userService.GetUserByIdAsync(adminUserId);
                 if (adminUser == null || adminUser.username != "admin")
                 {
+                    _logger.LogWarning("非管理员尝试修改用户密码: AdminUserId={AdminUserId}, TargetUserId={TargetUserId}", adminUserId, dto.user_id);
                     return Unauthorized(new ApiResponse
                     {
                         Success = false,
@@ -872,6 +922,7 @@ namespace VideoCallAPI.Controllers
                 var targetUser = await _context.users.FindAsync(dto.user_id);
                 if (targetUser == null)
                 {
+                    _logger.LogWarning("修改密码失败，用户不存在: TargetUserId={TargetUserId}", dto.user_id);
                     return BadRequest(new ApiResponse
                     {
                         Success = false,
@@ -882,6 +933,7 @@ namespace VideoCallAPI.Controllers
                 // 不允许修改admin用户的密码
                 if (targetUser.username == "admin")
                 {
+                    _logger.LogWarning("尝试修改管理员密码: AdminUserId={AdminUserId}", adminUserId);
                     return BadRequest(new ApiResponse
                     {
                         Success = false,
@@ -889,10 +941,14 @@ namespace VideoCallAPI.Controllers
                     });
                 }
 
+                _logger.LogInformation("管理员修改用户密码: AdminUserId={AdminUserId}, TargetUserId={TargetUserId}, TargetUsername={TargetUsername}", 
+                    adminUserId, dto.user_id, targetUser.username);
+
                 targetUser.password_hash = BCrypt.Net.BCrypt.HashPassword(dto.new_password);
                 targetUser.updated_at = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
 
+                _logger.LogInformation("管理员修改用户密码成功: TargetUserId={TargetUserId}", dto.user_id);
                 return Ok(new ApiResponse
                 {
                     Success = true,
@@ -901,6 +957,8 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "管理员修改用户密码失败: AdminUserId={AdminUserId}, TargetUserId={TargetUserId}", 
+                    GetUserId(), dto.user_id);
                 return BadRequest(new ApiResponse
                 {
                     Success = false,

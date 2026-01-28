@@ -10,8 +10,35 @@ using VideoCallAPI.Services;
 using VideoCallAPI.Models;
 using Microsoft.Extensions.FileProviders;
 using BCrypt.Net;
+using Serilog;
+using Serilog.Events;
+
+// 配置 Serilog
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Information)
+    .Enrich.FromLogContext()
+    .Enrich.WithEnvironmentName()
+    .Enrich.WithMachineName()
+    .Enrich.WithThreadId()
+    .WriteTo.Console()
+    .WriteTo.File(
+        "logs/videocall-.log",
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 30,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
+
+try
+{
+    Log.Information("启动 VideoCall API 应用程序");
 
 var builder = WebApplication.CreateBuilder(args);
+
+// 使用 Serilog 替换默认日志
+builder.Host.UseSerilog();
 
 // Add services to the container.
 builder.Services.AddControllers()
@@ -279,3 +306,13 @@ else
 }
 
 app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "应用程序启动失败");
+    throw;
+}
+finally
+{
+    Log.CloseAndFlush();
+}
