@@ -9,7 +9,7 @@ import 'dart:io'; // Added for File
 
 class ApiService {
   static String get baseUrl => AppConfig.baseUrl;
-  
+
   String? _token;
   User? _currentUser;
 
@@ -37,7 +37,7 @@ class ApiService {
     }
     return headers;
   }
-  
+
   // 获取当前headers（用于调试）
   Map<String, String> get currentHeaders => _headers;
 
@@ -75,7 +75,7 @@ class ApiService {
             // 处理验证错误
             final errors = errorData['errors'] as Map<String, dynamic>;
             final errorList = <String>[];
-            
+
             if (errors['username'] != null) {
               final usernameErrors = errors['username'] as List;
               errorList.addAll(usernameErrors.cast<String>());
@@ -88,7 +88,7 @@ class ApiService {
               final passwordErrors = errors['password'] as List;
               errorList.addAll(passwordErrors.cast<String>());
             }
-            
+
             if (errorList.isNotEmpty) {
               errorMessage = errorList.join('\n');
             } else {
@@ -119,11 +119,12 @@ class ApiService {
     required String username,
     required String password,
   }) async {
+    String errorMessage = '登录失败';
     try {
       final url = '$baseUrl/auth/login';
       print(' 尝试连接到: $url');
       print(' 发送数据: {"username": "$username", "password": "***"}');
-      
+
       final response = await http.post(
         Uri.parse(url),
         headers: _headers,
@@ -140,7 +141,7 @@ class ApiService {
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         print('✅ 登录响应解析: $responseData');
-        
+
         // 检查响应格式
         if (responseData['success'] == true && responseData['data'] != null) {
           final data = responseData['data'];
@@ -161,16 +162,17 @@ class ApiService {
           }
           return responseData;
         } else {
-          print('❌ 响应格式错误: success=${responseData['success']}, data=${responseData['data']}');
+          print(
+              '❌ 响应格式错误: success=${responseData['success']}, data=${responseData['data']}');
           throw Exception('登录失败: 响应格式错误');
         }
       } else {
         print('❌ HTTP错误: ${response.statusCode}');
-        String errorMessage = '登录失败';
+
         try {
           final errorData = jsonDecode(response.body);
           print('📄 错误响应数据: $errorData');
-          
+
           if (errorData['errors'] != null) {
             // 处理错误信息
             final errors = errorData['errors'];
@@ -186,7 +188,7 @@ class ApiService {
               // errors是对象格式（用于验证错误）
               final errorMap = errors as Map<String, dynamic>;
               final errorList = <String>[];
-              
+
               if (errorMap['username'] != null) {
                 final usernameErrors = errorMap['username'] as List;
                 errorList.addAll(usernameErrors.cast<String>());
@@ -195,7 +197,7 @@ class ApiService {
                 final passwordErrors = errorMap['password'] as List;
                 errorList.addAll(passwordErrors.cast<String>());
               }
-              
+
               if (errorList.isNotEmpty) {
                 errorMessage = errorList.join('\n');
               } else {
@@ -216,18 +218,20 @@ class ApiService {
       }
     } catch (e) {
       print(' 异常详情: $e');
+
       if (e.toString().contains('SocketException')) {
         throw Exception('网络连接失败，请检查服务器地址和网络连接');
       } else if (e.toString().contains('TimeoutException')) {
         throw Exception('请求超时，请检查网络连接');
       } else {
-        throw Exception('登录错误: $e');
+        throw Exception('登录错误: $errorMessage');
       }
     }
   }
 
   // 获取联系人列表
   Future<List<Contact>> getContacts() async {
+    String errorMessage = '获取联系人失败';
     try {
       print('📞 获取联系人列表...');
       final response = await http.get(
@@ -242,24 +246,28 @@ class ApiService {
         final responseData = jsonDecode(response.body);
         if (responseData['success'] == true && responseData['data'] != null) {
           final List<dynamic> contactsData = responseData['data'];
-          final contacts = contactsData.map((json) => Contact.fromJson(json)).toList();
+          final contacts =
+              contactsData.map((json) => Contact.fromJson(json)).toList();
           print('✅ 成功获取 ${contacts.length} 个联系人');
           return contacts;
         } else {
-          throw Exception('获取联系人失败: 响应格式错误');
+          errorMessage = '获取联系人失败: 响应格式错误';
+          throw Exception(errorMessage);
         }
       } else {
         final errorData = jsonDecode(response.body);
-        throw Exception('获取联系人失败: ${errorData['message'] ?? response.body}');
+        errorMessage = '获取联系人失败: ${errorData['message'] ?? response.body}';
+        throw Exception(errorMessage);
       }
     } catch (e) {
-      print('❌ 获取联系人错误: $e');
-      throw Exception('获取联系人错误: $e');
+      print('❌ 获取联系人错误: $errorMessage');
+      throw Exception('获取联系人错误: $errorMessage');
     }
   }
 
   // 添加联系人
-  Future<Contact> addContact({required String username, String? displayName}) async {
+  Future<Contact> addContact(
+      {required String username, String? displayName}) async {
     try {
       print('➕ 添加联系人: $username');
       final response = await http.post(
@@ -314,7 +322,8 @@ class ApiService {
   }
 
   // 修改联系人备注
-  Future<Contact> updateContactDisplayName(int contactId, String displayName) async {
+  Future<Contact> updateContactDisplayName(
+      int contactId, String displayName) async {
     try {
       print('✏️ 修改联系人备注: $contactId -> $displayName');
       final response = await http.patch(
@@ -358,7 +367,8 @@ class ApiService {
         print('✅ 成功${isBlocked ? "屏蔽" : "取消屏蔽"}联系人');
       } else {
         final errorData = jsonDecode(response.body);
-        throw Exception('${isBlocked ? "屏蔽" : "取消屏蔽"}联系人失败: ${errorData['message'] ?? response.body}');
+        throw Exception(
+            '${isBlocked ? "屏蔽" : "取消屏蔽"}联系人失败: ${errorData['message'] ?? response.body}');
       }
     } catch (e) {
       print('❌ ${isBlocked ? "屏蔽" : "取消屏蔽"}联系人错误: $e');
@@ -382,7 +392,8 @@ class ApiService {
         final responseData = jsonDecode(response.body);
         if (responseData['success'] == true && responseData['data'] != null) {
           final List<dynamic> messagesData = responseData['data'];
-          final messages = messagesData.map((json) => ChatMessage.fromJson(json)).toList();
+          final messages =
+              messagesData.map((json) => ChatMessage.fromJson(json)).toList();
           print('✅ 成功获取 ${messages.length} 条聊天记录');
           return messages;
         } else {
@@ -450,10 +461,11 @@ class ApiService {
   }
 
   // 发送消息
-  Future<ChatMessage> sendMessage(int receiverId, String content, MessageType type) async {
+  Future<ChatMessage> sendMessage(
+      int receiverId, String content, MessageType type) async {
     try {
       print('📤 发送消息给: $receiverId');
-      
+
       // 将MessageType转换为后端期望的格式
       String typeString;
       switch (type) {
@@ -475,7 +487,7 @@ class ApiService {
         default:
           typeString = 'Text';
       }
-      
+
       final response = await http.post(
         Uri.parse('$baseUrl/chat/send'),
         headers: _headers,
@@ -616,7 +628,7 @@ class ApiService {
   Future<User> uploadAvatar(File imageFile) async {
     try {
       print('📤 上传头像...');
-      
+
       var request = http.MultipartRequest(
         'POST',
         Uri.parse('$baseUrl/auth/upload-avatar'),
