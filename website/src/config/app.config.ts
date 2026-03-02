@@ -1,20 +1,20 @@
 import { decryptConfig } from '../utils/encryption.utils';
 
-// 应用配置
+// App configuration
 export const APP_CONFIG = {
-  // API基础URL
+  // API base URL
   API_BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://common.wangbank.top:7001',
   
   // SignalR Hub URL
   SIGNALR_HUB_URL: import.meta.env.VITE_SIGNALR_HUB_URL || 'http://common.wangbank.top:7001/videocallhub',
   
-  // 应用名称
-  APP_NAME: '简聊',
+  // App name
+  APP_NAME: 'SimpleChat',
   
-  // 版本号
+  // Version
   VERSION: '1.0.0',
   
-  // APK下载地址
+  // APK download URL
   APK_DOWNLOAD_URL: '/archives/andriod/app-release.apk',
 
   ADMIN_USERNAME: decryptConfig('YWRtaW4=')

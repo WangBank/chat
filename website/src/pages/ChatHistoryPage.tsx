@@ -35,14 +35,14 @@ const ChatHistoryPage = observer(() => {
       if (response.success && response.data) {
         let filteredMessages = response.data || [];
 
-        // 按内容搜索
+        // Search by content
         if (searchQuery.trim()) {
           filteredMessages = filteredMessages.filter((msg: any) =>
             msg.content.toLowerCase().includes(searchQuery.toLowerCase())
           );
         }
 
-        // 按日期范围搜索
+        // Search by date range
         if (dateRange && dateRange[0] && dateRange[1]) {
           const startDate = dateRange[0].startOf('day').toDate();
           const endDate = dateRange[1].endOf('day').toDate();
@@ -55,8 +55,8 @@ const ChatHistoryPage = observer(() => {
         setMessages(filteredMessages);
       }
     } catch (error) {
-      console.error('加载消息失败:', error);
-      message.error('加载消息失败');
+      console.error('Failed to load messages:', error);
+      message.error('Failed to load messages');
     } finally {
       setLoading(false);
     }
@@ -79,19 +79,19 @@ const ChatHistoryPage = observer(() => {
               icon={<ArrowLeftOutlined />}
               onClick={() => navigate('/chat')}
             >
-              返回
+              Back
             </Button>
             <span>
               {contact
-                ? `${contact.display_name || contact.contact_user.display_name || contact.contact_user.username} - 聊天记录`
-                : '聊天记录'}
+                ? `${contact.display_name || contact.contact_user.display_name || contact.contact_user.username} - Chat History`
+                : 'Chat History'}
             </span>
           </Space>
         }
       >
         <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
           <Input
-            placeholder="搜索消息内容"
+            placeholder="Search message content"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onPressEnter={handleSearch}
@@ -107,19 +107,19 @@ const ChatHistoryPage = observer(() => {
             value={dateRange}
             onChange={(dates) => setDateRange(dates as [dayjs.Dayjs, dayjs.Dayjs] | null)}
             style={{ width: '100%' }}
-            placeholder={['开始日期', '结束日期']}
+            placeholder={['Start date', 'End date']}
           />
           <Button type="primary" onClick={handleSearch} loading={loading}>
-            搜索
+            Search
           </Button>
         </Space>
 
         <List
           loading={loading}
           dataSource={messages}
-          locale={{ emptyText: <Empty description="暂无消息" /> }}
+          locale={{ emptyText: <Empty description="No messages yet" /> }}
           renderItem={(msg, index) => {
-            // 简单的判断：如果当前联系人是接收者，那么发送的消息就是sent
+            // Simple rule: if current contact is receiver, sent messages belong to current user
             const currentUserId = contact?.contact_user.id;
             const isCurrentUserMessage = msg.sender_id !== currentUserId;
 
@@ -158,7 +158,7 @@ const ChatHistoryPage = observer(() => {
       </Card>
 
       <div className="version-badge">
-        简聊 v{APP_CONFIG.VERSION}
+        SimpleChat v{APP_CONFIG.VERSION}
       </div>
     </div>
   );

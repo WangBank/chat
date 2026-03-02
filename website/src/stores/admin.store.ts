@@ -33,7 +33,7 @@ class AdminStore {
         this.onlineUsers = response.data;
       }
     } catch (error) {
-      console.error('加载在线用户失败:', error);
+      console.error('Failed to load online users:', error);
     } finally {
       this.isLoading = false;
     }
@@ -49,7 +49,7 @@ class AdminStore {
         this.totalUsers = response.data.total_count || 0;
       }
     } catch (error) {
-      console.error('加载所有用户失败:', error);
+      console.error('Failed to load all users:', error);
     } finally {
       this.isLoading = false;
     }

@@ -24,7 +24,7 @@ class WebRTCService {
   private isInCall: boolean = false;
   private pendingOffer: { offer: RTCSessionDescriptionInit; receiverId: number } | null = null;
 
-  // 回调函数
+  // Callbacks
   onLocalStream?: (stream: MediaStream) => void;
   onRemoteStream?: (stream: MediaStream) => void;
   onCallEnded?: () => void;
@@ -38,7 +38,7 @@ class WebRTCService {
     return this.isInCall;
   }
 
-  // 创建PeerConnection
+  // Create peer connection
   private createPeerConnection(): RTCPeerConnection {
     const configuration: RTCConfiguration = {
       iceServers: [
@@ -49,29 +49,29 @@ class WebRTCService {
 
     const pc = new RTCPeerConnection(configuration);
 
-    // 添加本地流
+    // Attach local stream
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => {
         pc.addTrack(track, this.localStream!);
       });
     }
 
-    // 监听远程流
+    // Listen for remote stream
     pc.ontrack = (event) => {
-      console.log('收到远程流');
+      console.log('Received remote stream');
       this.remoteStream = event.streams[0];
       this.onRemoteStream?.(this.remoteStream);
     };
 
-    // 监听ICE候选
+    // Listen for ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         const candidate = JSON.stringify(event.candidate);
-        // 如果currentCall存在，使用它的callId，否则使用临时值（会在收到CallInitiated时更新）
+        // Use current callId if available; otherwise temporary value
         const callId = this.currentCall?.callId || '';
         const currentUserId = this.getCurrentUserId();
         
-        // 确定接收者ID
+        // Resolve receiver ID
         let receiverId = 0;
         if (this.currentCall) {
           receiverId = this.currentCall.caller.id === currentUserId
@@ -90,9 +90,9 @@ class WebRTCService {
       }
     };
 
-    // 监听连接状态
+    // Listen for connection state
     pc.onconnectionstatechange = () => {
-      console.log('连接状态:', pc.connectionState);
+      console.log('Connection state:', pc.connectionState);
       if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
         this.endCall();
       }
@@ -101,7 +101,7 @@ class WebRTCService {
     return pc;
   }
 
-  // 获取用户媒体
+  // Get user media
   async getUserMedia(callType: CallType): Promise<MediaStream> {
     const constraints: MediaStreamConstraints = {
       audio: true,
@@ -114,45 +114,45 @@ class WebRTCService {
       this.onLocalStream?.(stream);
       return stream;
     } catch (error) {
-      console.error('获取用户媒体失败:', error);
+      console.error('Failed to get user media:', error);
       throw error;
     }
   }
 
-  // 发起通话
+  // Initiate call
   async initiateCall(receiverId: number, callType: CallType): Promise<void> {
     try {
-      // 获取用户媒体
+      // Get user media
       await this.getUserMedia(callType);
 
-      // 创建PeerConnection
+      // Create peer connection
       this.peerConnection = this.createPeerConnection();
 
-      // 创建Offer
+      // Create offer
       if (this.peerConnection) {
         const offer = await this.peerConnection.createOffer();
         await this.peerConnection.setLocalDescription(offer);
 
-        // 保存Offer，等待call_id设置后再发送
+        // Store offer and send after call_id is available
         this.pendingOffer = {
           offer,
           receiverId,
         };
         
-        // 发起通话
+        // Initiate call
         await signalRService.initiateCall({
           receiver_id: receiverId,
           call_type: callType,
         });
       }
     } catch (error) {
-      console.error('发起通话失败:', error);
-      this.onError?.('发起通话失败');
+      console.error('Failed to initiate call:', error);
+      this.onError?.('Failed to initiate call');
       throw error;
     }
   }
 
-  // 发送待发送的Offer（在收到call_id后调用）
+  // Send pending offer (after call_id is received)
   async sendPendingOffer(callId: string): Promise<void> {
     if (this.pendingOffer && callId) {
       const offerData = JSON.stringify(this.pendingOffer.offer);
@@ -166,72 +166,71 @@ class WebRTCService {
     }
   }
 
-  // 接受通话
+  // Accept call
   async acceptCall(call: Call): Promise<void> {
     try {
       this.currentCall = call;
       this.isInCall = true;
 
-      // 获取用户媒体
+      // Get user media
       await this.getUserMedia(call.callType);
 
-      // 创建PeerConnection
+      // Create peer connection
       this.peerConnection = this.createPeerConnection();
 
-      // 加入通话
+      // Join call
       await signalRService.joinCall(call.callId);
 
-      // 应答通话
+      // Answer call
       await signalRService.answerCall(call.callId, true);
 
-      // 注意：不要在这里创建Answer
-      // Answer应该在收到Offer后，在handleWebRTCMessage中创建
-      // 如果已经收到Offer，handleWebRTCMessage会自动处理
+      // Do not create answer here
+      // Answer should be created in handleWebRTCMessage after receiving Offer
     } catch (error) {
-      console.error('接受通话失败:', error);
-      this.onError?.('接受通话失败');
+      console.error('Failed to accept call:', error);
+      this.onError?.('Failed to accept call');
       throw error;
     }
   }
 
-  // 拒绝通话
+  // Reject call
   async rejectCall(callId: string): Promise<void> {
     try {
       await signalRService.answerCall(callId, false);
     } catch (error) {
-      console.error('拒绝通话失败:', error);
+      console.error('Failed to reject call:', error);
     } finally {
-      // 确保清理资源
+      // Ensure resources are cleaned up
       this.cleanup();
     }
   }
 
-  // 处理WebRTC消息
+  // Handle WebRTC message
   async handleWebRTCMessage(message: WebRTCMessage): Promise<void> {
     try {
       const data = JSON.parse(message.data);
 
       switch (message.type) {
         case 1: // Offer
-          // 如果还没有PeerConnection，先创建（接收方场景）
+          // Create peer connection if not created yet (callee side)
           if (!this.peerConnection) {
-            // 确保已经获取用户媒体
+            // Ensure user media is available
             if (!this.localStream) {
-              // 需要知道通话类型，从currentCall获取
+              // Determine call type from currentCall
               if (this.currentCall) {
                 await this.getUserMedia(this.currentCall.callType);
               } else {
-                // 如果没有currentCall，默认使用视频通话
+                // Default to video call if currentCall is missing
                 await this.getUserMedia(CallType.Video);
               }
             }
             this.peerConnection = this.createPeerConnection();
           }
 
-          // 设置远程描述（Offer）
+          // Set remote description (offer)
           await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data));
           
-          // 创建Answer
+          // Create answer
           const answer = await this.peerConnection.createAnswer();
           await this.peerConnection.setLocalDescription(answer);
 
@@ -246,7 +245,7 @@ class WebRTCService {
 
         case 2: // Answer
           if (!this.peerConnection) {
-            console.error('收到Answer但没有PeerConnection');
+            console.error('Received answer without peer connection');
             return;
           }
           await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data));
@@ -254,42 +253,42 @@ class WebRTCService {
 
         case 3: // ICE Candidate
           if (!this.peerConnection) {
-            console.warn('收到ICE Candidate但没有PeerConnection，可能还在初始化');
+            console.warn('Received ICE candidate without peer connection; may still be initializing');
             return;
           }
           await this.peerConnection.addIceCandidate(new RTCIceCandidate(data));
           break;
       }
     } catch (error) {
-      console.error('处理WebRTC消息失败:', error);
-      this.onError?.('处理WebRTC消息失败');
+      console.error('Failed to handle WebRTC message:', error);
+      this.onError?.('Failed to handle WebRTC message');
     }
   }
 
-  // 结束通话
+  // End call
   async endCall(): Promise<void> {
     if (this.currentCall) {
       try {
         await signalRService.endCall(this.currentCall.callId);
       } catch (error) {
-        console.error('结束通话失败:', error);
+        console.error('Failed to end call:', error);
       }
     }
 
-    // 确保清理资源
+    // Ensure resources are cleaned up
     this.cleanup();
     this.onCallEnded?.();
   }
 
-  // 清理资源
+  // Cleanup resources
   private cleanup(): void {
-    // 停止本地流
+    // Stop local stream
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => track.stop());
       this.localStream = null;
     }
 
-    // 关闭PeerConnection
+    // Close peer connection
     if (this.peerConnection) {
       this.peerConnection.close();
       this.peerConnection = null;
@@ -301,7 +300,7 @@ class WebRTCService {
     this.pendingOffer = null;
   }
 
-  // 获取当前用户ID（从localStorage）
+  // Get current user ID from localStorage
   private getCurrentUserId(): number {
     const userStr = localStorage.getItem('user');
     if (userStr) {

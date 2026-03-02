@@ -23,11 +23,11 @@ const CallPage = observer(() => {
   const caller = callStore.currentCall?.caller;
   const receiver = callStore.currentCall?.receiver;
   const isCaller = caller?.id === currentUserId;
-  const callType = callStore.currentCall?.call_type || 1; // 1: 语音, 2: 视频
+  const callType = callStore.currentCall?.call_type || 1; // 1: voice, 2: video
   const isVideoCall = callType === 2;
 
   useEffect(() => {
-    // 设置视频流
+    // Setup media streams
     if (callStore.localStream && localVideoRef.current) {
       localVideoRef.current.srcObject = callStore.localStream;
     }
@@ -40,7 +40,7 @@ const CallPage = observer(() => {
       }
     }
 
-    // 计算通话时长
+    // Track call duration
     let durationInterval: ReturnType<typeof setInterval> | null = null;
     if (callStore.isInCall && callStore.currentCall) {
       const startTime = new Date(callStore.currentCall.start_time).getTime();
@@ -105,7 +105,7 @@ const CallPage = observer(() => {
 
   const otherUser = isCaller ? receiver : caller;
 
-  // CallPage只在通话中时显示，等待接听时由CallModal显示
+  // Show CallPage only during active calls; ringing state is handled by CallModal
   if (!callStore.isInCall) {
     return null;
   }
@@ -127,7 +127,7 @@ const CallPage = observer(() => {
         color: '#fff',
       }}
     >
-      {/* 视频通话：显示远程视频 */}
+      {/* Video call: show remote video */}
       {isVideoCall && callStore.isInCall && (
         <div
           style={{
@@ -154,7 +154,7 @@ const CallPage = observer(() => {
         </div>
       )}
 
-      {/* 视频通话：显示本地视频 */}
+      {/* Video call: show local video */}
       {isVideoCall && callStore.isInCall && (
         <div
           style={{
@@ -183,12 +183,12 @@ const CallPage = observer(() => {
         </div>
       )}
 
-      {/* 语音通话：显示音频播放器（隐藏） */}
+      {/* Voice call: hidden audio element */}
       {!isVideoCall && callStore.isInCall && (
         <audio ref={remoteAudioRef} autoPlay playsInline />
       )}
 
-      {/* 用户信息 */}
+      {/* User info */}
       <div
         style={{
           textAlign: 'center',
@@ -208,7 +208,7 @@ const CallPage = observer(() => {
         </h2>
         {callStore.isRinging && !callStore.isInCall && (
           <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 16 }}>
-            {isCaller ? '正在呼叫...' : '来电中...'}
+            {isCaller ? 'Calling...' : 'Incoming call...'}
           </p>
         )}
         {callStore.isInCall && (
@@ -218,9 +218,9 @@ const CallPage = observer(() => {
         )}
       </div>
 
-      {/* 控制按钮 */}
+      {/* Control buttons */}
       <Space size="large" style={{ zIndex: 1 }}>
-        {/* 静音按钮 */}
+        {/* Mute button */}
         {callStore.isInCall && (
           <Button
             type="primary"
@@ -237,7 +237,7 @@ const CallPage = observer(() => {
           />
         )}
 
-        {/* 视频开关（仅视频通话） */}
+        {/* Video toggle (video calls only) */}
         {callStore.isInCall && isVideoCall && (
           <Button
             type="primary"
@@ -254,7 +254,7 @@ const CallPage = observer(() => {
           />
         )}
 
-        {/* 挂断按钮 */}
+        {/* Hang up button */}
         <Button
           type="primary"
           shape="circle"

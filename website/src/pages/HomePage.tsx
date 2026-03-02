@@ -19,10 +19,10 @@ const HomePage = () => {
       <section className="hero-section">
         <div className="hero-content">
           <Title level={1} className="hero-title">
-            让每一次沟通更有意义
+            Make every conversation meaningful
           </Title>
           <Paragraph className="hero-description">
-            简聊 - 安全、私密、便捷的即时通讯应用
+            SimpleChat - secure, private, and convenient messaging
           </Paragraph>
           <Space size="large">
             <Button
@@ -31,69 +31,69 @@ const HomePage = () => {
               icon={<DownloadOutlined />}
               onClick={handleDownload}
             >
-              下载 Android 应用
+              Download Android App
             </Button>
             <Button
               size="large"
               onClick={() => navigate('/login')}
             >
-              立即使用
+              Get Started
             </Button>
           </Space>
         </div>
         <div className="hero-image">
-          <img src="/phone-mockup.png" alt="简聊应用" style={{ maxWidth: '100%', height: 'auto' }} />
+          <img src="/phone-mockup.png" alt="SimpleChat App" style={{ maxWidth: '100%', height: 'auto' }} />
         </div>
       </section>
 
       {/* Features Section */}
       <section className="features-section">
         <Title level={2} style={{ textAlign: 'center', marginBottom: 48 }}>
-          功能特点
+          Features
         </Title>
         <Row gutter={[32, 32]}>
           <Col xs={24} sm={12} md={8}>
             <Card className="feature-card">
               <MessageOutlined style={{ fontSize: 48, color: '#1890ff', marginBottom: 16 }} />
-              <Title level={4}>即时消息</Title>
+              <Title level={4}>Instant Messaging</Title>
               <Paragraph>
-                快速发送文字、图片、语音消息，让沟通更便捷
+                Send text, image, and voice messages quickly and smoothly
               </Paragraph>
             </Card>
           </Col>
           <Col xs={24} sm={12} md={8}>
             <Card className="feature-card">
               <PhoneOutlined style={{ fontSize: 48, color: '#52c41a', marginBottom: 16 }} />
-              <Title level={4}>语音通话</Title>
+              <Title level={4}>Voice Calls</Title>
               <Paragraph>
-                高清语音通话，随时随地与朋友家人保持联系
+                High-quality voice calls to stay connected anywhere
               </Paragraph>
             </Card>
           </Col>
           <Col xs={24} sm={12} md={8}>
             <Card className="feature-card">
               <VideoCameraOutlined style={{ fontSize: 48, color: '#ff4d4f', marginBottom: 16 }} />
-              <Title level={4}>视频通话</Title>
+              <Title level={4}>Video Calls</Title>
               <Paragraph>
-                流畅的视频通话体验，面对面交流更真实
+                Smooth video calls for a more natural face-to-face experience
               </Paragraph>
             </Card>
           </Col>
           <Col xs={24} sm={12} md={8}>
             <Card className="feature-card">
               <LockOutlined style={{ fontSize: 48, color: '#722ed1', marginBottom: 16 }} />
-              <Title level={4}>端到端加密</Title>
+              <Title level={4}>End-to-End Encryption</Title>
               <Paragraph>
-                所有消息和通话都经过端到端加密，保护您的隐私
+                All messages and calls are protected with end-to-end encryption
               </Paragraph>
             </Card>
           </Col>
           <Col xs={24} sm={12} md={8}>
             <Card className="feature-card">
               <TeamOutlined style={{ fontSize: 48, color: '#fa8c16', marginBottom: 16 }} />
-              <Title level={4}>联系人管理</Title>
+              <Title level={4}>Contact Management</Title>
               <Paragraph>
-                轻松管理您的联系人，随时添加和查找好友
+                Easily manage contacts and find friends anytime
               </Paragraph>
             </Card>
           </Col>
@@ -104,9 +104,9 @@ const HomePage = () => {
       <section className="cta-section">
         <Card>
           <div style={{ textAlign: 'center' }}>
-            <Title level={2}>开始使用简聊</Title>
+            <Title level={2}>Start Using SimpleChat</Title>
             <Paragraph style={{ fontSize: 16, marginBottom: 24 }}>
-              立即下载应用或登录网页版，体验安全便捷的通讯服务
+              Download the app or use web login to get started
             </Paragraph>
             <Space size="large">
               <Button
@@ -115,13 +115,13 @@ const HomePage = () => {
                 icon={<DownloadOutlined />}
                 onClick={handleDownload}
               >
-                下载 Android 应用
+                Download Android App
               </Button>
               <Button
                 size="large"
                 onClick={() => navigate('/login')}
               >
-                登录网页版
+                Open Web App
               </Button>
             </Space>
           </div>
@@ -131,11 +131,11 @@ const HomePage = () => {
       {/* Footer */}
       <footer className="home-footer">
         <div className="version-info">
-          <span>简聊 v{APP_CONFIG.VERSION}</span>
+          <span>SimpleChat v{APP_CONFIG.VERSION}</span>
         </div>
         <div className="footer-links">
-          <a href="/privacy">隐私政策</a>
-          <a href="/terms">服务条款</a>
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/terms">Terms of Service</a>
         </div>
       </footer>
     </div>

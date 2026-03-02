@@ -19,7 +19,7 @@ class ApiService {
       },
     });
 
-    // 请求拦截器：添加token
+    // Request interceptor: attach token
     this.api.interceptors.request.use(
       (config) => {
         const token = localStorage.getItem('token');
@@ -33,12 +33,12 @@ class ApiService {
       }
     );
 
-    // 响应拦截器：处理错误
+    // Response interceptor: handle errors
     this.api.interceptors.response.use(
       (response) => response,
       (error: AxiosError<ApiResponse>) => {
         if (error.response?.status === 401) {
-          // Token过期，清除本地存储并跳转到登录页
+          // Token expired, clear local storage and redirect to login
           localStorage.removeItem('token');
           localStorage.removeItem('user');
           window.location.href = '/login';
@@ -48,7 +48,7 @@ class ApiService {
     );
   }
 
-  // 用户相关API
+  // User APIs
   async register(data: { username: string; email: string; password: string }) {
     const response = await this.api.post<ApiResponse<{ token: string; user: any }>>(
       '/api/auth/register',
@@ -87,7 +87,7 @@ class ApiService {
     return response.data;
   }
 
-  // 联系人相关API
+  // Contact APIs
   async getContacts() {
     const response = await this.api.get<ApiResponse<any[]>>('/api/contacts');
     return response.data;
@@ -111,7 +111,7 @@ class ApiService {
     return response.data;
   }
 
-  // 聊天相关API
+  // Chat APIs
   async sendMessage(data: { receiver_id: number; content: string; type?: number }) {
     const response = await this.api.post<ApiResponse<any>>('/api/chat/send', data);
     return response.data;
@@ -132,7 +132,7 @@ class ApiService {
     return response.data;
   }
 
-  // 管理员API
+  // Admin APIs
   async getOnlineUsers() {
     const response = await this.api.get<ApiResponse<any[]>>('/api/admin/online-users');
     return response.data;

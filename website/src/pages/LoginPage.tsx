@@ -12,7 +12,7 @@ const LoginPage = observer(() => {
   const [activeTab, setActiveTab] = useState('login');
 
   useEffect(() => {
-    // 如果已经登录，根据用户类型跳转
+    // If already logged in, redirect by user type
     if (authStore.isAuthenticated) {
       if (authStore.user?.username === APP_CONFIG.ADMIN_USERNAME) {
         navigate('/admin');
@@ -25,25 +25,25 @@ const LoginPage = observer(() => {
   const onLogin = async (values: any) => {
     const result = await authStore.login(values.username, values.password);
     if (result.success) {
-      message.success('登录成功');
-      // 如果是admin用户，跳转到admin页面，否则跳转到chat页面
+      message.success('Login successful');
+      // Redirect admin to admin page; others to chat
       if (authStore.user?.username === APP_CONFIG.ADMIN_USERNAME) {
         navigate('/admin');
       } else {
         navigate('/chat');
       }
     } else {
-      message.error(result.message || '登录失败');
+      message.error(result.message || 'Login failed');
     }
   };
 
   const onRegister = async (values: any) => {
     const result = await authStore.register(values.username, values.email, values.password);
     if (result.success) {
-      message.success('注册成功');
+      message.success('Registration successful');
       navigate('/chat');
     } else {
-      message.error(result.message || '注册失败');
+      message.error(result.message || 'Registration failed');
     }
   };
 
@@ -53,7 +53,7 @@ const LoginPage = observer(() => {
       username: account.username,
       password: account.password,
     });
-    message.info('已生成随机账号和密码');
+    message.info('Random username and password generated');
   };
 
   return (
@@ -66,8 +66,8 @@ const LoginPage = observer(() => {
     }}>
       <Card style={{ width: 400, borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <h1 style={{ fontSize: 32, margin: 0, color: '#1890ff' }}>简聊</h1>
-          <p style={{ color: '#666', marginTop: 8 }}>让每一次沟通更有意义</p>
+          <h1 style={{ fontSize: 32, margin: 0, color: '#1890ff' }}>SimpleChat</h1>
+          <p style={{ color: '#666', marginTop: 8 }}>Make every conversation meaningful</p>
         </div>
 
         <Tabs
@@ -76,26 +76,26 @@ const LoginPage = observer(() => {
           items={[
             {
               key: 'login',
-              label: '登录',
+              label: 'Login',
               children: (
                 <Form form={form} onFinish={onLogin} layout="vertical">
                   <Form.Item
                     name="username"
-                    rules={[{ required: true, message: '请输入用户名' }]}
+                    rules={[{ required: true, message: 'Please enter your username' }]}
                   >
                     <Input
                       prefix={<UserOutlined />}
-                      placeholder="用户名"
+                      placeholder="Username"
                       size="large"
                     />
                   </Form.Item>
                   <Form.Item
                     name="password"
-                    rules={[{ required: true, message: '请输入密码' }]}
+                    rules={[{ required: true, message: 'Please enter your password' }]}
                   >
                     <Input.Password
                       prefix={<LockOutlined />}
-                      placeholder="密码"
+                      placeholder="Password"
                       size="large"
                     />
                   </Form.Item>
@@ -107,57 +107,57 @@ const LoginPage = observer(() => {
                       size="large"
                       loading={authStore.isLoading}
                     >
-                      登录
+                      Login
                     </Button>
                   </Form.Item>
                   <div style={{ textAlign: 'center' }}>
                     <Button type="link" onClick={generateRandomAccount}>
-                      随机生成账号密码
+                      Generate random account
                     </Button>
                     <span style={{ margin: '0 8px' }}>|</span>
-                    <Link to="/forgot-password">忘记密码？</Link>
+                    <Link to="/forgot-password">Forgot password?</Link>
                   </div>
                 </Form>
               ),
             },
             {
               key: 'register',
-              label: '注册',
+              label: 'Register',
               children: (
                 <Form form={form} onFinish={onRegister} layout="vertical">
                   <Form.Item
                     name="username"
-                    rules={[{ required: true, message: '请输入用户名' }]}
+                    rules={[{ required: true, message: 'Please enter your username' }]}
                   >
                     <Input
                       prefix={<UserOutlined />}
-                      placeholder="用户名"
+                      placeholder="Username"
                       size="large"
                     />
                   </Form.Item>
                   <Form.Item
                     name="email"
                     rules={[
-                      { required: true, message: '请输入邮箱' },
-                      { type: 'email', message: '请输入有效的邮箱地址' },
+                      { required: true, message: 'Please enter your email' },
+                      { type: 'email', message: 'Please enter a valid email address' },
                     ]}
                   >
                     <Input
                       prefix={<MailOutlined />}
-                      placeholder="邮箱"
+                      placeholder="Email"
                       size="large"
                     />
                   </Form.Item>
                   <Form.Item
                     name="password"
                     rules={[
-                      { required: true, message: '请输入密码' },
-                      { min: 6, message: '密码至少6位' },
+                      { required: true, message: 'Please enter your password' },
+                      { min: 6, message: 'Password must be at least 6 characters' },
                     ]}
                   >
                     <Input.Password
                       prefix={<LockOutlined />}
-                      placeholder="密码（至少6位）"
+                      placeholder="Password (at least 6 characters)"
                       size="large"
                     />
                   </Form.Item>
@@ -169,12 +169,12 @@ const LoginPage = observer(() => {
                       size="large"
                       loading={authStore.isLoading}
                     >
-                      注册
+                      Register
                     </Button>
                   </Form.Item>
                   <div style={{ textAlign: 'center' }}>
                     <Button type="link" onClick={generateRandomAccount}>
-                      随机生成账号密码
+                      Generate random account
                     </Button>
                   </div>
                 </Form>

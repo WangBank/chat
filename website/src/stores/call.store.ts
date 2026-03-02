@@ -23,22 +23,22 @@ class CallStore {
     };
 
     signalRService.onCallInitiated = async (call: IncomingCall) => {
-      // 呼叫方收到通话初始化通知，更新currentCall信息（主要是call_id）
+      // Caller receives call-init event and updates currentCall (mainly call_id)
       if (this.currentCall && (!this.currentCall.call_id || this.currentCall.call_id === '')) {
         this.currentCall.call_id = call.call_id;
         this.currentCall.start_time = call.start_time;
-        // 发送待发送的Offer
+        // Send pending offer
         await webRTCService.sendPendingOffer(call.call_id);
       } else if (!this.currentCall) {
         this.currentCall = call;
         this.isRinging = true;
-        // 发送待发送的Offer
+        // Send pending offer
         await webRTCService.sendPendingOffer(call.call_id);
       }
     };
 
     signalRService.onCallAccepted = async (callId: string) => {
-      // 更新currentCall的call_id（如果之前为空）
+      // Update currentCall.call_id if it was empty
       if (this.currentCall) {
         if (!this.currentCall.call_id || this.currentCall.call_id === '') {
           this.currentCall.call_id = callId;
@@ -75,7 +75,7 @@ class CallStore {
     };
 
     signalRService.onError = (error: string) => {
-      console.error('通话错误:', error);
+      console.error('Call error:', error);
       this.cleanup();
     };
   }
@@ -94,25 +94,25 @@ class CallStore {
     };
 
     webRTCService.onError = (error: string) => {
-      console.error('WebRTC错误:', error);
+      console.error('WebRTC error:', error);
       this.cleanup();
     };
   }
 
   async initiateCall(receiverId: number, callType: CallType, receiverInfo?: any) {
     try {
-      // 确保SignalR连接
+      // Ensure SignalR is connected
       if (!signalRService.isConnected && authStore.token && authStore.user) {
         await signalRService.connect(authStore.token);
         await signalRService.authenticate(authStore.user.id);
       }
       console.log('authStore.user', authStore.user);
       console.log('receiverInfo', receiverInfo);
-      // 发起通话前，先手动设置currentCall信息（呼叫方视角）
-      // call_id会在收到CallInitiated事件时更新
+      // Set currentCall before initiating (caller side)
+      // call_id will be updated when CallInitiated arrives
       if (authStore.user && receiverInfo) {
         this.currentCall = {
-          call_id: '', // 会在收到CallInitiated时更新
+          call_id: '', // Updated when CallInitiated is received
           caller: {
             id: authStore.user.id,
             username: authStore.user.username,
@@ -131,7 +131,7 @@ class CallStore {
       
       await webRTCService.initiateCall(receiverId, callType);
     } catch (error) {
-      console.error('发起通话失败:', error);
+      console.error('Failed to initiate call:', error);
       this.cleanup();
       throw error;
     }
@@ -165,7 +165,7 @@ class CallStore {
   }
 
   private cleanup() {
-    // 停止所有媒体流
+    // Stop all media streams
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => {
         track.stop();

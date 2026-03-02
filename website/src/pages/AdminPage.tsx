@@ -22,15 +22,15 @@ const AdminPage = observer(() => {
   const [changePasswordForm] = Form.useForm();
 
   useEffect(() => {
-    // 检查是否是管理员
+    // Check admin access
     if (!authStore.isAuthenticated) {
-      message.error('请先登录');
+      message.error('Please log in first');
       navigate('/login');
       return;
     }
 
     if (authStore.user?.username !== APP_CONFIG.ADMIN_USERNAME) {
-      message.warning('无权访问管理员页面');
+      message.warning('You do not have permission to access admin page');
       navigate('/chat');
       return;
     }
@@ -50,13 +50,13 @@ const AdminPage = observer(() => {
     } else {
       adminStore.loadAllUsers();
     }
-    message.success('刷新成功');
+    message.success('Refreshed successfully');
   };
 
   const handleChangePassword = (user: any) => {
-    // 不允许修改admin用户的密码
+    // Do not allow changing admin password
     if (user.username === APP_CONFIG.ADMIN_USERNAME) {
-      message.warning('不允许修改管理员密码');
+      message.warning('Changing admin password is not allowed');
       return;
     }
     setSelectedUser(user);
@@ -67,29 +67,29 @@ const AdminPage = observer(() => {
   const renderUserDetail = (user: any) => {
     return (
       <Descriptions column={1} size="small" style={{ width: 300 }}>
-        <Descriptions.Item label="用户ID">{user.id}</Descriptions.Item>
-        <Descriptions.Item label="用户名">{user.username}</Descriptions.Item>
-        <Descriptions.Item label="邮箱">{user.email}</Descriptions.Item>
-        <Descriptions.Item label="昵称">{user.display_name || '-'}</Descriptions.Item>
-        <Descriptions.Item label="在线状态">
+        <Descriptions.Item label="User ID">{user.id}</Descriptions.Item>
+        <Descriptions.Item label="Username">{user.username}</Descriptions.Item>
+        <Descriptions.Item label="Email">{user.email}</Descriptions.Item>
+        <Descriptions.Item label="Nickname">{user.display_name || '-'}</Descriptions.Item>
+        <Descriptions.Item label="Status">
           <Tag color={user.is_online ? 'success' : 'default'}>
-            {user.is_online ? '在线' : '离线'}
+            {user.is_online ? 'Online' : 'Offline'}
           </Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="最后登录">
+        <Descriptions.Item label="Last Login">
           {user.last_login_at ? formatFullTime(user.last_login_at) : '-'}
         </Descriptions.Item>
-        <Descriptions.Item label="注册时间">
+        <Descriptions.Item label="Created At">
           {formatFullTime(user.created_at)}
         </Descriptions.Item>
-        <Descriptions.Item label="更新时间">
+        <Descriptions.Item label="Updated At">
           {formatFullTime(user.updated_at)}
         </Descriptions.Item>
         {user.avatar_path && (
-          <Descriptions.Item label="头像">
+          <Descriptions.Item label="Avatar">
             <img
               src={`${APP_CONFIG.API_BASE_URL}${user.avatar_path}`}
-              alt="头像"
+              alt="Avatar"
               style={{ width: 50, height: 50, borderRadius: 4 }}
             />
           </Descriptions.Item>
@@ -103,14 +103,14 @@ const AdminPage = observer(() => {
       const values = await changePasswordForm.validateFields();
       const response = await apiService.adminChangeUserPassword(selectedUser.id, values.new_password);
       if (response.success) {
-        message.success('密码修改成功');
+        message.success('Password changed successfully');
         setChangePasswordModalVisible(false);
         changePasswordForm.resetFields();
       } else {
-        message.error(response.message || '密码修改失败');
+        message.error(response.message || 'Failed to change password');
       }
     } catch (error: any) {
-      message.error(error.message || '密码修改失败');
+      message.error(error.message || 'Failed to change password');
     }
   };
 
@@ -122,51 +122,51 @@ const AdminPage = observer(() => {
       width: 80,
     },
     {
-      title: '用户名',
+      title: 'Username',
       dataIndex: 'username',
       key: 'username',
     },
     {
-      title: '邮箱',
+      title: 'Email',
       dataIndex: 'email',
       key: 'email',
     },
     {
-      title: '昵称',
+      title: 'Nickname',
       dataIndex: 'display_name',
       key: 'display_name',
     },
     {
-      title: '在线状态',
+      title: 'Status',
       dataIndex: 'is_online',
       key: 'is_online',
       render: (isOnline: boolean) => (
         <span style={{ color: isOnline ? '#52c41a' : '#999' }}>
-          {isOnline ? '在线' : '离线'}
+          {isOnline ? 'Online' : 'Offline'}
         </span>
       ),
     },
     {
-      title: '最后登录',
+      title: 'Last Login',
       dataIndex: 'last_login_at',
       key: 'last_login_at',
       render: (time: string) => (time ? formatTime(time) : '-'),
     },
     {
-      title: '注册时间',
+      title: 'Created At',
       dataIndex: 'created_at',
       key: 'created_at',
       render: (time: string) => formatTime(time),
     },
     ...(showActions ? [{
-      title: '操作',
+      title: 'Actions',
       key: 'action',
       width: 180,
       render: (_: any, record: any) => (
         <Space>
           <Popover
             content={renderUserDetail(record)}
-            title="用户详情"
+            title="User Details"
             trigger="click"
             placement="left"
           >
@@ -175,7 +175,7 @@ const AdminPage = observer(() => {
               icon={<InfoCircleOutlined />}
               size="small"
             >
-              详情
+              Details
             </Button>
           </Popover>
           {record.username !== APP_CONFIG.ADMIN_USERNAME && (
@@ -185,7 +185,7 @@ const AdminPage = observer(() => {
               onClick={() => handleChangePassword(record)}
               size="small"
             >
-              修改密码
+              Change Password
             </Button>
           )}
         </Space>
@@ -216,7 +216,7 @@ const AdminPage = observer(() => {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Header className="admin-header">
-        <h2 style={{ color: 'white', margin: 0 }}>简聊 - 管理后台</h2>
+        <h2 style={{ color: 'white', margin: 0 }}>SimpleChat - Admin Console</h2>
         <Button 
           icon={<LogoutOutlined />} 
           onClick={handleLogout}
@@ -224,7 +224,7 @@ const AdminPage = observer(() => {
             borderColor: 'rgba(255, 255, 255, 0.3)'
           }}
         >
-          退出登录
+          Logout
         </Button>
       </Header>
       <Content style={{ padding: '24px' }}>
@@ -232,7 +232,7 @@ const AdminPage = observer(() => {
           <Col xs={24} sm={12} md={6}>
             <Card>
               <Statistic
-                title="在线用户"
+                title="Online Users"
                 value={adminStore.onlineUsers.length}
                 prefix={<UserOutlined />}
                 valueStyle={{ color: '#52c41a' }}
@@ -242,7 +242,7 @@ const AdminPage = observer(() => {
           <Col xs={24} sm={12} md={6}>
             <Card>
               <Statistic
-                title="总用户数"
+                title="Total Users"
                 value={adminStore.totalUsers}
                 prefix={<UserOutlined />}
               />
@@ -251,17 +251,17 @@ const AdminPage = observer(() => {
         </Row>
 
         <Card
-          title="用户管理"
+          title="User Management"
           extra={
             <Space>
               <Search
-                placeholder="搜索用户"
+                placeholder="Search users"
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
                 style={{ width: 200 }}
               />
               <Button icon={<ReloadOutlined />} onClick={handleRefresh}>
-                刷新
+                Refresh
               </Button>
             </Space>
           }
@@ -280,7 +280,7 @@ const AdminPage = observer(() => {
             items={[
               {
                 key: 'all',
-                label: `所有用户 (${adminStore.totalUsers})`,
+                label: `All Users (${adminStore.totalUsers})`,
                 children: (
                   <Table
                     columns={createColumns(true)}
@@ -298,7 +298,7 @@ const AdminPage = observer(() => {
               },
               {
                 key: 'online',
-                label: `在线用户 (${adminStore.onlineUsers.length})`,
+                label: `Online Users (${adminStore.onlineUsers.length})`,
                 children: (
                   <Table
                     columns={createColumns(true)}
@@ -313,53 +313,53 @@ const AdminPage = observer(() => {
           />
         </Card>
 
-        {/* 修改密码Modal */}
+        {/* Change password modal */}
         <Modal
-          title={`修改用户密码 - ${selectedUser?.username}`}
+          title={`Change Password - ${selectedUser?.username}`}
           open={changePasswordModalVisible}
           onOk={handleChangePasswordSubmit}
           onCancel={() => {
             setChangePasswordModalVisible(false);
             changePasswordForm.resetFields();
           }}
-          okText="确定"
-          cancelText="取消"
+          okText="Confirm"
+          cancelText="Cancel"
         >
           <Form form={changePasswordForm} layout="vertical">
             <Form.Item
               name="new_password"
-              label="新密码"
+              label="New Password"
               rules={[
-                { required: true, message: '请输入新密码' },
-                { min: 6, message: '密码至少6位' },
+                { required: true, message: 'Please enter new password' },
+                { min: 6, message: 'Password must be at least 6 characters' },
               ]}
             >
-              <Input.Password placeholder="请输入新密码" />
+              <Input.Password placeholder="Enter new password" />
             </Form.Item>
             <Form.Item
               name="confirm_password"
-              label="确认密码"
+              label="Confirm Password"
               dependencies={['new_password']}
               rules={[
-                { required: true, message: '请确认新密码' },
+                { required: true, message: 'Please confirm the new password' },
                 ({ getFieldValue }) => ({
                   validator(_, value) {
                     if (!value || getFieldValue('new_password') === value) {
                       return Promise.resolve();
                     }
-                    return Promise.reject(new Error('两次输入的密码不一致'));
+                    return Promise.reject(new Error('The two passwords do not match'));
                   },
                 }),
               ]}
             >
-              <Input.Password placeholder="请再次输入新密码" />
+              <Input.Password placeholder="Enter new password again" />
             </Form.Item>
           </Form>
         </Modal>
 
-        {/* 版本号 */}
+        {/* Version */}
         <div className="version-badge">
-          简聊 v{APP_CONFIG.VERSION}
+          SimpleChat v{APP_CONFIG.VERSION}
         </div>
       </Content>
     </Layout>

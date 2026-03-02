@@ -41,27 +41,27 @@ class ChatStore {
 
   setupSignalRHandlers() {
     signalRService.onNewMessage = (message: ChatMessage) => {
-      // 检查是否是当前联系人的消息
+      // Check whether message belongs to current contact
       const isCurrentContactMessage = 
         this.currentContact &&
         (message.sender_id === this.currentContact.contact_user.id ||
           message.receiver_id === this.currentContact.contact_user.id);
 
       if (isCurrentContactMessage) {
-        // 避免重复添加消息
+        // Avoid adding duplicate messages
         if (!this.messages.find(m => m.id === message.id)) {
           this.messages.push(message);
-          // 保持只显示最近100条
+          // Keep only the most recent 100 messages
           if (this.messages.length > 100) {
             this.messages = this.messages.slice(-100);
           }
         }
       }
       
-      // 更新联系人的未读消息数和最后消息时间
+      // Update contact unread count and last message time
       this.updateContactUnreadCount(message);
       
-      // 如果收到新消息，重新加载联系人列表以更新未读计数
+      // Reload contacts when a new message arrives to refresh unread count
       this.loadContacts();
     };
   }
@@ -86,7 +86,7 @@ class ChatStore {
         this.contacts = response.data;
       }
     } catch (error) {
-      console.error('加载联系人失败:', error);
+      console.error('Failed to load contacts:', error);
     } finally {
       this.isLoading = false;
     }
@@ -97,7 +97,7 @@ class ChatStore {
     try {
       const response = await apiService.getChatHistory(contactId);
       if (response.success && response.data) {
-        // 只显示最近100条消息，并确保id唯一
+        // Keep only recent 100 messages and ensure unique IDs
         const messages = response.data || [];
         const uniqueMessages = messages.slice(-100).reduce((acc: ChatMessage[], msg) => {
           if (!acc.find(m => m.id === msg.id)) {
@@ -108,7 +108,7 @@ class ChatStore {
         this.messages = uniqueMessages;
       }
     } catch (error) {
-      console.error('加载消息失败:', error);
+      console.error('Failed to load messages:', error);
     } finally {
       this.isLoading = false;
     }
@@ -122,20 +122,20 @@ class ChatStore {
         type: 0, // Text
       });
       if (response.success && response.data) {
-        // 避免重复添加消息（SignalR也会收到）
+        // Avoid adding duplicate messages (also received from SignalR)
         if (!this.messages.find(m => m.id === response.data.id)) {
           this.messages.push(response.data);
-          // 保持只显示最近100条
+          // Keep only the most recent 100 messages
           if (this.messages.length > 100) {
             this.messages = this.messages.slice(-100);
           }
         }
         return { success: true };
       } else {
-        return { success: false, message: response.message || '发送失败' };
+        return { success: false, message: response.message || 'Failed to send message' };
       }
     } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || '发送失败' };
+      return { success: false, message: error.response?.data?.message || 'Failed to send message' };
     }
   }
 
@@ -155,10 +155,10 @@ class ChatStore {
         await this.loadContacts();
         return { success: true };
       } else {
-        return { success: false, message: response.message || '添加联系人失败' };
+        return { success: false, message: response.message || 'Failed to add contact' };
       }
     } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || '添加联系人失败' };
+      return { success: false, message: error.response?.data?.message || 'Failed to add contact' };
     }
   }
 
@@ -172,27 +172,27 @@ class ChatStore {
         }
         return { success: true };
       } else {
-        return { success: false, message: response.message || '修改失败' };
+        return { success: false, message: response.message || 'Update failed' };
       }
     } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || '修改失败' };
+      return { success: false, message: error.response?.data?.message || 'Update failed' };
     }
   }
 
   searchMessages(query: string, startDate?: string, endDate?: string) {
-    // 过滤消息
+    // Filter messages
     let filtered = this.messages.filter((msg) => {
       if (msg.sender_id !== this.currentContact?.contact_user.id &&
           msg.receiver_id !== this.currentContact?.contact_user.id) {
         return false;
       }
 
-      // 内容搜索
+      // Content search
       if (query && !msg.content.toLowerCase().includes(query.toLowerCase())) {
         return false;
       }
 
-      // 日期搜索
+      // Date range search
       if (startDate || endDate) {
         const msgDate = new Date(msg.created_at);
         if (startDate && msgDate < new Date(startDate)) return false;
@@ -202,7 +202,7 @@ class ChatStore {
       return true;
     });
 
-    // 如果搜索条件为空，显示所有消息
+    // Show all messages when no search conditions are set
     if (!query && !startDate && !endDate) {
       filtered = this.messages;
     }

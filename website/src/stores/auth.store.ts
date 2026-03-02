@@ -48,7 +48,7 @@ class AuthStore {
         localStorage.setItem('token', this.token);
         localStorage.setItem('user', JSON.stringify(this.user));
 
-        // 连接SignalR
+        // Connect to SignalR
         await signalRService.connect(this.token);
         if (this.user) {
           await signalRService.authenticate(this.user.id);
@@ -56,10 +56,10 @@ class AuthStore {
 
         return { success: true };
       } else {
-        return { success: false, message: response.message || '登录失败' };
+        return { success: false, message: response.message || 'Login failed' };
       }
     } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || '登录失败' };
+      return { success: false, message: error.response?.data?.message || 'Login failed' };
     } finally {
       this.isLoading = false;
     }
@@ -77,7 +77,7 @@ class AuthStore {
         localStorage.setItem('token', this.token);
         localStorage.setItem('user', JSON.stringify(this.user));
 
-        // 连接SignalR
+        // Connect to SignalR
         await signalRService.connect(this.token);
         if (this.user) {
           await signalRService.authenticate(this.user.id);
@@ -85,10 +85,10 @@ class AuthStore {
 
         return { success: true };
       } else {
-        return { success: false, message: response.message || '注册失败' };
+        return { success: false, message: response.message || 'Registration failed' };
       }
     } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || '注册失败' };
+      return { success: false, message: error.response?.data?.message || 'Registration failed' };
     } finally {
       this.isLoading = false;
     }
@@ -103,7 +103,7 @@ class AuthStore {
     localStorage.removeItem('user');
   }
 
-  // 生成随机账号和密码
+  // Generate random username and password
   generateRandomAccount() {
     const randomUsername = `user_${Math.random().toString(36).substring(2, 10)}`;
     const randomPassword = Math.random().toString(36).substring(2, 12);

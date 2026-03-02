@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
-import zhCN from 'antd/locale/zh_CN';
+import enUS from 'antd/locale/en_US';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import ChatPage from './pages/ChatPage';
@@ -13,7 +13,7 @@ import { observer } from 'mobx-react-lite';
 import { authStore } from './stores/auth.store';
 import './App.css';
 
-// 受保护的路由组件
+// Protected route component
 const ProtectedRoute = observer(({ children }: { children: React.ReactNode }) => {
   if (!authStore.isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -23,7 +23,7 @@ const ProtectedRoute = observer(({ children }: { children: React.ReactNode }) =>
 
 const App = observer(() => {
   return (
-    <ConfigProvider locale={zhCN}>
+    <ConfigProvider locale={enUS}>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<HomePage />} />

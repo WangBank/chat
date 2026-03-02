@@ -28,7 +28,7 @@ const ContactsPage = observer(() => {
         setUsers(response.data.users || []);
       }
     } catch (error) {
-      console.error('加载用户失败:', error);
+      console.error('Failed to load users:', error);
     } finally {
       setLoading(false);
     }
@@ -42,10 +42,10 @@ const ContactsPage = observer(() => {
   const handleAddContact = async (username: string) => {
     const result = await chatStore.addContact(username);
     if (result.success) {
-      message.success('添加联系人成功');
+      message.success('Contact added successfully');
       loadUsers(searchQuery);
     } else {
-      message.error(result.message || '添加联系人失败');
+      message.error(result.message || 'Failed to add contact');
     }
   };
 
@@ -66,14 +66,14 @@ const ContactsPage = observer(() => {
               icon={<ArrowLeftOutlined />} 
               onClick={() => navigate('/chat')}
             >
-              返回
+              Back
             </Button>
-            <span>添加联系人</span>
+            <span>Add Contact</span>
           </Space>
         }
         extra={
           <Search
-            placeholder="搜索用户名、昵称或邮箱"
+            placeholder="Search by username, nickname, or email"
             allowClear
             enterButton={<SearchOutlined />}
             onSearch={handleSearch}
@@ -82,7 +82,7 @@ const ContactsPage = observer(() => {
         }
       >
         {users.length === 0 ? (
-          <Empty description={searchQuery ? '未找到匹配的用户' : '暂无推荐用户'} />
+          <Empty description={searchQuery ? 'No matching users found' : 'No recommended users'} />
         ) : (
           <List
             loading={loading}
@@ -95,7 +95,7 @@ const ContactsPage = observer(() => {
                     icon={<UserAddOutlined />}
                     onClick={() => handleAddContact(user.username)}
                   >
-                    添加
+                    Add
                   </Button>,
                 ]}
               >
@@ -114,7 +114,7 @@ const ContactsPage = observer(() => {
                   description={
                     <div>
                       <div>{user.email}</div>
-                      {user.is_online && <Tag color="success">在线</Tag>}
+                      {user.is_online && <Tag color="success">Online</Tag>}
                     </div>
                   }
                 />
@@ -125,7 +125,7 @@ const ContactsPage = observer(() => {
       </Card>
 
       <div className="version-badge">
-        简聊 v{APP_CONFIG.VERSION}
+        SimpleChat v{APP_CONFIG.VERSION}
       </div>
     </div>
   );

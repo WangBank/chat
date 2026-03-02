@@ -58,23 +58,23 @@ const ChatPage = observer(() => {
       return;
     }
 
-    // 确保SignalR连接
+    // Ensure SignalR connection
     const ensureSignalRConnection = async () => {
       if (!signalRService.isConnected && authStore.token && authStore.user) {
         try {
           await signalRService.connect(authStore.token);
-          // authenticate会在connect后等待连接状态更新，所以这里直接调用
+          // authenticate waits for connection state after connect, so call directly here
           await signalRService.authenticate(authStore.user.id);
         } catch (error) {
-          console.error('SignalR连接失败:', error);
-          // 不显示错误，避免干扰用户，连接会在后台自动重试
+          console.error('SignalR connection failed:', error);
+          // Keep silent to avoid disturbing users; reconnect will retry in background
         }
       } else if (signalRService.isConnected && authStore.user) {
-        // 如果已连接但未认证，尝试认证
+        // Try authenticate if connected but not authenticated yet
         try {
           await signalRService.authenticate(authStore.user.id);
         } catch (error) {
-          console.error('SignalR认证失败:', error);
+          console.error('SignalR authentication failed:', error);
         }
       }
     };
@@ -84,8 +84,8 @@ const ChatPage = observer(() => {
   }, [navigate]);
 
   useEffect(() => {
-    // 当消息列表更新时，自动滚动到底部
-    // 使用setTimeout确保DOM更新后再滚动
+    // Auto-scroll to bottom when message list updates
+    // Use setTimeout to wait for DOM updates
     const timer = setTimeout(() => {
       if (messagesEndRef.current) {
         messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -105,34 +105,34 @@ const ChatPage = observer(() => {
     if (result.success) {
       setMessageText('');
     } else {
-      message.error(result.message || '发送失败');
+      message.error(result.message || 'Failed to send');
     }
   };
 
   const handleAddContact = async () => {
     if (!contactUsername.trim()) {
-      message.warning('请输入用户名');
+      message.warning('Please enter a username');
       return;
     }
 
     const result = await chatStore.addContact(contactUsername);
     if (result.success) {
-      message.success('添加联系人成功');
+      message.success('Contact added successfully');
       setAddContactVisible(false);
       setContactUsername('');
     } else {
-      message.error(result.message || '添加联系人失败');
+      message.error(result.message || 'Failed to add contact');
     }
   };
 
   const handleInitiateCall = async (type: CallType) => {
     if (!chatStore.currentContact) return;
 
-    // 检查对方是否在线
+    // Check whether recipient is online
     if (!chatStore.currentContact.contact_user.is_online) {
       Modal.warning({
-        title: '对方不在线',
-        content: '对方当前不在线，无法发起通话。',
+        title: 'User Offline',
+        content: 'The user is currently offline and cannot receive calls.',
       });
       return;
     }
@@ -141,19 +141,19 @@ const ChatPage = observer(() => {
       await callStore.initiateCall(
         chatStore.currentContact.contact_user.id,
         type,
-        chatStore.currentContact.contact_user // 传递接收者信息
+        chatStore.currentContact.contact_user // Pass receiver info
       );
     } catch (error) {
-      message.error('发起通话失败');
+      message.error('Failed to initiate call');
     }
   };
 
   const handleLogout = () => {
     Modal.confirm({
-      title: '确认退出',
-      content: '确定要退出登录吗？',
-      okText: '确定',
-      cancelText: '取消',
+      title: 'Confirm Logout',
+      content: 'Are you sure you want to log out?',
+      okText: 'Confirm',
+      cancelText: 'Cancel',
       onOk: async () => {
         await authStore.logout();
         navigate('/');
@@ -173,11 +173,11 @@ const ChatPage = observer(() => {
       values.display_name
     );
     if (result.success) {
-      message.success('备注修改成功');
+      message.success('Display name updated');
       setEditDisplayNameVisible(false);
       displayNameForm.resetFields();
     } else {
-      message.error(result.message || '修改失败');
+      message.error(result.message || 'Update failed');
     }
   };
 
@@ -195,7 +195,7 @@ const ChatPage = observer(() => {
   const contactMenuItems: MenuProps['items'] = [
     {
       key: 'edit-name',
-      label: '修改备注',
+      label: 'Edit Display Name',
       icon: <EditOutlined />,
       onClick: () => {
         if (chatStore.currentContact) {
@@ -208,7 +208,7 @@ const ChatPage = observer(() => {
     },
     {
       key: 'search',
-      label: '搜索聊天记录',
+      label: 'Search Chat History',
       icon: <SearchOutlined />,
       onClick: () => {
         if (chatStore.currentContact) {
@@ -222,21 +222,21 @@ const ChatPage = observer(() => {
     <Layout style={{ height: '100vh' }}>
       <Sider width={300} theme="light" className="chat-sider">
         <div className="sider-header">
-          <h2 style={{ margin: 0 }}>简聊</h2>
+          <h2 style={{ margin: 0 }}>SimpleChat</h2>
           <Space>
             <Button
               type="text"
               icon={<UserAddOutlined />}
               onClick={() => navigate('/contacts')}
-              title="添加联系人"
+              title="Add Contact"
             />
             <Button
               type="text"
               icon={<SettingOutlined />}
               onClick={() => navigate('/settings')}
-              title="设置"
+              title="Settings"
             />
-            <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout} title="退出" />
+            <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout} title="Logout" />
           </Space>
         </div>
         <div className="contacts-list-container">
@@ -269,13 +269,13 @@ const ChatPage = observer(() => {
                     <div className="contact-description">
                       {contact.last_message_at
                         ? formatTime(contact.last_message_at)
-                        : '暂无消息'}
+                        : 'No messages yet'}
                     </div>
                   }
                 />
               </List.Item>
             )}
-            locale={{ emptyText: '暂无联系人' }}
+            locale={{ emptyText: 'No contacts' }}
           />
         </div>
       </Sider>
@@ -296,7 +296,7 @@ const ChatPage = observer(() => {
                       chatStore.currentContact.contact_user.username}
                   </span>
                   {chatStore.currentContact.contact_user.is_online && (
-                    <span style={{ color: '#52c41a', fontSize: '12px' }}>在线</span>
+                    <span style={{ color: '#52c41a', fontSize: '12px' }}>Online</span>
                   )}
                 </Space>
                 <Space>
@@ -305,14 +305,14 @@ const ChatPage = observer(() => {
                     icon={<PhoneOutlined />}
                     onClick={() => handleInitiateCall(CallType.Voice)}
                     disabled={!chatStore.currentContact.contact_user.is_online}
-                    title={chatStore.currentContact.contact_user.is_online ? '语音通话' : '对方不在线'}
+                    title={chatStore.currentContact.contact_user.is_online ? 'Voice Call' : 'User Offline'}
                   />
                   <Button
                     type="text"
                     icon={<VideoCameraOutlined />}
                     onClick={() => handleInitiateCall(CallType.Video)}
                     disabled={!chatStore.currentContact.contact_user.is_online}
-                    title={chatStore.currentContact.contact_user.is_online ? '视频通话' : '对方不在线'}
+                    title={chatStore.currentContact.contact_user.is_online ? 'Video Call' : 'User Offline'}
                   />
                   <Dropdown menu={{ items: contactMenuItems }} trigger={['click']}>
                     <Button type="text" icon={<MoreOutlined />} />
@@ -321,7 +321,7 @@ const ChatPage = observer(() => {
                     type="text"
                     icon={<CloseOutlined />}
                     onClick={handleCloseChat}
-                    title="关闭聊天"
+                    title="Close Chat"
                   />
                 </Space>
               </div>
@@ -351,11 +351,11 @@ const ChatPage = observer(() => {
                       handleSendMessage();
                     }
                   }}
-                  placeholder="输入消息..."
+                  placeholder="Type a message..."
                   autoSize={{ minRows: 1, maxRows: 4 }}
                 />
                 <Button type="primary" onClick={handleSendMessage}>
-                  发送
+                  Send
                 </Button>
               </div>
             </Content>
@@ -363,29 +363,29 @@ const ChatPage = observer(() => {
         ) : (
           <div className="empty-chat">
             <MessageOutlined style={{ fontSize: 64, color: '#d9d9d9' }} />
-            <p>选择一个联系人开始聊天</p>
+            <p>Select a contact to start chatting</p>
           </div>
         )}
       </Layout>
 
       <Drawer
-        title="添加联系人"
+        title="Add Contact"
         open={addContactVisible}
         onClose={() => setAddContactVisible(false)}
       >
         <Input
-          placeholder="输入用户名"
+          placeholder="Enter username"
           value={contactUsername}
           onChange={(e) => setContactUsername(e.target.value)}
           onPressEnter={handleAddContact}
         />
         <Button type="primary" block style={{ marginTop: 16 }} onClick={handleAddContact}>
-          添加
+          Add
         </Button>
       </Drawer>
 
       <Modal
-        title="修改备注"
+        title="Edit Display Name"
         open={editDisplayNameVisible}
         onCancel={() => {
           setEditDisplayNameVisible(false);
@@ -396,10 +396,10 @@ const ChatPage = observer(() => {
         <Form form={displayNameForm} onFinish={handleUpdateDisplayName} layout="vertical">
           <Form.Item
             name="display_name"
-            label="备注名称"
-            rules={[{ max: 50, message: '备注名称不能超过50个字符' }]}
+            label="Display Name"
+            rules={[{ max: 50, message: 'Display name cannot exceed 50 characters' }]}
           >
-            <Input placeholder="请输入备注名称" />
+            <Input placeholder="Enter display name" />
           </Form.Item>
         </Form>
       </Modal>
@@ -408,9 +408,9 @@ const ChatPage = observer(() => {
       <CallModal />
       <CallPage />
 
-      {/* 版本号 */}
+      {/* Version */}
       <div className="version-badge">
-        简聊 v{APP_CONFIG.VERSION}
+        SimpleChat v{APP_CONFIG.VERSION}
       </div>
     </Layout>
   );
