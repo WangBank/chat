@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.SignalR;
 using VideoCallAPI.Models;
 using VideoCallAPI.Models.DTOs;
 using VideoCallAPI.Services;
+using System.Collections.Concurrent;
 
 namespace VideoCallAPI.Hubs
 {
@@ -10,16 +11,23 @@ namespace VideoCallAPI.Hubs
         private readonly IWebRTCService _webRTCService;
         private readonly IUserService _userService;
         private readonly ILogger<VideoCallHub> _logger;
-        private static readonly Dictionary<string, int> _connectionUserMap = new();
+        private readonly IServiceScopeFactory _serviceScopeFactory;
+        private readonly IHubContext<VideoCallHub> _hubContext;
+        private static readonly ConcurrentDictionary<string, int> _connectionUserMap = new();
+        private static readonly ConcurrentDictionary<int, CancellationTokenSource> _pendingOfflineTimers = new();
 
         public VideoCallHub(
             IWebRTCService webRTCService,
             IUserService userService,
-            ILogger<VideoCallHub> logger)
+            ILogger<VideoCallHub> logger,
+            IServiceScopeFactory serviceScopeFactory,
+            IHubContext<VideoCallHub> hubContext)
         {
             _webRTCService = webRTCService;
             _userService = userService;
             _logger = logger;
+            _serviceScopeFactory = serviceScopeFactory;
+            _hubContext = hubContext;
         }
 
         public override async Task OnConnectedAsync()
@@ -31,9 +39,8 @@ namespace VideoCallAPI.Hubs
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
             var connectionId = Context.ConnectionId;
-            if (_connectionUserMap.TryGetValue(connectionId, out var userId))
+            if (_connectionUserMap.TryRemove(connectionId, out var userId))
             {
-                _connectionUserMap.Remove(connectionId);
                 if (exception != null)
                 {
                     _logger.LogError(exception, "用户异常断开连接: UserId={UserId}, ConnectionId={ConnectionId}", userId, connectionId);
@@ -41,6 +48,11 @@ namespace VideoCallAPI.Hubs
                 else
                 {
                     _logger.LogInformation("用户正常断开连接: UserId={UserId}, ConnectionId={ConnectionId}", userId, connectionId);
+                }
+
+                if (!_connectionUserMap.Values.Contains(userId))
+                {
+                    ScheduleOffline(userId);
                 }
             }
             else if (exception != null)
@@ -55,8 +67,11 @@ namespace VideoCallAPI.Hubs
         {
             try
             {
+                CancelPendingOffline(userId);
                 _connectionUserMap[Context.ConnectionId] = userId;
                 await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
+                await _userService.UpdateHeartbeatAsync(userId);
+                await BroadcastOnlineStatusAsync(userId, true);
                 _logger.LogInformation("用户认证成功: UserId={UserId}, ConnectionId={ConnectionId}", userId, Context.ConnectionId);
             }
             catch (Exception ex)
@@ -64,6 +79,106 @@ namespace VideoCallAPI.Hubs
                 _logger.LogError(ex, "用户认证失败: UserId={UserId}, ConnectionId={ConnectionId}", userId, Context.ConnectionId);
                 throw;
             }
+        }
+
+        // 客户端心跳。超过 OnlineStatusPolicy.HeartbeatTimeout 没有心跳即视为离线。
+        public async Task Heartbeat()
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+            {
+                await Clients.Caller.SendAsync("CallError", "用户未认证");
+                return;
+            }
+
+            CancelPendingOffline(userId.Value);
+            await _userService.UpdateHeartbeatAsync(userId.Value);
+            await BroadcastOnlineStatusAsync(userId.Value, true);
+        }
+
+        private Task BroadcastOnlineStatusAsync(int userId, bool isOnline)
+        {
+            return Clients.All.SendAsync("UserOnlineStatusChanged", new
+            {
+                user_id = userId,
+                is_online = isOnline
+            });
+        }
+
+        private void ScheduleOffline(int userId)
+        {
+            CancelPendingOffline(userId);
+
+            var cancellationTokenSource = new CancellationTokenSource();
+            _pendingOfflineTimers[userId] = cancellationTokenSource;
+
+            _logger.LogInformation(
+                "用户无活跃连接，延迟确认离线: UserId={UserId}, DelaySeconds={DelaySeconds}",
+                userId,
+                OnlineStatusPolicy.OfflineGracePeriod.TotalSeconds);
+
+            _ = MarkOfflineAfterGracePeriodAsync(
+                userId,
+                cancellationTokenSource,
+                _serviceScopeFactory,
+                _hubContext,
+                _logger);
+        }
+
+        private static void CancelPendingOffline(int userId)
+        {
+            if (_pendingOfflineTimers.TryRemove(userId, out var cancellationTokenSource))
+            {
+                cancellationTokenSource.Cancel();
+            }
+        }
+
+        private static async Task MarkOfflineAfterGracePeriodAsync(
+            int userId,
+            CancellationTokenSource cancellationTokenSource,
+            IServiceScopeFactory serviceScopeFactory,
+            IHubContext<VideoCallHub> hubContext,
+            ILogger<VideoCallHub> logger)
+        {
+            try
+            {
+                await Task.Delay(OnlineStatusPolicy.OfflineGracePeriod, cancellationTokenSource.Token);
+
+                if (cancellationTokenSource.IsCancellationRequested || _connectionUserMap.Values.Contains(userId))
+                {
+                    return;
+                }
+
+                using var scope = serviceScopeFactory.CreateScope();
+                var userService = scope.ServiceProvider.GetRequiredService<IUserService>();
+                await userService.MarkOfflineAsync(userId);
+                await hubContext.Clients.All.SendAsync("UserOnlineStatusChanged", new
+                {
+                    user_id = userId,
+                    is_online = false
+                });
+
+                logger.LogInformation("用户已确认离线: UserId={UserId}", userId);
+            }
+            catch (OperationCanceledException)
+            {
+                logger.LogDebug("用户延迟离线已取消: UserId={UserId}", userId);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "延迟标记用户离线失败: UserId={UserId}", userId);
+            }
+            finally
+            {
+                RemovePendingOfflineTimer(userId, cancellationTokenSource);
+            }
+        }
+
+        private static void RemovePendingOfflineTimer(int userId, CancellationTokenSource cancellationTokenSource)
+        {
+            var pair = new KeyValuePair<int, CancellationTokenSource>(userId, cancellationTokenSource);
+            ((ICollection<KeyValuePair<int, CancellationTokenSource>>)_pendingOfflineTimers).Remove(pair);
+            cancellationTokenSource.Dispose();
         }
 
         // 发起通话

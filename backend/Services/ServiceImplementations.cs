@@ -15,34 +15,43 @@ namespace VideoCallAPI.Services
         private readonly VideoCallDbContext _context;
         private readonly IJwtService _jwtService;
         private readonly ILogger<UserService> _logger;
+        private readonly IContentSecurityService _contentSecurity;
 
-        public UserService(VideoCallDbContext context, IJwtService jwtService, ILogger<UserService> logger)
+        public UserService(
+            VideoCallDbContext context,
+            IJwtService jwtService,
+            ILogger<UserService> logger,
+            IContentSecurityService contentSecurity)
         {
             _context = context;
             _jwtService = jwtService;
             _logger = logger;
+            _contentSecurity = contentSecurity;
         }
 
         public async Task<UserResponseDto> RegisterAsync(UserRegistrationDto registrationDto)
         {
+            var username = _contentSecurity.NormalizeRequiredText(registrationDto.username, "用户名", 50, filterSensitiveWords: false);
+            var email = _contentSecurity.NormalizeRequiredText(registrationDto.email, "邮箱", 100, filterSensitiveWords: false);
+
             // 检查用户名是否已存在
-            if (await _context.users.AnyAsync(u => u.username == registrationDto.username))
+            if (await _context.users.AnyAsync(u => u.username == username))
             {
-                _logger.LogWarning("注册失败，用户名已存在: {Username}", registrationDto.username);
+                _logger.LogWarning("注册失败，用户名已存在: {Username}", username);
                 throw new InvalidOperationException("用户名已存在");
             }
 
             // 检查邮箱是否已存在
-            if (await _context.users.AnyAsync(u => u.email == registrationDto.email))
+            if (await _context.users.AnyAsync(u => u.email == email))
             {
-                _logger.LogWarning("注册失败，邮箱已存在: {Email}", registrationDto.email);
+                _logger.LogWarning("注册失败，邮箱已存在: {Email}", email);
                 throw new InvalidOperationException("邮箱已存在");
             }
 
             var user = new User
             {
-                username = registrationDto.username,
-                email = registrationDto.email,
+                username = username,
+                email = email,
                 password_hash = BCrypt.Net.BCrypt.HashPassword(registrationDto.password),
                 created_at = DateTime.UtcNow
             };
@@ -56,15 +65,19 @@ namespace VideoCallAPI.Services
 
         public async Task<string> LoginAsync(UserLoginDto loginDto)
         {
-            var user = await _context.users.FirstOrDefaultAsync(u => u.username == loginDto.username);
+            var username = _contentSecurity.NormalizeRequiredText(loginDto.username, "用户名", 50, filterSensitiveWords: false);
+            var user = await _context.users.FirstOrDefaultAsync(u => u.username == username);
             if (user == null || !BCrypt.Net.BCrypt.Verify(loginDto.password, user.password_hash))
             {
-                _logger.LogWarning("登录失败，用户名或密码错误: {Username}", loginDto.username);
+                _logger.LogWarning("登录失败，用户名或密码错误: {Username}", username);
                 throw new UnauthorizedAccessException("用户名或密码错误");
             }
 
-            // 更新最后登录时间
-            user.last_login_at = DateTime.UtcNow;
+            var now = DateTime.UtcNow;
+
+            // 更新最后登录时间，并写入首个心跳
+            user.last_login_at = now;
+            user.last_heartbeat_at = now;
             user.is_online = true;
             await _context.SaveChangesAsync();
 
@@ -102,11 +115,37 @@ namespace VideoCallAPI.Services
             if (user == null)
                 throw new ArgumentException("用户不存在");
 
-            if (!string.IsNullOrWhiteSpace(updateProfileDto.display_name))
-                user.display_name = updateProfileDto.display_name;
+            if (updateProfileDto.display_name != null)
+            {
+                var displayName = _contentSecurity.NormalizeOptionalText(updateProfileDto.display_name, "昵称", 50);
+                if (displayName != null)
+                    user.display_name = displayName;
+            }
             
-            if (!string.IsNullOrWhiteSpace(updateProfileDto.avatar_path))
-                user.avatar_path = updateProfileDto.avatar_path;
+            if (updateProfileDto.avatar_path != null)
+            {
+                var avatarPath = _contentSecurity.NormalizeStoredFilePath(updateProfileDto.avatar_path, "头像路径", "/avatar/");
+                if (avatarPath != null)
+                    user.avatar_path = avatarPath;
+            }
+
+            if (updateProfileDto.signature != null)
+                user.signature = _contentSecurity.NormalizeOptionalText(updateProfileDto.signature, "个性签名", 100);
+
+            if (updateProfileDto.gender != null)
+                user.gender = _contentSecurity.NormalizeOptionalText(updateProfileDto.gender, "性别", 10);
+
+            if (updateProfileDto.birthday != null)
+                user.birthday = _contentSecurity.NormalizeOptionalText(updateProfileDto.birthday, "生日", 10, filterSensitiveWords: false);
+
+            if (updateProfileDto.country != null)
+                user.country = _contentSecurity.NormalizeOptionalText(updateProfileDto.country, "国家", 50);
+
+            if (updateProfileDto.province != null)
+                user.province = _contentSecurity.NormalizeOptionalText(updateProfileDto.province, "省份", 50);
+
+            if (updateProfileDto.region != null)
+                user.region = _contentSecurity.NormalizeOptionalText(updateProfileDto.region, "地区", 50);
 
             user.updated_at = DateTime.UtcNow;
             await _context.SaveChangesAsync();
@@ -153,16 +192,49 @@ namespace VideoCallAPI.Services
                 username = user.username,
                 email = user.email,
                 display_name = user.display_name,
+                signature = user.signature,
+                gender = user.gender,
+                birthday = user.birthday,
+                country = user.country,
+                province = user.province,
+                region = user.region,
                 avatar_path = user.avatar_path,
-                is_online = user.is_online,
+                qq_bound = !string.IsNullOrWhiteSpace(user.qq_open_id),
+                qq_nickname = user.qq_nickname,
+                qq_avatar_url = user.qq_avatar_url,
+                qq_bound_at = user.qq_bound_at,
+                is_online = OnlineStatusPolicy.IsOnline(user),
                 last_login_at = user.last_login_at,
                 created_at = user.created_at,
                 updated_at = user.updated_at
             };
         }
 
+        public async Task UpdateHeartbeatAsync(int userId)
+        {
+            var user = await _context.users.FindAsync(userId);
+            if (user == null)
+                throw new ArgumentException("用户不存在");
+
+            user.is_online = true;
+            user.last_heartbeat_at = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+
+        public async Task MarkOfflineAsync(int userId)
+        {
+            var user = await _context.users.FindAsync(userId);
+            if (user == null)
+                return;
+
+            user.is_online = false;
+            await _context.SaveChangesAsync();
+        }
+
         public async Task<UserSearchResultDto> SearchUsersAsync(int currentUserId, SearchUsersDto searchDto)
         {
+            var page = Math.Max(1, searchDto.page);
+            var pageSize = Math.Clamp(searchDto.page_size, 1, 50);
             var query = _context.users.AsQueryable();
 
             // 排除当前用户
@@ -179,7 +251,9 @@ namespace VideoCallAPI.Services
             // 搜索条件
             if (!string.IsNullOrWhiteSpace(searchDto.query))
             {
-                var searchTerm = searchDto.query.ToLower();
+                var searchTerm = _contentSecurity
+                    .NormalizeRequiredText(searchDto.query, "搜索内容", 100, filterSensitiveWords: false)
+                    .ToLower();
                 query = query.Where(u => 
                     u.username.ToLower().Contains(searchTerm) ||
                     (u.display_name != null && u.display_name.ToLower().Contains(searchTerm)) ||
@@ -192,18 +266,18 @@ namespace VideoCallAPI.Services
             // 分页
             var users = await query
                 .OrderBy(u => u.username)
-                .Skip((searchDto.page - 1) * searchDto.page_size)
-                .Take(searchDto.page_size)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
 
-            var totalPages = (int)Math.Ceiling((double)totalCount / searchDto.page_size);
+            var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
 
             return new UserSearchResultDto
             {
                 users = users.Select(MapToUserResponse).ToList(),
                 total_count = totalCount,
-                page = searchDto.page,
-                page_size = searchDto.page_size,
+                page = page,
+                page_size = pageSize,
                 total_pages = totalPages
             };
         }
@@ -213,20 +287,28 @@ namespace VideoCallAPI.Services
     {
         private readonly VideoCallDbContext _context;
         private readonly ILogger<ContactService> _logger;
+        private readonly IContentSecurityService _contentSecurity;
 
-        public ContactService(VideoCallDbContext context, ILogger<ContactService> logger)
+        public ContactService(
+            VideoCallDbContext context,
+            ILogger<ContactService> logger,
+            IContentSecurityService contentSecurity)
         {
             _context = context;
             _logger = logger;
+            _contentSecurity = contentSecurity;
         }
 
         public async Task<ContactResponseDto> AddContactAsync(int userId, AddContactDto addContactDto)
         {
+            var targetUsername = _contentSecurity.NormalizeRequiredText(addContactDto.username, "用户名", 50, filterSensitiveWords: false);
+            var displayName = _contentSecurity.NormalizeOptionalText(addContactDto.display_name, "联系人备注", 50);
+
             // 查找要添加的用户
-            var contactUser = await _context.users.FirstOrDefaultAsync(u => u.username == addContactDto.username);
+            var contactUser = await _context.users.FirstOrDefaultAsync(u => u.username == targetUsername);
             if (contactUser == null)
             {
-                _logger.LogWarning("添加联系人失败，用户不存在: UserId={UserId}, ContactUsername={ContactUsername}", userId, addContactDto.username);
+                _logger.LogWarning("添加联系人失败，用户不存在: UserId={UserId}, ContactUsername={ContactUsername}", userId, targetUsername);
                 throw new ArgumentException("用户不存在");
             }
 
@@ -243,40 +325,138 @@ namespace VideoCallAPI.Services
                 throw new InvalidOperationException("用户已在联系人列表中");
             }
 
-            // 创建双向联系人关系
-            var contact1 = new Contact
+            var contact = await CreateContactPairAsync(userId, contactUser, displayName);
+
+            _logger.LogInformation("添加联系人成功: UserId={UserId}, ContactUserId={ContactUserId}, ContactId={ContactId}",
+                userId, contactUser.id, contact.id);
+
+            return contact;
+        }
+
+        public async Task<FriendRequestResponseDto> CreateFriendRequestAsync(int userId, CreateFriendRequestDto requestDto)
+        {
+            var targetUsername = _contentSecurity.NormalizeRequiredText(requestDto.username, "用户名", 50, filterSensitiveWords: false);
+
+            var receiver = await _context.users.FirstOrDefaultAsync(u => u.username == targetUsername);
+            if (receiver == null)
+                throw new ArgumentException("用户不存在");
+
+            if (receiver.id == userId)
+                throw new InvalidOperationException("不能添加自己为好友");
+
+            if (await _context.Contacts.AnyAsync(c => c.user_id == userId && c.contact_user_id == receiver.id))
+                throw new InvalidOperationException("你们已经是好友");
+
+            var reversePendingRequest = await _context.FriendRequests
+                .Include(r => r.requester)
+                .Include(r => r.receiver)
+                .FirstOrDefaultAsync(r =>
+                    r.requester_id == receiver.id &&
+                    r.receiver_id == userId &&
+                    r.status == FriendRequestStatus.Pending);
+
+            if (reversePendingRequest != null)
+                return MapToFriendRequestResponse(reversePendingRequest, userId);
+
+            var now = DateTime.UtcNow;
+            var note = _contentSecurity.NormalizeOptionalText(requestDto.note, "验证消息", 100);
+            var source = _contentSecurity.NormalizeOptionalText(requestDto.source, "好友来源", 50) ?? "账号搜索";
+
+            var existingRequest = await _context.FriendRequests
+                .Include(r => r.requester)
+                .Include(r => r.receiver)
+                .FirstOrDefaultAsync(r => r.requester_id == userId && r.receiver_id == receiver.id);
+
+            if (existingRequest != null)
             {
-                user_id = userId,
-                contact_user_id = contactUser.id,
-                display_name = addContactDto.display_name,
-                added_at = DateTime.UtcNow
+                existingRequest.note = note;
+                existingRequest.source = source;
+                existingRequest.status = FriendRequestStatus.Pending;
+                existingRequest.created_at = now;
+                existingRequest.updated_at = now;
+                await _context.SaveChangesAsync();
+                return MapToFriendRequestResponse(existingRequest, userId);
+            }
+
+            var friendRequest = new FriendRequest
+            {
+                requester_id = userId,
+                receiver_id = receiver.id,
+                note = note,
+                source = source,
+                status = FriendRequestStatus.Pending,
+                created_at = now,
+                updated_at = now
             };
 
-            var contact2 = new Contact
-            {
-                user_id = contactUser.id,
-                contact_user_id = userId,
-                display_name = null, // 对方可以自己设置备注名
-                added_at = DateTime.UtcNow
-            };
-
-            _context.Contacts.Add(contact1);
-            _context.Contacts.Add(contact2);
+            _context.FriendRequests.Add(friendRequest);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("添加联系人成功: UserId={UserId}, ContactUserId={ContactUserId}, ContactId={ContactId}", 
-                userId, contactUser.id, contact1.id);
+            var createdRequest = await _context.FriendRequests
+                .Include(r => r.requester)
+                .Include(r => r.receiver)
+                .FirstAsync(r => r.id == friendRequest.id);
 
-            return new ContactResponseDto
+            return MapToFriendRequestResponse(createdRequest, userId);
+        }
+
+        public async Task<List<FriendRequestResponseDto>> GetFriendRequestsAsync(int userId)
+        {
+            var requests = await _context.FriendRequests
+                .Include(r => r.requester)
+                .Include(r => r.receiver)
+                .Where(r => r.requester_id == userId || r.receiver_id == userId)
+                .OrderByDescending(r => r.updated_at)
+                .ThenByDescending(r => r.created_at)
+                .ToListAsync();
+
+            return requests.Select(request => MapToFriendRequestResponse(request, userId)).ToList();
+        }
+
+        public async Task<FriendRequestResponseDto> RespondFriendRequestAsync(int userId, int requestId, FriendRequestDecisionDto decisionDto)
+        {
+            var normalizedStatus = decisionDto.status.Trim().ToLowerInvariant();
+            var nextStatus = normalizedStatus switch
             {
-                id = contact1.id,
-                contact_user = MapToUserResponse(contactUser),
-                display_name = contact1.display_name,
-                added_at = contact1.added_at,
-                is_blocked = contact1.is_blocked,
-                last_message_at = contact1.last_message_at,
-                unread_count = contact1.unread_count
+                "accepted" or "accept" => FriendRequestStatus.Accepted,
+                "rejected" or "reject" => FriendRequestStatus.Rejected,
+                _ => throw new ArgumentException("处理结果只能是 accepted 或 rejected")
             };
+
+            var request = await _context.FriendRequests
+                .Include(r => r.requester)
+                .Include(r => r.receiver)
+                .FirstOrDefaultAsync(r => r.id == requestId && r.receiver_id == userId);
+
+            if (request == null)
+                throw new ArgumentException("好友申请不存在");
+
+            if (request.status != FriendRequestStatus.Pending)
+                return MapToFriendRequestResponse(request, userId);
+
+            if (nextStatus == FriendRequestStatus.Accepted)
+                await CreateContactPairAsync(userId, request.requester, null);
+
+            request.status = nextStatus;
+            request.updated_at = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return MapToFriendRequestResponse(request, userId);
+        }
+
+        public async Task ClearHandledFriendRequestsAsync(int userId)
+        {
+            var handledRequests = await _context.FriendRequests
+                .Where(r =>
+                    (r.requester_id == userId || r.receiver_id == userId) &&
+                    r.status != FriendRequestStatus.Pending)
+                .ToListAsync();
+
+            if (handledRequests.Count == 0)
+                return;
+
+            _context.FriendRequests.RemoveRange(handledRequests);
+            await _context.SaveChangesAsync();
         }
 
         public async Task<List<ContactResponseDto>> GetContactsAsync(int userId)
@@ -304,12 +484,14 @@ namespace VideoCallAPI.Services
             if (string.IsNullOrWhiteSpace(query))
                 return await GetContactsAsync(userId);
 
+            var searchTerm = _contentSecurity.NormalizeRequiredText(query, "搜索内容", 100, filterSensitiveWords: false);
+
             var contacts = await _context.Contacts
                 .Include(c => c.contact_user)
                 .Where(c => c.user_id == userId && 
-                           (c.contact_user.username.Contains(query) || 
-                            (c.contact_user.display_name != null && c.contact_user.display_name.Contains(query)) ||
-                            (c.display_name != null && c.display_name.Contains(query))))
+                           (c.contact_user.username.Contains(searchTerm) ||
+                            (c.contact_user.display_name != null && c.contact_user.display_name.Contains(searchTerm)) ||
+                            (c.display_name != null && c.display_name.Contains(searchTerm))))
                 .OrderBy(c => c.display_name ?? c.contact_user.username)
                 .ToListAsync();
 
@@ -367,7 +549,7 @@ namespace VideoCallAPI.Services
             if (contact == null)
                 throw new ArgumentException("联系人不存在");
 
-            contact.display_name = displayName;
+            contact.display_name = _contentSecurity.NormalizeOptionalText(displayName, "联系人备注", 50);
             await _context.SaveChangesAsync();
 
             return new ContactResponseDto
@@ -382,6 +564,80 @@ namespace VideoCallAPI.Services
             };
         }
 
+        private async Task<ContactResponseDto> CreateContactPairAsync(int userId, User contactUser, string? displayName)
+        {
+            var existingContact = await _context.Contacts
+                .Include(c => c.contact_user)
+                .FirstOrDefaultAsync(c => c.user_id == userId && c.contact_user_id == contactUser.id);
+
+            if (existingContact != null)
+                return MapToContactResponse(existingContact);
+
+            var now = DateTime.UtcNow;
+            var contact = new Contact
+            {
+                user_id = userId,
+                contact_user_id = contactUser.id,
+                display_name = displayName,
+                added_at = now,
+                contact_user = contactUser
+            };
+
+            var reverseContactExists = await _context.Contacts
+                .AnyAsync(c => c.user_id == contactUser.id && c.contact_user_id == userId);
+
+            _context.Contacts.Add(contact);
+
+            if (!reverseContactExists)
+            {
+                _context.Contacts.Add(new Contact
+                {
+                    user_id = contactUser.id,
+                    contact_user_id = userId,
+                    display_name = null,
+                    added_at = now
+                });
+            }
+
+            await _context.SaveChangesAsync();
+            return MapToContactResponse(contact);
+        }
+
+        private static ContactResponseDto MapToContactResponse(Contact contact)
+        {
+            return new ContactResponseDto
+            {
+                id = contact.id,
+                contact_user = MapToUserResponse(contact.contact_user),
+                display_name = contact.display_name,
+                added_at = contact.added_at,
+                is_blocked = contact.is_blocked,
+                last_message_at = contact.last_message_at,
+                unread_count = contact.unread_count
+            };
+        }
+
+        private static FriendRequestResponseDto MapToFriendRequestResponse(FriendRequest request, int currentUserId)
+        {
+            return new FriendRequestResponseDto
+            {
+                id = request.id,
+                requester = MapToUserResponse(request.requester),
+                receiver = MapToUserResponse(request.receiver),
+                note = request.note,
+                source = request.source,
+                status = request.status switch
+                {
+                    FriendRequestStatus.Accepted => "accepted",
+                    FriendRequestStatus.Rejected => "rejected",
+                    _ => "pending"
+                },
+                direction = request.receiver_id == currentUserId ? "incoming" : "outgoing",
+                created_at = request.created_at,
+                updated_at = request.updated_at
+            };
+        }
+
         private static UserResponseDto MapToUserResponse(User user)
         {
             return new UserResponseDto
@@ -389,9 +645,22 @@ namespace VideoCallAPI.Services
                 id = user.id,
                 username = user.username,
                 email = user.email,
+                display_name = user.display_name,
+                signature = user.signature,
+                gender = user.gender,
+                birthday = user.birthday,
+                country = user.country,
+                province = user.province,
+                region = user.region,
                 avatar_path = user.avatar_path,
-                is_online = user.is_online,
-                last_login_at = user.last_login_at
+                qq_bound = !string.IsNullOrWhiteSpace(user.qq_open_id),
+                qq_nickname = user.qq_nickname,
+                qq_avatar_url = user.qq_avatar_url,
+                qq_bound_at = user.qq_bound_at,
+                is_online = OnlineStatusPolicy.IsOnline(user),
+                last_login_at = user.last_login_at,
+                created_at = user.created_at,
+                updated_at = user.updated_at
             };
         }
     }
@@ -478,21 +747,43 @@ namespace VideoCallAPI.Services
     {
         private readonly VideoCallDbContext _context;
         private readonly ILogger<ChatService> _logger;
+        private readonly IContentSecurityService _contentSecurity;
 
-        public ChatService(VideoCallDbContext context, ILogger<ChatService> logger)
+        public ChatService(
+            VideoCallDbContext context,
+            ILogger<ChatService> logger,
+            IContentSecurityService contentSecurity)
         {
             _context = context;
             _logger = logger;
+            _contentSecurity = contentSecurity;
         }
 
 public async Task<ChatMessageDto> SendMessageAsync(int senderId, SendMessageDto sendMessageDto)
 {
+    var senderContact = await _context.Contacts
+        .FirstOrDefaultAsync(c => c.user_id == senderId && c.contact_user_id == sendMessageDto.receiver_id);
+    if (senderContact == null)
+        throw new InvalidOperationException("请先添加好友后再发送消息");
+
+    if (senderContact.is_blocked)
+        throw new InvalidOperationException("该联系人已被屏蔽，无法发送消息");
+
+    var content = _contentSecurity.NormalizeRequiredText(sendMessageDto.content, "消息内容", 1000);
+    var filePath = _contentSecurity.NormalizeStoredFilePath(sendMessageDto.file_path, "文件路径", "/chat-files/");
+    var duration = sendMessageDto.duration;
+    if (duration.HasValue && (duration.Value < 0 || duration.Value > 3600))
+        throw new ArgumentException("消息时长不合法");
+
     var message = new ChatMessage
     {
         sender_id = senderId,
         receiver_id = sendMessageDto.receiver_id,
-        content = sendMessageDto.content,
+        content = content,
         type = sendMessageDto.type,
+        file_path = filePath,
+        file_size = sendMessageDto.file_size,
+        duration = duration,
         timestamp = DateTime.UtcNow,
         created_at = DateTime.UtcNow
     };
@@ -528,6 +819,23 @@ public async Task<ChatMessageDto> SendMessageAsync(int senderId, SendMessageDto 
                 .FirstOrDefaultAsync(c => c.id == contactId && c.user_id == userId);
             if (contact == null)
                 throw new ArgumentException("联系人不存在");
+
+            var unreadMessages = await _context.ChatMessages
+                .Where(m => m.sender_id == contact.contact_user_id &&
+                            m.receiver_id == userId &&
+                            !m.is_read)
+                .ToListAsync();
+
+            if (unreadMessages.Count > 0 || contact.unread_count > 0)
+            {
+                foreach (var unreadMessage in unreadMessages)
+                {
+                    unreadMessage.is_read = true;
+                }
+
+                contact.unread_count = 0;
+                await _context.SaveChangesAsync();
+            }
 
             var messages = await _context.ChatMessages
                 .Include(m => m.sender)
@@ -581,7 +889,21 @@ public async Task<ChatMessageDto> SendMessageAsync(int senderId, SendMessageDto 
 
             if (message != null)
             {
-                message.is_read = true;
+                if (!message.is_read)
+                    message.is_read = true;
+
+                var contact = await _context.Contacts
+                    .FirstOrDefaultAsync(c => c.user_id == userId && c.contact_user_id == message.sender_id);
+                if (contact != null)
+                {
+                    var unreadCount = await _context.ChatMessages
+                        .CountAsync(m => m.sender_id == message.sender_id &&
+                                         m.receiver_id == userId &&
+                                         !m.is_read &&
+                                         m.id != message.id);
+                    contact.unread_count = unreadCount;
+                }
+
                 await _context.SaveChangesAsync();
             }
         }
@@ -647,8 +969,18 @@ public async Task<ChatMessageDto> SendMessageAsync(int senderId, SendMessageDto 
                 username = user.username,
                 email = user.email,
                 display_name = user.display_name,
+                signature = user.signature,
+                gender = user.gender,
+                birthday = user.birthday,
+                country = user.country,
+                province = user.province,
+                region = user.region,
                 avatar_path = user.avatar_path,
-                is_online = user.is_online,
+                qq_bound = !string.IsNullOrWhiteSpace(user.qq_open_id),
+                qq_nickname = user.qq_nickname,
+                qq_avatar_url = user.qq_avatar_url,
+                qq_bound_at = user.qq_bound_at,
+                is_online = OnlineStatusPolicy.IsOnline(user),
                 last_login_at = user.last_login_at,
                 created_at = user.created_at,
                 updated_at = user.updated_at

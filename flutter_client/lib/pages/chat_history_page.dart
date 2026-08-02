@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/call_manager.dart';
 import '../models/contact.dart';
+import '../config/app_config.dart';
 import 'chat_page.dart';
 
 class ChatHistoryPage extends StatefulWidget {
@@ -20,6 +21,13 @@ class ChatHistoryPage extends StatefulWidget {
 }
 
 class _ChatHistoryPageState extends State<ChatHistoryPage> {
+  static const Color _qqBlue = Color(0xFF12A8F4);
+  static const Color _qqShell = Color(0xFFEFF7FC);
+  static const Color _qqText = Color(0xFF111820);
+  static const Color _qqMuted = Color(0xFF8C96A3);
+  static const Color _qqOnline = Color(0xFF20D67A);
+  static const Color _qqOffline = Color(0xFFB8C0CB);
+
   List<Contact> _contacts = [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -47,12 +55,15 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
       });
 
       final contacts = await widget.apiService.getContacts();
-      
+
       // 过滤出有聊天记录的联系人
-      final contactsWithChat = contacts.where((contact) => 
-        contact.lastMessageAt != null || contact.unreadCount > 0
-      ).toList();
-      
+      final contactsWithChat = contacts
+          .where(
+            (contact) =>
+                contact.lastMessageAt != null || contact.unreadCount > 0,
+          )
+          .toList();
+
       // 按最后消息时间排序
       contactsWithChat.sort((a, b) {
         final aTime = a.lastMessageAt ?? DateTime(1900);
@@ -75,21 +86,21 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
   Future<void> _deleteChatHistory(Contact contact) async {
     try {
       await widget.apiService.deleteChatHistory(contact.id);
-      
+
       setState(() {
         _contacts.removeWhere((c) => c.id == contact.id);
       });
-      
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('聊天记录已删除')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('聊天记录已删除')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('删除失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
       }
     }
   }
@@ -117,129 +128,263 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     );
   }
 
+  String _displayName(Contact contact) {
+    if (contact.displayName?.isNotEmpty == true) {
+      return contact.displayName!;
+    }
+    if (contact.contactUser.display_name?.isNotEmpty == true) {
+      return contact.contactUser.display_name!;
+    }
+    return contact.contactUser.username;
+  }
+
+  String _initial(Contact contact) {
+    final name = _displayName(contact);
+    return name.isNotEmpty ? name[0].toUpperCase() : '?';
+  }
+
+  Widget _buildAvatar(Contact contact) {
+    final avatarUrl = AppConfig.resolveMediaUrl(contact.contactUser.avatarPath);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        CircleAvatar(
+          radius: 24,
+          backgroundColor: _qqBlue,
+          backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+          child: avatarUrl == null
+              ? Text(
+                  _initial(contact),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                )
+              : null,
+        ),
+        Positioned(
+          right: 0,
+          bottom: 1,
+          child: Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: contact.contactUser.isOnline ? _qqOnline : _qqOffline,
+              border: Border.all(color: Colors.white, width: 2),
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUnreadBadge(int count) {
+    if (count <= 0) return const SizedBox.shrink();
+    return Container(
+      constraints: const BoxConstraints(minWidth: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF3B30),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          height: 1,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConversationTile(Contact contact) {
+    final signature = contact.contactUser.signature?.trim();
+    final preview = signature?.isNotEmpty == true ? signature! : '点击继续聊天';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () {
+            setState(() {
+              _contacts = _contacts
+                  .map(
+                    (item) => item.id == contact.id
+                        ? item.copyWith(unreadCount: 0)
+                        : item,
+                  )
+                  .toList();
+            });
+
+            Navigator.of(context)
+                .push(
+              MaterialPageRoute(
+                builder: (context) => ChatPage(
+                  contact: contact,
+                  apiService: widget.apiService,
+                  callManager: widget.callManager,
+                ),
+              ),
+            )
+                .then((_) {
+              if (mounted) {
+                _loadContacts();
+              }
+            });
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                _buildAvatar(contact),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _displayName(contact),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _qqText,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          if (contact.lastMessageAt != null)
+                            Text(
+                              _formatTime(contact.lastMessageAt!),
+                              style: const TextStyle(
+                                color: _qqMuted,
+                                fontSize: 11,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              preview,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _qqMuted,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          _buildUnreadBadge(contact.unreadCount),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: '更多',
+                  icon: const Icon(Icons.more_horiz),
+                  onSelected: (value) {
+                    if (value == 'delete') {
+                      _showDeleteDialog(contact);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline, color: Colors.red),
+                          SizedBox(width: 8),
+                          Text('删除聊天记录', style: TextStyle(color: Colors.red)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('聊天记录'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadContacts,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadContacts),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('加载失败: $_errorMessage'),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadContacts,
-                        child: const Text('重试'),
-                      ),
-                    ],
-                  ),
-                )
-              : _contacts.isEmpty
-                  ? const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey),
-                          SizedBox(height: 16),
-                          Text('暂无聊天记录', style: TextStyle(color: Colors.grey)),
-                        ],
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _loadContacts,
-                      child: ListView.builder(
-                        itemCount: _contacts.length,
-                        itemBuilder: (context, index) {
-                          final contact = _contacts[index];
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundImage: contact.contactUser.avatarPath != null
-                                  ? NetworkImage(contact.contactUser.avatarPath!)
-                                  : null,
-                              child: contact.contactUser.avatarPath == null
-                                  ? Text(contact.displayNameOrUsername[0].toUpperCase())
-                                  : null,
-                            ),
-                            title: Text(contact.displayNameOrUsername),
-                            subtitle: Text(
-                              contact.lastMessageAt != null
-                                  ? '最后消息: ${_formatTime(contact.lastMessageAt!)}'
-                                  : '暂无消息',
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (contact.unreadCount > 0)
-                                  Container(
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: const BoxDecoration(
-                                      color: Colors.red,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Text(
-                                      '${contact.unreadCount}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ),
-                                PopupMenuButton<String>(
-                                  onSelected: (value) {
-                                    if (value == 'delete') {
-                                      _showDeleteDialog(contact);
-                                    }
-                                  },
-                                  itemBuilder: (context) => [
-                                    const PopupMenuItem(
-                                      value: 'delete',
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.delete, color: Colors.red),
-                                          SizedBox(width: 8),
-                                          Text('删除聊天记录'),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) => ChatPage(
-                                    contact: contact,
-                                    apiService: widget.apiService,
-                                    callManager: widget.callManager,
-                                  ),
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
+      body: Container(
+        color: _qqShell,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _errorMessage != null
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('加载失败: $_errorMessage'),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _loadContacts,
+                          child: const Text('重试'),
+                        ),
+                      ],
                     ),
+                  )
+                : _contacts.isEmpty
+                    ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.chat_bubble_outline,
+                              size: 64,
+                              color: _qqMuted,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              '暂无聊天记录',
+                              style: TextStyle(color: _qqMuted),
+                            ),
+                          ],
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: _loadContacts,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(0, 10, 0, 18),
+                          itemCount: _contacts.length,
+                          itemBuilder: (context, index) =>
+                              _buildConversationTile(_contacts[index]),
+                        ),
+                      ),
+      ),
     );
   }
 
   String _formatTime(DateTime time) {
     final now = DateTime.now();
     final difference = now.difference(time);
-    
+
     if (difference.inDays > 0) {
       return '${difference.inDays}天前';
     } else if (difference.inHours > 0) {

@@ -1,11 +1,36 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/call.dart';
 import '../models/contact.dart';
 import '../models/chat_message.dart';
 import '../config/app_config.dart';
-import 'dart:io'; // Added for File
+
+class ChatUploadResult {
+  final String fileName;
+  final String filePath;
+  final int fileSize;
+  final String contentType;
+
+  const ChatUploadResult({
+    required this.fileName,
+    required this.filePath,
+    required this.fileSize,
+    required this.contentType,
+  });
+
+  factory ChatUploadResult.fromJson(Map<String, dynamic> json) {
+    return ChatUploadResult(
+      fileName: json['file_name'] as String? ?? '',
+      filePath: json['file_path'] as String? ?? '',
+      fileSize: (json['file_size'] as num?)?.toInt() ?? 0,
+      contentType: json['content_type'] as String? ?? '',
+    );
+  }
+
+  bool get isImage => contentType.toLowerCase().startsWith('image/');
+}
 
 class ApiService {
   static String get baseUrl => AppConfig.baseUrl;
@@ -29,9 +54,7 @@ class ApiService {
 
   // 获取HTTP请求头
   Map<String, String> get _headers {
-    final headers = {
-      'content-type': 'application/json',
-    };
+    final headers = {'content-type': 'application/json'};
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
     }
@@ -128,10 +151,7 @@ class ApiService {
       final response = await http.post(
         Uri.parse(url),
         headers: _headers,
-        body: jsonEncode({
-          'username': username,
-          'password': password,
-        }),
+        body: jsonEncode({'username': username, 'password': password}),
       );
 
       print('📡 响应状态码: ${response.statusCode}');
@@ -163,7 +183,8 @@ class ApiService {
           return responseData;
         } else {
           print(
-              '❌ 响应格式错误: success=${responseData['success']}, data=${responseData['data']}');
+            '❌ 响应格式错误: success=${responseData['success']}, data=${responseData['data']}',
+          );
           throw Exception('登录失败: 响应格式错误');
         }
       } else {
@@ -229,6 +250,78 @@ class ApiService {
     }
   }
 
+  // QQ测试登录（真实QQ OAuth需要移动端应用跳转；本地验证使用后端受控dev-login）
+  Future<Map<String, dynamic>> qqDevLogin() async {
+    String errorMessage = 'QQ登录失败';
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/qq/dev-login'),
+        headers: _headers,
+        body: jsonEncode({
+          'open_id': 'dev_qq_flutter',
+          'nickname': 'QQ手机测试用户',
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['success'] == true && responseData['data'] != null) {
+          final data = responseData['data'];
+          if (data['token'] != null) {
+            _token = data['token'];
+          }
+          if (data['user'] != null) {
+            _currentUser = User.fromJson(data['user']);
+          }
+          return responseData;
+        }
+
+        errorMessage = responseData['message'] ?? 'QQ登录失败';
+        throw Exception(errorMessage);
+      }
+
+      final errorData = jsonDecode(response.body);
+      errorMessage = errorData['message'] ?? 'QQ登录失败';
+      throw Exception(errorMessage);
+    } catch (e) {
+      print('❌ QQ登录错误: $e');
+      throw Exception(errorMessage);
+    }
+  }
+
+  // QQ测试绑定
+  Future<User> qqDevBind({
+    required String openId,
+    String? nickname,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/qq/dev-bind'),
+        headers: _headers,
+        body: jsonEncode({
+          'open_id': openId,
+          'nickname': nickname,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['success'] == true && responseData['data'] != null) {
+          final user = User.fromJson(responseData['data']);
+          _currentUser = user;
+          return user;
+        }
+
+        throw Exception(responseData['message'] ?? 'QQ绑定失败');
+      }
+
+      final errorData = jsonDecode(response.body);
+      throw Exception('QQ绑定失败: ${errorData['message'] ?? response.body}');
+    } catch (e) {
+      throw Exception('QQ绑定错误: $e');
+    }
+  }
+
   // 获取联系人列表
   Future<List<Contact>> getContacts() async {
     String errorMessage = '获取联系人失败';
@@ -266,8 +359,10 @@ class ApiService {
   }
 
   // 添加联系人
-  Future<Contact> addContact(
-      {required String username, String? displayName}) async {
+  Future<Contact> addContact({
+    required String username,
+    String? displayName,
+  }) async {
     try {
       print('➕ 添加联系人: $username');
       final response = await http.post(
@@ -323,15 +418,15 @@ class ApiService {
 
   // 修改联系人备注
   Future<Contact> updateContactDisplayName(
-      int contactId, String displayName) async {
+    int contactId,
+    String displayName,
+  ) async {
     try {
       print('✏️ 修改联系人备注: $contactId -> $displayName');
       final response = await http.patch(
-        Uri.parse('$baseUrl/contacts/$contactId'),
+        Uri.parse('$baseUrl/contacts/$contactId/display-name'),
         headers: _headers,
-        body: jsonEncode({
-          'display_name': displayName,
-        }),
+        body: jsonEncode(displayName),
       );
 
       if (response.statusCode == 200) {
@@ -368,7 +463,8 @@ class ApiService {
       } else {
         final errorData = jsonDecode(response.body);
         throw Exception(
-            '${isBlocked ? "屏蔽" : "取消屏蔽"}联系人失败: ${errorData['message'] ?? response.body}');
+          '${isBlocked ? "屏蔽" : "取消屏蔽"}联系人失败: ${errorData['message'] ?? response.body}',
+        );
       }
     } catch (e) {
       print('❌ ${isBlocked ? "屏蔽" : "取消屏蔽"}联系人错误: $e');
@@ -430,6 +526,58 @@ class ApiService {
     }
   }
 
+  // 标记消息为已读
+  Future<void> markMessageAsRead(String messageId) async {
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/chat/messages/$messageId/read'),
+        headers: _headers,
+      );
+
+      if (response.statusCode != 200) {
+        final errorData = jsonDecode(response.body);
+        throw Exception('标记消息已读失败: ${errorData['message'] ?? response.body}');
+      }
+    } catch (_) {
+      rethrow;
+    }
+  }
+
+  // 上传聊天附件
+  Future<ChatUploadResult> uploadChatFile(File file) async {
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/chat/upload'),
+      );
+
+      if (_token != null) {
+        request.headers['Authorization'] = 'Bearer $_token';
+      }
+
+      request.files.add(await http.MultipartFile.fromPath('file', file.path));
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['success'] == true && responseData['data'] != null) {
+          return ChatUploadResult.fromJson(
+            responseData['data'] as Map<String, dynamic>,
+          );
+        }
+
+        throw Exception('上传文件失败: 响应格式错误');
+      }
+
+      final errorData = jsonDecode(response.body);
+      throw Exception('上传文件失败: ${errorData['message'] ?? response.body}');
+    } catch (e) {
+      throw Exception('上传文件错误: $e');
+    }
+  }
+
   // 搜索用户
   Future<Map<String, dynamic>> searchUsers({
     required String query,
@@ -437,12 +585,13 @@ class ApiService {
     int page_size = 20,
   }) async {
     try {
-      final uri = Uri.parse('${AppConfig.baseUrl}/auth/search-users')
-          .replace(queryParameters: {
-        'query': query,
-        'page': page.toString(),
-        'page_size': page_size.toString(),
-      });
+      final uri = Uri.parse('${AppConfig.baseUrl}/auth/search-users').replace(
+        queryParameters: {
+          'query': query,
+          'page': page.toString(),
+          'page_size': page_size.toString(),
+        },
+      );
 
       final response = await http.get(uri, headers: currentHeaders);
 
@@ -462,7 +611,12 @@ class ApiService {
 
   // 发送消息
   Future<ChatMessage> sendMessage(
-      int receiverId, String content, MessageType type) async {
+    int receiverId,
+    String content,
+    MessageType type, {
+    String? filePath,
+    int? fileSize,
+  }) async {
     try {
       print('📤 发送消息给: $receiverId');
 
@@ -484,18 +638,24 @@ class ApiService {
         case MessageType.file:
           typeString = 'File';
           break;
-        default:
-          typeString = 'Text';
+      }
+
+      final body = <String, dynamic>{
+        'receiver_id': receiverId,
+        'content': content,
+        'type': typeString,
+      };
+      if (filePath != null) {
+        body['file_path'] = filePath;
+      }
+      if (fileSize != null) {
+        body['file_size'] = fileSize;
       }
 
       final response = await http.post(
         Uri.parse('$baseUrl/chat/send'),
         headers: _headers,
-        body: jsonEncode({
-          'receiver_id': receiverId,
-          'content': content,
-          'type': typeString,
-        }),
+        body: jsonEncode(body),
       );
 
       if (response.statusCode == 200) {
@@ -542,9 +702,7 @@ class ApiService {
       final response = await http.post(
         Uri.parse('$baseUrl/calls/rooms'),
         headers: _headers,
-        body: jsonEncode({
-          'room_name': roomName,
-        }),
+        body: jsonEncode({'room_name': roomName}),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -595,15 +753,21 @@ class ApiService {
   }
 
   // 更新个人资料
-  Future<User> updateProfile({String? display_name, String? avatarPath}) async {
+  Future<User> updateProfile({
+    String? display_name,
+    String? signature,
+    String? avatarPath,
+  }) async {
     try {
+      final body = <String, dynamic>{};
+      if (display_name != null) body['display_name'] = display_name;
+      if (signature != null) body['signature'] = signature;
+      if (avatarPath != null) body['avatar_path'] = avatarPath;
+
       final response = await http.put(
         Uri.parse('$baseUrl/auth/profile'),
         headers: _headers,
-        body: jsonEncode({
-          if (display_name != null) 'display_name': display_name,
-          if (avatarPath != null) 'avatar_path': avatarPath,
-        }),
+        body: jsonEncode(body),
       );
 
       if (response.statusCode == 200) {
@@ -641,10 +805,7 @@ class ApiService {
 
       // 添加文件
       request.files.add(
-        await http.MultipartFile.fromPath(
-          'avatar',
-          imageFile.path,
-        ),
+        await http.MultipartFile.fromPath('avatar', imageFile.path),
       );
 
       final streamedResponse = await request.send();

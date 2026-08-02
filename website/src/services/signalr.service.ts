@@ -20,6 +20,9 @@ export interface WebRTCMessage {
 
 class SignalRService {
   private connection: signalR.HubConnection | null = null;
+  private currentUserId: number | null = null;
+  private heartbeatTimer: number | null = null;
+  private heartbeatInFlight = false;
 
   // Callbacks
   onIncomingCall?: (call: IncomingCall) => void;
@@ -81,12 +84,20 @@ class SignalRService {
       console.log('SignalR reconnecting...');
     });
 
-    this.connection.onreconnected(() => {
+    this.connection.onreconnected(async () => {
       console.log('SignalR reconnected');
+      if (this.currentUserId !== null) {
+        try {
+          await this.authenticate(this.currentUserId);
+        } catch (error) {
+          console.error('SignalR re-authentication failed:', error);
+        }
+      }
     });
 
     this.connection.onclose((error) => {
       console.log('SignalR connection closed:', error);
+      this.stopHeartbeat();
     });
 
     // Call-related events
@@ -155,10 +166,43 @@ class SignalRService {
 
     try {
       await this.connection.invoke('Authenticate', userId);
+      this.currentUserId = userId;
+      this.startHeartbeat();
       console.log('User authenticated:', userId);
     } catch (error) {
       console.error('User authentication failed:', error);
       throw error;
+    }
+  }
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    void this.sendHeartbeat();
+    this.heartbeatTimer = window.setInterval(() => {
+      void this.sendHeartbeat();
+    }, 2000);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer !== null) {
+      window.clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    this.heartbeatInFlight = false;
+  }
+
+  private async sendHeartbeat(): Promise<void> {
+    if (!this.connection || !this.isConnected || this.heartbeatInFlight) {
+      return;
+    }
+
+    this.heartbeatInFlight = true;
+    try {
+      await this.connection.invoke('Heartbeat');
+    } catch (error) {
+      console.warn('SignalR heartbeat failed:', error);
+    } finally {
+      this.heartbeatInFlight = false;
     }
   }
 
@@ -252,13 +296,14 @@ class SignalRService {
   }
 
   async disconnect(): Promise<void> {
+    this.stopHeartbeat();
     if (this.connection) {
       await this.connection.stop();
       this.connection = null;
+      this.currentUserId = null;
       console.log('SignalR disconnected');
     }
   }
 }
 
 export const signalRService = new SignalRService();
-

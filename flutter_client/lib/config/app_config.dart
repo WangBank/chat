@@ -1,19 +1,53 @@
 class AppConfig {
+  static const String _defaultBaseUrl = 'http://common.wangbank.top:7001/api';
+  static const String _configuredBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: _defaultBaseUrl,
+  );
+  static const String _configuredSignalRUrl = String.fromEnvironment(
+    'SIGNALR_HUB_URL',
+  );
+
   // 根据平台和环境自动选择服务器地址
   static String get baseUrl {
-    return 'http://common.wangbank.top:7001/api'; // 使用127.0.0.1，适用于Android模拟器
+    return _configuredBaseUrl;
   }
-  
+
+  static String get serverUrl {
+    final normalizedBaseUrl = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
+
+    if (normalizedBaseUrl.endsWith('/api')) {
+      return normalizedBaseUrl.substring(0, normalizedBaseUrl.length - 4);
+    }
+
+    return normalizedBaseUrl;
+  }
+
+  static String? resolveMediaUrl(String? path) {
+    final value = path?.trim();
+    if (value == null || value.isEmpty) return null;
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+    if (value.startsWith('/')) {
+      return '$serverUrl$value';
+    }
+    return '$serverUrl/$value';
+  }
+
   static String get signalRUrl {
-    return baseUrl.replaceAll('/api', '/videocallhub');
+    if (_configuredSignalRUrl.isNotEmpty) {
+      return _configuredSignalRUrl;
+    }
+    return '$serverUrl/videocallhub';
   }
-  
-  
+
   // 开发环境辅助方法
   static String getLocalNetworkUrl(String ipAddress) {
     return 'http://$ipAddress:7001/api';
   }
-  
 }
 
 // 使用示例和说明

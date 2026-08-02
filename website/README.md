@@ -1,80 +1,60 @@
-# 简聊 - Web客户端
+# Forever Love Chat Website
 
-基于 React + Vite + TypeScript + MobX + Ant Design 构建的即时通讯Web应用。
-
-## 功能特性
-
-- ✅ 用户登录、注册、忘记密码
-- ✅ 随机生成账号密码功能
-- ✅ 即时消息聊天
-- ✅ 语音通话（WebRTC）
-- ✅ 视频通话（WebRTC）
-- ✅ 联系人管理
-- ✅ 管理员后台（查看在线用户、所有用户）
-- ✅ 版本号显示
+Web 客户端是基于 React、Vite、TypeScript、MobX 和 Ant Design 的即时通讯前端，提供登录注册、联系人、聊天、音视频通话和管理员后台页面。
 
 ## 技术栈
 
-- **React 19** - UI框架
-- **TypeScript** - 类型安全
-- **Vite** - 构建工具
-- **MobX** - 状态管理
-- **Ant Design** - UI组件库
-- **SignalR** - 实时通信
-- **WebRTC** - 音视频通话
+- React 19
+- TypeScript 6.0
+- Vite 8
+- Ant Design 6
+- MobX
+- Axios
+- Microsoft SignalR Client
+- WebRTC
 
-## 开发
+`typescript@7` 当前不满足 `typescript-eslint@8.65.0` 的 peer dependency，因此本项目使用 `typescript@6.0.3` 作为当前可解析的最高版本。
 
-### 安装依赖
+## 开发命令
 
 ```bash
 npm install
-```
-
-### 配置环境变量
-
-复制 `.env.example` 为 `.env` 并修改配置：
-
-```bash
-cp .env.example .env
-```
-
-### 启动开发服务器
-
-```bash
 npm run dev
-```
-
-### 构建生产版本
-
-```bash
 npm run build
 ```
 
+默认 API 地址位于 `src/config/app.config.ts`：
+
+```text
+http://common.wangbank.top:7001
+```
+
+本地开发时可通过环境变量覆盖：
+
+```bash
+VITE_API_BASE_URL=http://localhost:7001 npm run dev
+```
+
+## 功能
+
+- 用户登录、注册、忘记密码
+- 随机生成账号密码
+- 即时消息聊天
+- 语音通话和视频通话
+- 联系人管理
+- 管理员后台
+- 版本号显示
+
 ## 项目结构
 
-```
+```text
 src/
 ├── components/      # 组件
-├── config/          # 配置文件
+├── config/          # 配置
 ├── pages/           # 页面
-├── services/        # 服务层（API、SignalR、WebRTC）
-├── stores/          # MobX状态管理
-└── App.tsx          # 主应用组件
+├── services/        # API、SignalR、WebRTC 服务
+├── stores/          # MobX 状态
+└── App.tsx          # 路由入口
 ```
 
-## 版本号
-
-当前版本: 1.0.0
-
-版本号显示在：
-- 网站左下角
-- 管理后台左下角
-- 移动端应用
-
-
-## 配置Nginx
-sudo chmod 777 /etc/nginx/sites-available/
-sudo ln -s /etc/nginx/sites-available/chat_website /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
+最新进度和验证记录见 [PROGRESS.md](PROGRESS.md)。

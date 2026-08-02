@@ -2,23 +2,35 @@ import 'package:signalr_netcore/signalr_client.dart';
 import '../models/call.dart';
 import '../models/chat_message.dart';
 import '../config/app_config.dart';
+import 'dart:async';
 import 'dart:convert';
 
 typedef OnIncomingCallCallback = void Function(Call call);
 typedef OnCallAcceptedCallback = void Function(String callId);
 typedef OnCallRejectedCallback = void Function(String callId);
 typedef OnCallEndedCallback = void Function(String callId);
-typedef OnOfferReceivedCallback = void Function(String callId, String offer, int senderId);
-typedef OnAnswerReceivedCallback = void Function(String callId, String answer, int senderId);
-typedef OnIceCandidateReceivedCallback = void Function(String callId, String candidate, int senderId);
+typedef OnOfferReceivedCallback = void Function(
+    String callId, String offer, int senderId);
+typedef OnAnswerReceivedCallback = void Function(
+    String callId, String answer, int senderId);
+typedef OnIceCandidateReceivedCallback = void Function(
+    String callId, String candidate, int senderId);
 typedef OnNewMessageCallback = void Function(ChatMessage message);
+typedef OnUserOnlineStatusChangedCallback = void Function(
+    int userId, bool isOnline);
 
 class SignalRService {
   static String get hubUrl => AppConfig.signalRUrl;
-  
+
   HubConnection? _connection;
   int? _currentUserId; // 当前用户ID（用于日志）
-  
+  String? _lastToken;
+  Timer? _heartbeatTimer;
+  Timer? _reconnectTimer;
+  bool _heartbeatInFlight = false;
+  bool _reconnectInFlight = false;
+  bool _manualDisconnect = false;
+
   // 回调函数
   OnIncomingCallCallback? onIncomingCall;
   OnCallAcceptedCallback? onCallAccepted;
@@ -28,30 +40,62 @@ class SignalRService {
   OnAnswerReceivedCallback? onAnswerReceived;
   OnIceCandidateReceivedCallback? onIceCandidateReceived;
   OnNewMessageCallback? onNewMessage;
+  final Set<OnUserOnlineStatusChangedCallback> _onlineStatusListeners = {};
 
   bool get isConnected => _connection?.state == HubConnectionState.Connected;
 
+  void addOnlineStatusListener(OnUserOnlineStatusChangedCallback listener) {
+    _onlineStatusListeners.add(listener);
+  }
+
+  void removeOnlineStatusListener(OnUserOnlineStatusChangedCallback listener) {
+    _onlineStatusListeners.remove(listener);
+  }
+
   // 连接到SignalR Hub
   Future<void> connect(String token) async {
+    _lastToken = token;
+    _manualDisconnect = false;
+
     if (_connection != null && isConnected) {
       print('SignalR already connected');
       return;
     }
 
     try {
-      _connection = HubConnectionBuilder()
-          .withUrl(hubUrl, options: HttpConnectionOptions(
-            accessTokenFactory: () async => token,
-          ))
+      _stopReconnectTimer();
+      _stopHeartbeat();
+
+      final previousConnection = _connection;
+      if (previousConnection != null) {
+        _connection = null;
+        try {
+          await previousConnection.stop();
+        } catch (e) {
+          print('停止旧SignalR连接失败: $e');
+        }
+      }
+
+      final connection = HubConnectionBuilder()
+          .withUrl(
+            hubUrl,
+            options: HttpConnectionOptions(
+              accessTokenFactory: () async => token,
+            ),
+          )
           .withAutomaticReconnect()
           .build();
 
+      _connection = connection;
+
       // 新增：重连相关事件，确保重认证并恢复组关系
-      _connection!.onreconnecting(({Exception? error}) {
+      connection.onreconnecting(({Exception? error}) {
         print('🔄 SignalR正在重连: $error');
       });
-      _connection!.onreconnected(({String? connectionId}) {
-        print('✅ SignalR重连成功: connectionId=$connectionId, 当前用户=$_currentUserId');
+      connection.onreconnected(({String? connectionId}) {
+        print(
+          '✅ SignalR重连成功: connectionId=$connectionId, 当前用户=$_currentUserId',
+        );
         final uid = _currentUserId;
         if (uid != null) {
           authenticate(uid).then((_) {
@@ -63,32 +107,121 @@ class SignalRService {
           print('⚠️ 重连后无法重新认证：当前用户ID为空');
         }
       });
-      _connection!.onclose(({Exception? error}) {
+      connection.onclose(({Exception? error}) {
         print('🛑 SignalR连接关闭: $error');
+        _stopHeartbeat();
+        if (!_manualDisconnect && identical(_connection, connection)) {
+          _scheduleReconnect();
+        }
       });
 
       // 设置事件监听器
       _setupEventListeners();
 
-      await _connection!.start();
+      await connection.start();
       print('SignalR connected successfully');
     } catch (e) {
+      _connection = null;
       print('SignalR connection failed: $e');
       throw Exception('SignalR连接失败: $e');
     }
   }
 
+  Future<void> ensureConnectedAndAuthenticated(String token, int userId) async {
+    _lastToken = token;
+    _currentUserId = userId;
+    _manualDisconnect = false;
+
+    if (!isConnected) {
+      await connect(token);
+    }
+
+    await authenticate(userId);
+  }
+
   // 用户认证
   Future<void> authenticate(int userId) async {
     if (!isConnected) throw Exception('SignalR未连接');
-    
+
     try {
       await _connection!.invoke('Authenticate', args: [userId]);
       _currentUserId = userId;
+      _startHeartbeat();
       print('User authenticated: $userId');
     } catch (e) {
       print('Error authenticating user: $e');
       throw Exception('用户认证失败: $e');
+    }
+  }
+
+  void _startHeartbeat() {
+    _stopHeartbeat();
+    _sendHeartbeat();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _sendHeartbeat();
+    });
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    _heartbeatInFlight = false;
+  }
+
+  void _stopReconnectTimer() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+  }
+
+  void _scheduleReconnect() {
+    if (_manualDisconnect || _reconnectTimer != null || _reconnectInFlight) {
+      return;
+    }
+
+    final token = _lastToken;
+    final userId = _currentUserId;
+    if (token == null || token.isEmpty || userId == null) {
+      print('⚠️ SignalR无法自动重连：缺少token或用户ID');
+      return;
+    }
+
+    _reconnectTimer = Timer(const Duration(seconds: 3), () async {
+      _reconnectTimer = null;
+      if (_manualDisconnect || isConnected || _reconnectInFlight) {
+        return;
+      }
+
+      _reconnectInFlight = true;
+      var shouldRetry = false;
+      try {
+        print('🔄 SignalR尝试自动恢复连接: user=$userId');
+        await connect(token);
+        await authenticate(userId);
+        print('✅ SignalR自动恢复成功: user=$userId');
+      } catch (e) {
+        print('❌ SignalR自动恢复失败: $e');
+        shouldRetry = !_manualDisconnect;
+      } finally {
+        _reconnectInFlight = false;
+        if (shouldRetry) {
+          _scheduleReconnect();
+        }
+      }
+    });
+  }
+
+  Future<void> _sendHeartbeat() async {
+    if (!isConnected || _heartbeatInFlight || _connection == null) {
+      return;
+    }
+
+    _heartbeatInFlight = true;
+    try {
+      await _connection!.invoke('Heartbeat');
+    } catch (e) {
+      print('SignalR heartbeat failed: $e');
+    } finally {
+      _heartbeatInFlight = false;
     }
   }
 
@@ -138,20 +271,21 @@ class SignalRService {
       print('CallEnded 11: $arguments');
       try {
         final dynamic arg0 = arguments?[0];
-    
+
         String? callId;
         int? endedBy;
-    
+
         Map<String, dynamic>? dataMap;
         if (arg0 is Map) {
-          dataMap = Map<String, dynamic>.from(arg0 as Map);
+          dataMap = Map<String, dynamic>.from(arg0);
         } else if (arg0 is String) {
           dataMap = Map<String, dynamic>.from(jsonDecode(arg0) as Map);
         }
-    
+
         if (dataMap != null) {
           callId = dataMap['call_id'] as String?;
-          final dynamic endedRaw = dataMap['endedBy'] ?? dataMap['EndedBy'] ?? dataMap['ended_by'];
+          final dynamic endedRaw =
+              dataMap['endedBy'] ?? dataMap['EndedBy'] ?? dataMap['ended_by'];
           if (endedRaw is int) {
             endedBy = endedRaw;
           } else if (endedRaw is num) {
@@ -160,9 +294,11 @@ class SignalRService {
             endedBy = int.tryParse(endedRaw);
           }
         }
-    
-        print('📨 CallEnded事件: call_id=$callId, current_user=$_currentUserId, ended_by=$endedBy, raw=$arg0');
-    
+
+        print(
+          '📨 CallEnded事件: call_id=$callId, current_user=$_currentUserId, ended_by=$endedBy, raw=$arg0',
+        );
+
         if (callId != null) {
           onCallEnded?.call(callId);
         } else {
@@ -178,17 +314,19 @@ class SignalRService {
       try {
         final data = arguments?[0] as Map<String, dynamic>;
         final callId = data['call_id'] as String;
-    
+
         final dynamic typeVal = data['type'];
         final String type = typeVal is String
             ? typeVal
             : _webRTCTypeIntToString((typeVal as num).toInt());
-    
+
         final messageData = data['data'] as String;
         final senderId = data['sender_id'] as int;
-        
-        print('Received WebRTC message: call=$callId, type=$type, sender_id=$senderId, current_user=$_currentUserId');
-        
+
+        print(
+          'Received WebRTC message: call=$callId, type=$type, sender_id=$senderId, current_user=$_currentUserId',
+        );
+
         switch (type) {
           case 'Offer':
             onOfferReceived?.call(callId, messageData, senderId);
@@ -212,11 +350,50 @@ class SignalRService {
       try {
         final data = arguments?[0] as Map<String, dynamic>;
         print('Received new message: $data');
-        
+
         final message = ChatMessage.fromJson(data);
         onNewMessage?.call(message);
       } catch (e) {
         print('Error parsing new message: $e');
+      }
+    });
+
+    // 接收用户在线状态变化
+    _connection!.on('UserOnlineStatusChanged', (arguments) {
+      try {
+        final dynamic arg0 = arguments?[0];
+        Map<String, dynamic>? dataMap;
+        if (arg0 is Map) {
+          dataMap = Map<String, dynamic>.from(arg0);
+        } else if (arg0 is String) {
+          dataMap = Map<String, dynamic>.from(jsonDecode(arg0) as Map);
+        }
+
+        if (dataMap == null) return;
+
+        final dynamic userIdRaw = dataMap['user_id'] ?? dataMap['userId'];
+        final dynamic onlineRaw = dataMap['is_online'] ?? dataMap['isOnline'];
+        final int? userId = userIdRaw is int
+            ? userIdRaw
+            : userIdRaw is num
+                ? userIdRaw.toInt()
+                : int.tryParse(userIdRaw?.toString() ?? '');
+        final bool? isOnline = onlineRaw is bool
+            ? onlineRaw
+            : onlineRaw is String
+                ? onlineRaw.toLowerCase() == 'true'
+                : null;
+
+        if (userId == null || isOnline == null) return;
+
+        print('👤 在线状态变化: user_id=$userId, is_online=$isOnline');
+        for (final listener in List<OnUserOnlineStatusChangedCallback>.from(
+          _onlineStatusListeners,
+        )) {
+          listener(userId, isOnline);
+        }
+      } catch (e) {
+        print('Error parsing online status: $e');
       }
     });
   }
@@ -224,7 +401,7 @@ class SignalRService {
   // 发起通话
   Future<void> initiateCall(InitiateCallRequest request) async {
     if (!isConnected) throw Exception('SignalR未连接');
-    
+
     try {
       final requestData = request.toJson();
       print('📤 发送InitiateCall请求: $requestData');
@@ -239,7 +416,7 @@ class SignalRService {
   // 应答通话
   Future<void> answerCall(AnswerCallRequest request) async {
     if (!isConnected) throw Exception('SignalR未连接');
-    
+
     try {
       await _connection!.invoke('AnswerCall', args: [request.toJson()]);
       print('Call answered: ${request.callId}, accepted: ${request.accept}');
@@ -252,7 +429,7 @@ class SignalRService {
   // 结束通话
   Future<void> endCall(String callId) async {
     if (!isConnected) throw Exception('SignalR未连接');
-    
+
     try {
       await _connection!.invoke('EndCall', args: [callId]);
       print('Call ended: $callId');
@@ -263,9 +440,14 @@ class SignalRService {
   }
 
   // 发送WebRTC消息
-  Future<void> sendWebRTCMessage(String callId, String type, String data, int receiverId) async {
+  Future<void> sendWebRTCMessage(
+    String callId,
+    String type,
+    String data,
+    int receiverId,
+  ) async {
     if (!isConnected) throw Exception('SignalR未连接');
-    
+
     try {
       final message = {
         'call_id': callId,
@@ -293,14 +475,22 @@ class SignalRService {
   }
 
   // 发送ICE Candidate
-  Future<void> sendIceCandidate(WebRTCCandidate candidate, int receiverId) async {
-    await sendWebRTCMessage(candidate.callId, 'IceCandidate', candidate.candidate, receiverId);
+  Future<void> sendIceCandidate(
+    WebRTCCandidate candidate,
+    int receiverId,
+  ) async {
+    await sendWebRTCMessage(
+      candidate.callId,
+      'IceCandidate',
+      candidate.candidate,
+      receiverId,
+    );
   }
 
   // 加入通话
   Future<void> joinCall(String callId) async {
     if (!isConnected) throw Exception('SignalR未连接');
-    
+
     try {
       await _connection!.invoke('JoinCall', args: [callId]);
       print('Joined call: $callId');
@@ -313,7 +503,7 @@ class SignalRService {
   // 离开通话
   Future<void> leaveCall(String callId) async {
     if (!isConnected) throw Exception('SignalR未连接');
-    
+
     try {
       await _connection!.invoke('LeaveCall', args: [callId]);
       print('Left call: $callId');
@@ -326,9 +516,15 @@ class SignalRService {
   // 断开连接
   Future<void> disconnect() async {
     try {
-      if (_connection != null) {
-        await _connection!.stop();
-        _connection = null;
+      _manualDisconnect = true;
+      _stopReconnectTimer();
+      _stopHeartbeat();
+      final connection = _connection;
+      _connection = null;
+      _currentUserId = null;
+      _lastToken = null;
+      if (connection != null) {
+        await connection.stop();
         print('SignalR disconnected');
       }
     } catch (e) {

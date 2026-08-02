@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
 import '../models/call.dart';
 import '../services/call_manager.dart';
+import '../config/app_config.dart';
 
 class CallPage extends StatefulWidget {
   final Call call;
   final CallManager callManager;
 
-  const CallPage({
-    super.key,
-    required this.call,
-    required this.callManager,
-  });
+  const CallPage({super.key, required this.call, required this.callManager});
 
   @override
   State<CallPage> createState() => _CallPageState();
 }
 
 class _CallPageState extends State<CallPage> {
+  static const Color _qqBlue = Color(0xFF12A8F4);
+  static const Color _callBackground = Color(0xFF0B1118);
+  static const Color _callDanger = Color(0xFFFF3B30);
+
   bool _hasPopped = false;
 
   @override
@@ -48,9 +49,10 @@ class _CallPageState extends State<CallPage> {
 
   void _onCallManagerChanged() {
     print('📞 CallPage: 状态变化 - isInCall=${widget.callManager.isInCall}');
-    
+
     // 如果通话已结束，关闭页面
-    if (!widget.callManager.isInCall && widget.callManager.currentCall == null) {
+    if (!widget.callManager.isInCall &&
+        widget.callManager.currentCall == null) {
       print('📞 CallPage: 通话已结束，关闭页面');
       _safePop();
     }
@@ -58,56 +60,45 @@ class _CallPageState extends State<CallPage> {
 
   @override
   Widget build(BuildContext context) {
+    final avatarUrl = AppConfig.resolveMediaUrl(widget.call.caller.avatarPath);
+
     return Scaffold(
-      backgroundColor: Colors.black87,
+      backgroundColor: _callBackground,
       body: SafeArea(
         child: Column(
           children: [
             const Spacer(),
             // 头像
-            Container(
-              width: 120,
-              height: 120,
+            DecoratedBox(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.blue,
-                border: Border.all(color: Colors.white, width: 3),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  width: 3,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: _qqBlue.withValues(alpha: 0.28),
+                    blurRadius: 36,
+                  ),
+                ],
               ),
-              child: widget.call.caller.avatarPath != null
-                  ? ClipOval(
-                      child: Image.network(
-                        widget.call.caller.avatarPath!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Center(
-                            child: Text(
-                              (widget.call.caller.display_name?.isNotEmpty == true
-                                      ? widget.call.caller.display_name![0]
-                                      : widget.call.caller.username[0])
-                                  .toUpperCase(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 48,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    )
-                  : Center(
-                      child: Text(
-                        (widget.call.caller.display_name?.isNotEmpty == true
-                                ? widget.call.caller.display_name![0]
-                                : widget.call.caller.username[0])
-                            .toUpperCase(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 48,
-                          fontWeight: FontWeight.bold,
+              child: CircleAvatar(
+                radius: 60,
+                backgroundColor: _qqBlue,
+                child: avatarUrl != null
+                    ? ClipOval(
+                        child: Image.network(
+                          avatarUrl,
+                          width: 120,
+                          height: 120,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              _buildInitial(),
                         ),
-                      ),
-                    ),
+                      )
+                    : _buildInitial(),
+              ),
             ),
             const SizedBox(height: 32),
             // 通话信息
@@ -124,25 +115,23 @@ class _CallPageState extends State<CallPage> {
             const SizedBox(height: 8),
             Text(
               widget.call.callType == CallType.voice ? '语音通话' : '视频通话',
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 18,
-              ),
+              style: const TextStyle(color: Colors.white70, fontSize: 18),
             ),
             const SizedBox(height: 16),
             Text(
               '通话中...',
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 16,
-              ),
+              style: const TextStyle(color: Colors.white70, fontSize: 16),
             ),
             const Spacer(),
             // 结束通话按钮
             Padding(
               padding: const EdgeInsets.all(32.0),
-              child: GestureDetector(
-                onTap: () async {
+              child: FloatingActionButton.large(
+                heroTag: 'voice-call-end',
+                backgroundColor: _callDanger,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                onPressed: () async {
                   print('📞 用户结束通话');
                   try {
                     await widget.callManager.endCall();
@@ -152,24 +141,28 @@ class _CallPageState extends State<CallPage> {
                     // 保持一致，不在此 pop，避免重复导航
                   }
                 },
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.red,
-                  ),
-                  child: const Icon(
-                    Icons.call_end,
-                    color: Colors.white,
-                    size: 40,
-                  ),
-                ),
+                child: const Icon(Icons.call_end, size: 36),
               ),
             ),
             const SizedBox(height: 32),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildInitial() {
+    final initial = (widget.call.caller.display_name?.isNotEmpty == true
+            ? widget.call.caller.display_name![0]
+            : widget.call.caller.username[0])
+        .toUpperCase();
+
+    return Text(
+      initial,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 48,
+        fontWeight: FontWeight.w900,
       ),
     );
   }

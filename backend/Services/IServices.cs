@@ -24,11 +24,33 @@ namespace VideoCallAPI.Services
         Task<UserResponseDto> UpdateProfileAsync(int userId, UpdateProfileDto updateProfileDto);
         Task<UserResponseDto> UploadAvatarAsync(int userId, IFormFile avatar);
         Task<UserSearchResultDto> SearchUsersAsync(int currentUserId, SearchUsersDto searchDto);
+        Task UpdateHeartbeatAsync(int userId);
+        Task MarkOfflineAsync(int userId);
+    }
+
+    public interface IQQAuthService
+    {
+        QQLoginUrlResponseDto CreateLoginUrl(string mode);
+        Task<(string Token, UserResponseDto User)> CompleteLoginAsync(QQLoginRequestDto loginDto);
+        Task<UserResponseDto> BindAsync(int userId, QQLoginRequestDto loginDto);
+        Task<(string Token, UserResponseDto User)> DevLoginAsync(QQDevLoginDto loginDto);
+        Task<UserResponseDto> DevBindAsync(int userId, QQDevLoginDto loginDto);
+    }
+
+    public interface IContentSecurityService
+    {
+        string NormalizeRequiredText(string? value, string fieldName, int maxLength, bool filterSensitiveWords = true);
+        string? NormalizeOptionalText(string? value, string fieldName, int maxLength, bool filterSensitiveWords = true);
+        string? NormalizeStoredFilePath(string? value, string fieldName, params string[] allowedPrefixes);
     }
 
     public interface IContactService
     {
         Task<ContactResponseDto> AddContactAsync(int userId, AddContactDto addContactDto);
+        Task<FriendRequestResponseDto> CreateFriendRequestAsync(int userId, CreateFriendRequestDto requestDto);
+        Task<List<FriendRequestResponseDto>> GetFriendRequestsAsync(int userId);
+        Task<FriendRequestResponseDto> RespondFriendRequestAsync(int userId, int requestId, FriendRequestDecisionDto decisionDto);
+        Task ClearHandledFriendRequestsAsync(int userId);
         Task<List<ContactResponseDto>> GetContactsAsync(int userId);
         Task<List<ContactResponseDto>> SearchContactsAsync(int userId, string query);
         Task RemoveContactAsync(int userId, int contactId);

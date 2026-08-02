@@ -1,12 +1,13 @@
 ﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
 namespace VideoCallAPI.Migrations
 {
     /// <inheritdoc />
-    public partial class InitDB : Migration
+    public partial class InitPostgres : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -15,17 +16,17 @@ namespace VideoCallAPI.Migrations
                 name: "users",
                 columns: table => new
                 {
-                    id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    username = table.Column<string>(type: "TEXT", maxLength: 50, nullable: false),
-                    email = table.Column<string>(type: "TEXT", maxLength: 100, nullable: false),
-                    password_hash = table.Column<string>(type: "TEXT", nullable: false),
-                    display_name = table.Column<string>(type: "TEXT", maxLength: 50, nullable: true),
-                    avatar_path = table.Column<string>(type: "TEXT", maxLength: 255, nullable: true),
-                    created_at = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    updated_at = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    last_login_at = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    is_online = table.Column<bool>(type: "INTEGER", nullable: false)
+                    id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    username = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    email = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    password_hash = table.Column<string>(type: "text", nullable: false),
+                    display_name = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    avatar_path = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
+                    created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    updated_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    last_login_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    is_online = table.Column<bool>(type: "boolean", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -36,17 +37,17 @@ namespace VideoCallAPI.Migrations
                 name: "CallHistories",
                 columns: table => new
                 {
-                    id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    caller_id = table.Column<int>(type: "INTEGER", nullable: false),
-                    receiver_id = table.Column<int>(type: "INTEGER", nullable: false),
-                    call_type = table.Column<int>(type: "INTEGER", nullable: false),
-                    status = table.Column<int>(type: "INTEGER", nullable: false),
-                    start_time = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    end_time = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    duration = table.Column<int>(type: "INTEGER", nullable: true),
-                    end_reason = table.Column<string>(type: "TEXT", maxLength: 255, nullable: true),
-                    created_at = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    caller_id = table.Column<int>(type: "integer", nullable: false),
+                    receiver_id = table.Column<int>(type: "integer", nullable: false),
+                    call_type = table.Column<int>(type: "integer", nullable: false),
+                    status = table.Column<int>(type: "integer", nullable: false),
+                    start_time = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    end_time = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    duration = table.Column<int>(type: "integer", nullable: true),
+                    end_reason = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
+                    created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -69,18 +70,18 @@ namespace VideoCallAPI.Migrations
                 name: "ChatMessages",
                 columns: table => new
                 {
-                    id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    sender_id = table.Column<int>(type: "INTEGER", nullable: false),
-                    receiver_id = table.Column<int>(type: "INTEGER", nullable: false),
-                    content = table.Column<string>(type: "TEXT", maxLength: 1000, nullable: false),
-                    type = table.Column<int>(type: "INTEGER", nullable: false),
-                    timestamp = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    is_read = table.Column<bool>(type: "INTEGER", nullable: false),
-                    file_path = table.Column<string>(type: "TEXT", maxLength: 255, nullable: true),
-                    file_size = table.Column<int>(type: "INTEGER", nullable: true),
-                    duration = table.Column<int>(type: "INTEGER", nullable: true),
-                    created_at = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    sender_id = table.Column<int>(type: "integer", nullable: false),
+                    receiver_id = table.Column<int>(type: "integer", nullable: false),
+                    content = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: false),
+                    type = table.Column<int>(type: "integer", nullable: false),
+                    timestamp = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    is_read = table.Column<bool>(type: "boolean", nullable: false),
+                    file_path = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
+                    file_size = table.Column<int>(type: "integer", nullable: true),
+                    duration = table.Column<int>(type: "integer", nullable: true),
+                    created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -103,15 +104,15 @@ namespace VideoCallAPI.Migrations
                 name: "Contacts",
                 columns: table => new
                 {
-                    id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    user_id = table.Column<int>(type: "INTEGER", nullable: false),
-                    contact_user_id = table.Column<int>(type: "INTEGER", nullable: false),
-                    display_name = table.Column<string>(type: "TEXT", maxLength: 50, nullable: true),
-                    added_at = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    is_blocked = table.Column<bool>(type: "INTEGER", nullable: false),
-                    last_message_at = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    unread_count = table.Column<int>(type: "INTEGER", nullable: false)
+                    id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    user_id = table.Column<int>(type: "integer", nullable: false),
+                    contact_user_id = table.Column<int>(type: "integer", nullable: false),
+                    display_name = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    added_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    is_blocked = table.Column<bool>(type: "boolean", nullable: false),
+                    last_message_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    unread_count = table.Column<int>(type: "integer", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -134,14 +135,14 @@ namespace VideoCallAPI.Migrations
                 name: "Rooms",
                 columns: table => new
                 {
-                    id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    room_name = table.Column<string>(type: "TEXT", maxLength: 100, nullable: false),
-                    room_code = table.Column<string>(type: "TEXT", nullable: false),
-                    created_by = table.Column<int>(type: "INTEGER", nullable: false),
-                    created_at = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    is_active = table.Column<bool>(type: "INTEGER", nullable: false),
-                    max_participants = table.Column<int>(type: "INTEGER", nullable: false)
+                    id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    room_name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    room_code = table.Column<string>(type: "text", nullable: false),
+                    created_by = table.Column<int>(type: "integer", nullable: false),
+                    created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    is_active = table.Column<bool>(type: "boolean", nullable: false),
+                    max_participants = table.Column<int>(type: "integer", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -158,13 +159,13 @@ namespace VideoCallAPI.Migrations
                 name: "RoomParticipants",
                 columns: table => new
                 {
-                    id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    room_id = table.Column<int>(type: "INTEGER", nullable: false),
-                    user_id = table.Column<int>(type: "INTEGER", nullable: false),
-                    joined_at = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    left_at = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    is_active = table.Column<bool>(type: "INTEGER", nullable: false)
+                    id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    room_id = table.Column<int>(type: "integer", nullable: false),
+                    user_id = table.Column<int>(type: "integer", nullable: false),
+                    joined_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    left_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    is_active = table.Column<bool>(type: "boolean", nullable: false)
                 },
                 constraints: table =>
                 {

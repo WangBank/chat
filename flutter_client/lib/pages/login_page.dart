@@ -22,13 +22,17 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   late final ApiService _apiService;
-  
+  static const Color _qqBlue = Color(0xFF12A8F4);
+  static const Color _qqShell = Color(0xFFEFF7FC);
+  static const Color _qqText = Color(0xFF111820);
+  static const Color _qqMuted = Color(0xFF8C96A3);
+
   @override
   void initState() {
     super.initState();
     _apiService = widget.apiService ?? ApiService();
   }
-  
+
   bool _isLogin = true;
   bool _isLoading = false;
   bool _rememberMe = true; // 记住登录状态
@@ -62,7 +66,7 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       Map<String, dynamic> result;
-      
+
       if (_isLogin) {
         print('🚀 调用登录API...');
         result = await _apiService.login(
@@ -87,16 +91,17 @@ class _LoginPageState extends State<LoginPage> {
           final data = result['data'];
           if (data['user'] != null) {
             final user = User.fromJson(data['user']);
-            
+
             // 如果选择记住登录状态，保存到本地存储
             if (_rememberMe) {
               try {
-                await StorageService.saveLoginInfo(user, _apiService.token ?? '');
+                await StorageService.saveLoginInfo(
+                    user, _apiService.token ?? '');
               } catch (e) {
                 print('❌ 保存登录信息失败: $e');
               }
             }
-            
+
             widget.onLoginSuccess?.call(user);
           }
         } else {
@@ -105,7 +110,7 @@ class _LoginPageState extends State<LoginPage> {
             _isLoading = false;
             _errorMessage = null;
           });
-          
+
           // 显示成功消息
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -114,7 +119,7 @@ class _LoginPageState extends State<LoginPage> {
               duration: Duration(seconds: 3),
             ),
           );
-          
+
           // 清空密码字段，切换到登录模式
           _passwordController.clear();
           setState(() {
@@ -142,249 +147,354 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> _handleQQLogin() async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final result = await _apiService.qqDevLogin();
+      if (result['success'] == true && result['data']?['user'] != null) {
+        final user = User.fromJson(result['data']['user']);
+        if (_rememberMe) {
+          await StorageService.saveLoginInfo(user, _apiService.token ?? '');
+        }
+        widget.onLoginSuccess?.call(user);
+        return;
+      }
+
+      setState(() {
+        _errorMessage = result['message'] ?? 'QQ登录失败';
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        var errorMsg = e.toString();
+        if (errorMsg.startsWith('Exception: ')) {
+          errorMsg = errorMsg.substring(11);
+        }
+        _errorMessage = errorMsg;
+        _isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFEAF6FB),
+      backgroundColor: _qqShell,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Logo 和标题
-              Container(
-                padding: const EdgeInsets.all(20),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(18),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    const Icon(
-                      Icons.video_call,
-                      size: 64,
-                      color: Colors.blue,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Forever Love Chat',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue[800],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '高质量视频通话应用',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 40),
-
-              // 登录/注册表单
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 5),
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
                     ),
                   ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      _isLogin ? '登录' : '注册',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-
-                    // 用户名输入框
-                    TextField(
-                      controller: _usernameController,
-                      decoration: InputDecoration(
-                        labelText: '用户名',
-                        prefixIcon: const Icon(Icons.person),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+                      decoration: const BoxDecoration(
+                        color: _qqBlue,
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(18),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // 邮箱输入框（仅注册时显示）
-                    if (!_isLogin)
-                      Column(
+                      child: Row(
                         children: [
+                          Container(
+                            width: 46,
+                            height: 46,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'Q',
+                                style: TextStyle(
+                                  color: _qqBlue,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Forever Love',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  '消息、好友和通话',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F8),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: _buildModeButton('登录', true),
+                                ),
+                                Expanded(
+                                  child: _buildModeButton('注册', false),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 22),
                           TextField(
-                            controller: _emailController,
-                            decoration: InputDecoration(
-                              labelText: '邮箱',
-                              prefixIcon: const Icon(Icons.email),
-                              border: OutlineInputBorder(
+                            controller: _usernameController,
+                            decoration: const InputDecoration(
+                              labelText: '用户名',
+                              prefixIcon: Icon(Icons.person_outline),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          if (!_isLogin) ...[
+                            TextField(
+                              controller: _emailController,
+                              decoration: const InputDecoration(
+                                labelText: '邮箱',
+                                prefixIcon: Icon(Icons.email_outlined),
+                              ),
+                              keyboardType: TextInputType.emailAddress,
+                            ),
+                            const SizedBox(height: 14),
+                          ],
+                          TextField(
+                            controller: _passwordController,
+                            decoration: const InputDecoration(
+                              labelText: '密码',
+                              prefixIcon: Icon(Icons.lock_outline),
+                            ),
+                            obscureText: true,
+                          ),
+                          const SizedBox(height: 10),
+                          if (_errorMessage != null)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              margin: const EdgeInsets.only(bottom: 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF0F0),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: const Color(0xFFFFC4C4),
+                                ),
+                              ),
+                              child: Text(
+                                _errorMessage!,
+                                style:
+                                    const TextStyle(color: Color(0xFFD93025)),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          if (_isLogin)
+                            CheckboxListTile(
+                              value: _rememberMe,
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              controlAffinity: ListTileControlAffinity.leading,
+                              title: const Text(
+                                '保持登录',
+                                style: TextStyle(color: _qqText, fontSize: 14),
+                              ),
+                              onChanged: (value) {
+                                setState(() {
+                                  _rememberMe = value ?? true;
+                                });
+                              },
+                            ),
+                          const SizedBox(height: 14),
+                          ElevatedButton(
+                            onPressed: _isLoading ? null : _handleSubmit,
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(46),
+                              backgroundColor: _qqBlue,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            keyboardType: TextInputType.emailAddress,
+                            child: _isLoading
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : Text(
+                                    _isLogin ? '登录' : '注册',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
                           ),
-                          const SizedBox(height: 16),
-                        ],
-                      ),
-
-                    // 密码输入框
-                    TextField(
-                      controller: _passwordController,
-                      decoration: InputDecoration(
-                        labelText: '密码',
-                        prefixIcon: const Icon(Icons.lock),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      obscureText: true,
-                    ),
-                    const SizedBox(height: 8),
-
-                    // 错误消息
-                    if (_errorMessage != null)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.red[50],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.red[200]!),
-                        ),
-                        child: Text(
-                          _errorMessage!,
-                          style: TextStyle(color: Colors.red[700]),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-
-                    const SizedBox(height: 16),
-
-                    // 记住登录状态（仅登录时显示）
-                    if (_isLogin)
-                      Row(
-                        children: [
-                          Checkbox(
-                            value: _rememberMe,
-                            onChanged: (value) {
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: () {
                               setState(() {
-                                _rememberMe = value ?? true;
+                                _isLogin = !_isLogin;
+                                _errorMessage = null;
                               });
                             },
-                          ),
-                          const Text('记住登录状态'),
-                        ],
-                      ),
-
-                    const SizedBox(height: 16),
-
-                    // 提交按钮
-                    ElevatedButton(
-                      onPressed: _isLoading ? null : _handleSubmit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            child: Text(
+                              _isLogin ? '没有账号？注册' : '已有账号？登录',
+                              style: const TextStyle(
+                                color: _qqBlue,
+                                fontWeight: FontWeight.w700,
                               ),
-                            )
-                          : Text(
-                              _isLogin ? '登录' : '注册',
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                            ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // 切换登录/注册模式
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _isLogin = !_isLogin;
-                          _errorMessage = null;
-                        });
-                      },
-                      child: Text(
-                        _isLogin ? '没有账号？点击注册' : '已有账号？点击登录',
-                        style: TextStyle(color: Colors.blue[600]),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // 测试账号提示
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue[200]!),
-                      ),
-                      child: Column(
-                        children: [
-                          Text(
-                            '测试账号',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue[800],
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'testuser1 / 123\ntestuser2 / 123',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.blue[600],
+                          if (_isLogin) ...[
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Divider(
+                                    color: Colors.black.withValues(alpha: 0.08),
+                                  ),
+                                ),
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 12),
+                                  child: Text(
+                                    '其他登录方式',
+                                    style: TextStyle(
+                                      color: _qqMuted,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Divider(
+                                    color: Colors.black.withValues(alpha: 0.08),
+                                  ),
+                                ),
+                              ],
                             ),
-                            textAlign: TextAlign.center,
-                          ),
+                            const SizedBox(height: 12),
+                            Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 46,
+                                    height: 46,
+                                    child: IconButton(
+                                      tooltip: 'QQ登录',
+                                      onPressed:
+                                          _isLoading ? null : _handleQQLogin,
+                                      icon: const Text(
+                                        'Q',
+                                        style: TextStyle(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      color: _qqBlue,
+                                      style: IconButton.styleFrom(
+                                        backgroundColor: Colors.white,
+                                        side: const BorderSide(
+                                          color: Color(0xFFDCE9F2),
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(999),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  const Text(
+                                    'QQ',
+                                    style: TextStyle(
+                                      color: _qqMuted,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
                   ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildModeButton(String label, bool isLoginMode) {
+    final active = _isLogin == isLoginMode;
+    return TextButton(
+      onPressed: () {
+        setState(() {
+          _isLogin = isLoginMode;
+          _errorMessage = null;
+        });
+      },
+      style: TextButton.styleFrom(
+        backgroundColor: active ? Colors.white : Colors.transparent,
+        foregroundColor: active ? _qqBlue : _qqMuted,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(fontWeight: FontWeight.w800),
       ),
     );
   }

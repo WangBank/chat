@@ -18,6 +18,9 @@ class WaitingCallPage extends StatefulWidget {
 }
 
 class _WaitingCallPageState extends State<WaitingCallPage> {
+  static const Color _callBackground = Color(0xFF0B1118);
+  static const Color _callDanger = Color(0xFFFF3B30);
+
   bool _hasPopped = false;
 
   @override
@@ -48,12 +51,15 @@ class _WaitingCallPageState extends State<WaitingCallPage> {
   }
 
   void _onCallManagerChanged() {
-    print('📞 WaitingCallPage收到状态变化: isInCall=${widget.callManager.isInCall}, isWaitingForAnswer=${widget.callManager.isWaitingForAnswer}');
-    
+    print(
+      '📞 WaitingCallPage收到状态变化: isInCall=${widget.callManager.isInCall}, isWaitingForAnswer=${widget.callManager.isWaitingForAnswer}',
+    );
+
     // 如果通话已开始，等待MainApp处理页面跳转，不要主动pop
     if (widget.callManager.isInCall) {
       print('📞 WaitingCallPage: 通话已开始，等待MainApp处理页面跳转');
-    } else if (!widget.callManager.isWaitingForAnswer && widget.callManager.currentCall == null) {
+    } else if (!widget.callManager.isWaitingForAnswer &&
+        widget.callManager.currentCall == null) {
       // 通话被拒绝或结束，关闭等待页面
       print('📞 WaitingCallPage: 通话结束或被拒绝，关闭等待页面');
       _safePop();
@@ -65,7 +71,7 @@ class _WaitingCallPageState extends State<WaitingCallPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black87,
+      backgroundColor: _callBackground,
       body: SafeArea(
         child: Column(
           children: [
@@ -83,7 +89,8 @@ class _WaitingCallPageState extends State<WaitingCallPage> {
                 child: widget.callManager.webRTCService.localRenderer != null
                     ? RTCVideoView(
                         widget.callManager.webRTCService.localRenderer!,
-                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        objectFit:
+                            RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                       )
                     : Container(
                         color: Colors.grey[800],
@@ -143,8 +150,12 @@ class _WaitingCallPageState extends State<WaitingCallPage> {
             // 结束通话按钮
             Padding(
               padding: const EdgeInsets.all(32.0),
-              child: GestureDetector(
-                onTap: () async {
+              child: FloatingActionButton.large(
+                heroTag: 'waiting-call-cancel',
+                backgroundColor: _callDanger,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                onPressed: () async {
                   try {
                     await widget.callManager.endCall();
                     // 不在此 pop，交由监听器处理
@@ -153,19 +164,7 @@ class _WaitingCallPageState extends State<WaitingCallPage> {
                     // 同样不在此 pop
                   }
                 },
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.red,
-                  ),
-                  child: const Icon(
-                    Icons.call_end,
-                    color: Colors.white,
-                    size: 40,
-                  ),
-                ),
+                child: const Icon(Icons.call_end, size: 36),
               ),
             ),
             const SizedBox(height: 32),

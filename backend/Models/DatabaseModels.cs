@@ -23,15 +23,49 @@ namespace VideoCallAPI.Models
         
         [StringLength(50)]
         public string? display_name { get; set; } // 昵称
+
+        [StringLength(100)]
+        public string? signature { get; set; } // 个性签名
+
+        [StringLength(10)]
+        public string? gender { get; set; } // 性别
+
+        [StringLength(10)]
+        public string? birthday { get; set; } // 生日
+
+        [StringLength(50)]
+        public string? country { get; set; } // 国家
+
+        [StringLength(50)]
+        public string? province { get; set; } // 省份
+
+        [StringLength(50)]
+        public string? region { get; set; } // 地区
         
         [StringLength(255)]
         public string? avatar_path { get; set; }
+
+        [StringLength(64)]
+        public string? qq_open_id { get; set; }
+
+        [StringLength(64)]
+        public string? qq_union_id { get; set; }
+
+        [StringLength(100)]
+        public string? qq_nickname { get; set; }
+
+        [StringLength(500)]
+        public string? qq_avatar_url { get; set; }
+
+        public DateTime? qq_bound_at { get; set; }
         
         public DateTime created_at { get; set; } = DateTime.UtcNow;
         
         public DateTime updated_at { get; set; } = DateTime.UtcNow;
         
         public DateTime? last_login_at { get; set; }
+
+        public DateTime? last_heartbeat_at { get; set; }
         
         public bool is_online { get; set; } = false;
         
@@ -42,6 +76,12 @@ namespace VideoCallAPI.Models
         public virtual ICollection<CallHistory> ReceivedCalls { get; set; } = new List<CallHistory>();
         public virtual ICollection<ChatMessage> SentMessages { get; set; } = new List<ChatMessage>();
         public virtual ICollection<ChatMessage> ReceivedMessages { get; set; } = new List<ChatMessage>();
+        public virtual ICollection<FriendRequest> SentFriendRequests { get; set; } = new List<FriendRequest>();
+        public virtual ICollection<FriendRequest> ReceivedFriendRequests { get; set; } = new List<FriendRequest>();
+        public virtual ICollection<ChatGroup> OwnedChatGroups { get; set; } = new List<ChatGroup>();
+        public virtual ICollection<ChatGroupMember> ChatGroupMembers { get; set; } = new List<ChatGroupMember>();
+        public virtual ICollection<GroupChatMessage> SentGroupMessages { get; set; } = new List<GroupChatMessage>();
+        public virtual ICollection<FavoriteItem> FavoriteItems { get; set; } = new List<FavoriteItem>();
     }
 
     // 联系人表
@@ -73,6 +113,38 @@ namespace VideoCallAPI.Models
         
         [ForeignKey("contact_user_id")]
         public virtual User contact_user { get; set; } = null!;
+    }
+
+    // 好友申请表
+    public class FriendRequest
+    {
+        [Key]
+        public int id { get; set; }
+
+        [Required]
+        public int requester_id { get; set; }
+
+        [Required]
+        public int receiver_id { get; set; }
+
+        [StringLength(100)]
+        public string? note { get; set; }
+
+        [StringLength(50)]
+        public string source { get; set; } = "账号搜索";
+
+        [Required]
+        public FriendRequestStatus status { get; set; } = FriendRequestStatus.Pending;
+
+        public DateTime created_at { get; set; } = DateTime.UtcNow;
+
+        public DateTime updated_at { get; set; } = DateTime.UtcNow;
+
+        [ForeignKey("requester_id")]
+        public virtual User requester { get; set; } = null!;
+
+        [ForeignKey("receiver_id")]
+        public virtual User receiver { get; set; } = null!;
     }
 
     // 聊天消息表
@@ -113,6 +185,136 @@ namespace VideoCallAPI.Models
         
         [ForeignKey("receiver_id")]
         public virtual User receiver { get; set; } = null!;
+    }
+
+    // 聊天群表
+    public class ChatGroup
+    {
+        [Key]
+        public int id { get; set; }
+
+        [Required]
+        [StringLength(80)]
+        public string name { get; set; } = string.Empty;
+
+        [StringLength(50)]
+        public string category { get; set; } = "我创建的群聊";
+
+        [Required]
+        public int owner_id { get; set; }
+
+        [StringLength(500)]
+        public string? announcement { get; set; }
+
+        [StringLength(200)]
+        public string? note { get; set; }
+
+        public bool pinned { get; set; } = false;
+
+        public DateTime created_at { get; set; } = DateTime.UtcNow;
+
+        public DateTime updated_at { get; set; } = DateTime.UtcNow;
+
+        [ForeignKey("owner_id")]
+        public virtual User owner { get; set; } = null!;
+
+        public virtual ICollection<ChatGroupMember> members { get; set; } = new List<ChatGroupMember>();
+        public virtual ICollection<GroupChatMessage> messages { get; set; } = new List<GroupChatMessage>();
+    }
+
+    // 聊天群成员表
+    public class ChatGroupMember
+    {
+        [Key]
+        public int id { get; set; }
+
+        [Required]
+        public int group_id { get; set; }
+
+        [Required]
+        public int user_id { get; set; }
+
+        [StringLength(20)]
+        public string role { get; set; } = "member";
+
+        public DateTime joined_at { get; set; } = DateTime.UtcNow;
+
+        public bool is_active { get; set; } = true;
+
+        [ForeignKey("group_id")]
+        public virtual ChatGroup group { get; set; } = null!;
+
+        [ForeignKey("user_id")]
+        public virtual User user { get; set; } = null!;
+    }
+
+    // 群聊消息表
+    public class GroupChatMessage
+    {
+        [Key]
+        public int id { get; set; }
+
+        [Required]
+        public int group_id { get; set; }
+
+        [Required]
+        public int sender_id { get; set; }
+
+        [Required]
+        [StringLength(1000)]
+        public string content { get; set; } = string.Empty;
+
+        [Required]
+        public MessageType type { get; set; } = MessageType.Text;
+
+        public DateTime timestamp { get; set; } = DateTime.UtcNow;
+
+        [StringLength(255)]
+        public string? file_path { get; set; }
+
+        public int? file_size { get; set; }
+
+        public int? duration { get; set; }
+
+        public DateTime created_at { get; set; } = DateTime.UtcNow;
+
+        [ForeignKey("group_id")]
+        public virtual ChatGroup group { get; set; } = null!;
+
+        [ForeignKey("sender_id")]
+        public virtual User sender { get; set; } = null!;
+    }
+
+    // 收藏表
+    public class FavoriteItem
+    {
+        [Key]
+        public int id { get; set; }
+
+        [Required]
+        public int user_id { get; set; }
+
+        [Required]
+        [StringLength(1000)]
+        public string content { get; set; } = string.Empty;
+
+        [Required]
+        [StringLength(20)]
+        public string type { get; set; } = "chat";
+
+        [Required]
+        [StringLength(100)]
+        public string source_name { get; set; } = string.Empty;
+
+        [StringLength(255)]
+        public string? file_path { get; set; }
+
+        public int? file_size { get; set; }
+
+        public DateTime created_at { get; set; } = DateTime.UtcNow;
+
+        [ForeignKey("user_id")]
+        public virtual User user { get; set; } = null!;
     }
 
     // 通话历史表
@@ -223,6 +425,13 @@ namespace VideoCallAPI.Models
         Missed = 5,
         Ended = 6,
         Failed = 7
+    }
+
+    public enum FriendRequestStatus
+    {
+        Pending = 1,
+        Accepted = 2,
+        Rejected = 3
     }
 
     [JsonConverter(typeof(JsonStringEnumConverter))]

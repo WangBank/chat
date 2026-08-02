@@ -1,146 +1,317 @@
-import { Button, Card, Typography, Space, Row, Col } from 'antd';
-import { DownloadOutlined, MessageOutlined, PhoneOutlined, VideoCameraOutlined, LockOutlined, TeamOutlined } from '@ant-design/icons';
+import { useEffect } from 'react';
+import {
+  AppBar,
+  Avatar,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Container,
+  Divider,
+  Grid,
+  List,
+  ListItem,
+  ListItemAvatar,
+  ListItemText,
+  Paper,
+  Stack,
+  Toolbar,
+  Typography,
+} from '@mui/material';
+import {
+  Android,
+  CloudSync,
+  Download,
+  History,
+  Login,
+  Message,
+  MobileFriendly,
+  Security,
+  SupervisorAccount,
+  VideoCall,
+  Web,
+} from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { APP_CONFIG } from '../config/app.config';
-import '../styles/home.css';
 
-const { Title, Paragraph } = Typography;
+const PRODUCT_NAME = 'Love Chat';
+
+const featureItems = [
+  {
+    icon: <Message />,
+    title: '完整聊天',
+    text: '会话列表、消息气泡、表情、图片、文件、语音和未读状态集中在同一个聊天工作台。',
+  },
+  {
+    icon: <SupervisorAccount />,
+    title: '好友管理',
+    text: '支持搜索添加好友、好友申请处理、备注名、自定义头像和个性签名展示。',
+  },
+  {
+    icon: <VideoCall />,
+    title: '音视频通话',
+    text: '在聊天和联系人页保留语音、视频通话入口，适合网页端和移动端快速发起沟通。',
+  },
+  {
+    icon: <History />,
+    title: '历史记录',
+    text: '按聊天、图片、文件和链接回看关键内容，便于从长期会话中快速定位信息。',
+  },
+  {
+    icon: <CloudSync />,
+    title: '实时在线',
+    text: '在线状态、消息已读、头像和资料通过账号体系同步，减少多端状态不一致。',
+  },
+  {
+    icon: <Security />,
+    title: '安全防护',
+    text: '保留敏感词过滤、防注入和账号安全能力，为真实使用场景提供基础防线。',
+  },
+];
+
+const deviceItems = [
+  {
+    icon: <Web />,
+    name: '桌面浏览器',
+    status: '推荐',
+    text: '打开网页即可使用完整聊天、好友、群聊和管理控制台。',
+  },
+  {
+    icon: <Android />,
+    name: 'Android 客户端',
+    status: '可下载',
+    text: '安装 APK 后可使用移动端聊天、联系人、资料和通话功能。',
+  },
+  {
+    icon: <MobileFriendly />,
+    name: '移动浏览器',
+    status: '适配',
+    text: '窄屏布局保留登录、资料和核心沟通入口，便于临时访问。',
+  },
+];
+
+const metricItems = [
+  ['Web', '网页版入口'],
+  ['APK', '移动端下载'],
+  ['IM', '即时消息'],
+  ['RTC', '音视频通话'],
+];
 
 const HomePage = () => {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    document.title = PRODUCT_NAME;
+  }, []);
 
   const handleDownload = () => {
     window.open(APP_CONFIG.APK_DOWNLOAD_URL, '_blank');
   };
 
   return (
-    <div className="home-page">
-      {/* Hero Section */}
-      <section className="hero-section">
-        <div className="hero-content">
-          <Title level={1} className="hero-title">
-            Make every conversation meaningful
-          </Title>
-          <Paragraph className="hero-description">
-            SimpleChat - secure, private, and convenient messaging
-          </Paragraph>
-          <Space size="large">
-            <Button
-              type="primary"
-              size="large"
-              icon={<DownloadOutlined />}
-              onClick={handleDownload}
-            >
-              Download Android App
-            </Button>
-            <Button
-              size="large"
-              onClick={() => navigate('/login')}
-            >
-              Get Started
-            </Button>
-          </Space>
-        </div>
-        <div className="hero-image">
-          <img src="/phone-mockup.png" alt="SimpleChat App" style={{ maxWidth: '100%', height: 'auto' }} />
-        </div>
-      </section>
+    <Box sx={{ minHeight: '100vh', bgcolor: '#eef5fb', color: '#111820' }}>
+      <AppBar position="sticky" elevation={0} sx={{ bgcolor: '#12a8f4' }}>
+        <Toolbar sx={{ gap: 1.5, minHeight: 58 }}>
+          <Avatar sx={{ bgcolor: 'white', color: '#078fdb', width: 34, height: 34, fontWeight: 900 }}>
+            Q
+          </Avatar>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="subtitle1" noWrap sx={{ fontWeight: 900, lineHeight: 1.2 }}>
+              {PRODUCT_NAME}
+            </Typography>
+            <Typography variant="caption" noWrap sx={{ display: 'block', color: 'rgba(255,255,255,0.82)' }}>
+              网页版 · Android · 实时通信系统
+            </Typography>
+          </Box>
+          <Chip
+            size="small"
+            label={`v${APP_CONFIG.VERSION}`}
+            sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'white', borderColor: 'rgba(255,255,255,0.24)' }}
+            variant="outlined"
+          />
+        </Toolbar>
+      </AppBar>
 
-      {/* Features Section */}
-      <section className="features-section">
-        <Title level={2} style={{ textAlign: 'center', marginBottom: 48 }}>
-          Features
-        </Title>
-        <Row gutter={[32, 32]}>
-          <Col xs={24} sm={12} md={8}>
-            <Card className="feature-card">
-              <MessageOutlined style={{ fontSize: 48, color: '#1890ff', marginBottom: 16 }} />
-              <Title level={4}>Instant Messaging</Title>
-              <Paragraph>
-                Send text, image, and voice messages quickly and smoothly
-              </Paragraph>
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={8}>
-            <Card className="feature-card">
-              <PhoneOutlined style={{ fontSize: 48, color: '#52c41a', marginBottom: 16 }} />
-              <Title level={4}>Voice Calls</Title>
-              <Paragraph>
-                High-quality voice calls to stay connected anywhere
-              </Paragraph>
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={8}>
-            <Card className="feature-card">
-              <VideoCameraOutlined style={{ fontSize: 48, color: '#ff4d4f', marginBottom: 16 }} />
-              <Title level={4}>Video Calls</Title>
-              <Paragraph>
-                Smooth video calls for a more natural face-to-face experience
-              </Paragraph>
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={8}>
-            <Card className="feature-card">
-              <LockOutlined style={{ fontSize: 48, color: '#722ed1', marginBottom: 16 }} />
-              <Title level={4}>End-to-End Encryption</Title>
-              <Paragraph>
-                All messages and calls are protected with end-to-end encryption
-              </Paragraph>
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={8}>
-            <Card className="feature-card">
-              <TeamOutlined style={{ fontSize: 48, color: '#fa8c16', marginBottom: 16 }} />
-              <Title level={4}>Contact Management</Title>
-              <Paragraph>
-                Easily manage contacts and find friends anytime
-              </Paragraph>
-            </Card>
-          </Col>
-        </Row>
-      </section>
+      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 } }}>
+        <Stack spacing={3}>
+          <Paper
+            sx={{
+              overflow: 'hidden',
+              borderRadius: 2.5,
+              boxShadow: '0 18px 42px rgba(16,42,70,0.12)',
+            }}
+          >
+            <Grid container>
+              <Grid size={{ xs: 12, md: 7 }}>
+                <Box sx={{ p: { xs: 3, md: 5 } }}>
+                  <Chip label="实时通信系统" color="primary" sx={{ mb: 2, fontWeight: 800 }} />
+                  <Typography
+                    variant="h2"
+                    sx={{
+                      maxWidth: 680,
+                      fontSize: { xs: 36, md: 54 },
+                      lineHeight: 1.04,
+                      fontWeight: 950,
+                      letterSpacing: 0,
+                      mb: 2,
+                    }}
+                  >
+                    Love Chat 通讯系统
+                  </Typography>
+                  <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 720, lineHeight: 1.8, mb: 3 }}>
+                    面向网页端和移动端的即时通信应用，覆盖账号登录、聊天、好友、群组、历史记录、个性资料、表情和音视频通话等核心能力。
+                  </Typography>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
+                    <Button variant="contained" size="large" startIcon={<Login />} onClick={() => navigate('/login')}>
+                      进入网页版
+                    </Button>
+                    <Button variant="outlined" size="large" startIcon={<Download />} onClick={handleDownload}>
+                      下载 Android
+                    </Button>
+                  </Stack>
+                </Box>
+              </Grid>
+              <Grid size={{ xs: 12, md: 5 }}>
+                <Box
+                  sx={{
+                    height: '100%',
+                    minHeight: 330,
+                    p: { xs: 2, md: 3 },
+                    bgcolor: '#f8fbfd',
+                    borderLeft: { md: '1px solid #e5edf3' },
+                  }}
+                >
+                  <Card sx={{ height: '100%', borderRadius: 2, boxShadow: 'none', border: '1px solid #e5edf3' }}>
+                    <CardContent>
+                      <Stack direction="row" spacing={1.25} sx={{ mb: 2, alignItems: 'center' }}>
+                        <Security color="primary" />
+                        <Typography variant="subtitle1" sx={{ fontWeight: 900, flex: 1 }}>
+                          系统状态
+                        </Typography>
+                        <Chip size="small" color="success" label="Ready" />
+                      </Stack>
+                      <Divider sx={{ mb: 2 }} />
+                      <Grid container spacing={1.25}>
+                        {metricItems.map(([value, label]) => (
+                          <Grid size={{ xs: 6 }} key={value}>
+                            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', borderRadius: 2 }}>
+                              <Typography variant="h5" sx={{ fontWeight: 950 }}>
+                                {value}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {label}
+                              </Typography>
+                            </Paper>
+                          </Grid>
+                        ))}
+                      </Grid>
+                      <Box
+                        component="img"
+                        src="/chat.svg"
+                        alt="Love Chat"
+                        sx={{
+                          display: 'block',
+                          width: 124,
+                          height: 124,
+                          mx: 'auto',
+                          mt: 3,
+                          opacity: 0.9,
+                        }}
+                      />
+                    </CardContent>
+                  </Card>
+                </Box>
+              </Grid>
+            </Grid>
+          </Paper>
 
-      {/* CTA Section */}
-      <section className="cta-section">
-        <Card>
-          <div style={{ textAlign: 'center' }}>
-            <Title level={2}>Start Using SimpleChat</Title>
-            <Paragraph style={{ fontSize: 16, marginBottom: 24 }}>
-              Download the app or use web login to get started
-            </Paragraph>
-            <Space size="large">
-              <Button
-                type="primary"
-                size="large"
-                icon={<DownloadOutlined />}
-                onClick={handleDownload}
-              >
-                Download Android App
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 950, mb: 0.5 }}>
+              系统功能
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              用 MUI 组件重新组织首页信息层级，入口、能力和设备支持保持可扫读。
+            </Typography>
+            <Grid container spacing={2}>
+              {featureItems.map((item) => (
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={item.title}>
+                  <Card sx={{ height: '100%', borderRadius: 2.5, boxShadow: 'none', border: '1px solid #e5edf3' }}>
+                    <CardContent>
+                      <Avatar sx={{ bgcolor: '#e8f6ff', color: '#078fdb', mb: 1.5 }}>{item.icon}</Avatar>
+                      <Typography variant="h6" sx={{ fontWeight: 900, mb: 0.75 }}>
+                        {item.title}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.7 }}>
+                        {item.text}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+
+          <Paper sx={{ borderRadius: 2.5, overflow: 'hidden' }}>
+            <Box sx={{ p: 2.5, borderBottom: '1px solid #e5edf3' }}>
+              <Typography variant="h5" sx={{ fontWeight: 950 }}>
+                支持设备
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                根据使用场景选择网页版或 Android 客户端。
+              </Typography>
+            </Box>
+            <List disablePadding>
+              {deviceItems.map((item, index) => (
+                <ListItem
+                  key={item.name}
+                  divider={index < deviceItems.length - 1}
+                  secondaryAction={<Chip size="small" label={item.status} color={index === 0 ? 'primary' : 'success'} />}
+                  sx={{ py: 1.5, pr: 12 }}
+                >
+                  <ListItemAvatar>
+                    <Avatar sx={{ bgcolor: '#e8f6ff', color: '#078fdb' }}>{item.icon}</Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={<Typography sx={{ fontWeight: 900 }}>{item.name}</Typography>}
+                    secondary={item.text}
+                    slotProps={{ secondary: { sx: { color: 'text.secondary' } } }}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          </Paper>
+
+          <Paper
+            sx={{
+              p: 2.5,
+              borderRadius: 2.5,
+              display: 'flex',
+              gap: 2,
+              alignItems: { xs: 'stretch', md: 'center' },
+              justifyContent: 'space-between',
+              flexDirection: { xs: 'column', md: 'row' },
+            }}
+          >
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: 950 }}>
+                开始使用
+              </Typography>
+              <Typography color="text.secondary">使用网页端登录已有账号，或下载 Android 安装包在移动设备上使用。</Typography>
+            </Box>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
+              <Button variant="contained" startIcon={<Login />} onClick={() => navigate('/login')}>
+                打开网页版
               </Button>
-              <Button
-                size="large"
-                onClick={() => navigate('/login')}
-              >
-                Open Web App
+              <Button variant="outlined" startIcon={<Download />} onClick={handleDownload}>
+                下载 APK
               </Button>
-            </Space>
-          </div>
-        </Card>
-      </section>
-
-      {/* Footer */}
-      <footer className="home-footer">
-        <div className="version-info">
-          <span>SimpleChat v{APP_CONFIG.VERSION}</span>
-        </div>
-        <div className="footer-links">
-          <a href="/privacy">Privacy Policy</a>
-          <a href="/terms">Terms of Service</a>
-        </div>
-      </footer>
-    </div>
+            </Stack>
+          </Paper>
+        </Stack>
+      </Container>
+    </Box>
   );
 };
 
 export default HomePage;
-

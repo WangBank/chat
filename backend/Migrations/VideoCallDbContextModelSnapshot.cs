@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using VideoCallAPI.Data;
 
 #nullable disable
@@ -15,41 +16,47 @@ namespace VideoCallAPI.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.1");
+            modelBuilder
+                .HasAnnotation("ProductVersion", "10.0.10")
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
+
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("VideoCallAPI.Models.CallHistory", b =>
                 {
                     b.Property<int>("id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("id"));
 
                     b.Property<int>("call_type")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("caller_id")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<DateTime>("created_at")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int?>("duration")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<string>("end_reason")
                         .HasMaxLength(255)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(255)");
 
                     b.Property<DateTime?>("end_time")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("receiver_id")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<DateTime>("start_time")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("status")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("id");
 
@@ -60,44 +67,126 @@ namespace VideoCallAPI.Migrations
                     b.ToTable("CallHistories");
                 });
 
+            modelBuilder.Entity("VideoCallAPI.Models.ChatGroup", b =>
+                {
+                    b.Property<int>("id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("id"));
+
+                    b.Property<string>("announcement")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("category")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("created_at")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("note")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("owner_id")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("pinned")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("updated_at")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("id");
+
+                    b.HasIndex("owner_id", "created_at");
+
+                    b.ToTable("ChatGroups");
+                });
+
+            modelBuilder.Entity("VideoCallAPI.Models.ChatGroupMember", b =>
+                {
+                    b.Property<int>("id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("id"));
+
+                    b.Property<int>("group_id")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("is_active")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("joined_at")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("role")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int>("user_id")
+                        .HasColumnType("integer");
+
+                    b.HasKey("id");
+
+                    b.HasIndex("group_id", "user_id")
+                        .IsUnique();
+
+                    b.HasIndex("user_id", "is_active");
+
+                    b.ToTable("ChatGroupMembers");
+                });
+
             modelBuilder.Entity("VideoCallAPI.Models.ChatMessage", b =>
                 {
                     b.Property<int>("id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("id"));
 
                     b.Property<string>("content")
                         .IsRequired()
                         .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<DateTime>("created_at")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int?>("duration")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<string>("file_path")
                         .HasMaxLength(255)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(255)");
 
                     b.Property<int?>("file_size")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<bool>("is_read")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<int>("receiver_id")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("sender_id")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<DateTime>("timestamp")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("type")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("id");
 
@@ -112,29 +201,31 @@ namespace VideoCallAPI.Migrations
                 {
                     b.Property<int>("id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("id"));
 
                     b.Property<DateTime>("added_at")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("contact_user_id")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<string>("display_name")
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(50)");
 
                     b.Property<bool>("is_blocked")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime?>("last_message_at")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("unread_count")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("user_id")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("id");
 
@@ -146,32 +237,170 @@ namespace VideoCallAPI.Migrations
                     b.ToTable("Contacts");
                 });
 
+            modelBuilder.Entity("VideoCallAPI.Models.FavoriteItem", b =>
+                {
+                    b.Property<int>("id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("id"));
+
+                    b.Property<string>("content")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("created_at")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("file_path")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int?>("file_size")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("source_name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int>("user_id")
+                        .HasColumnType("integer");
+
+                    b.HasKey("id");
+
+                    b.HasIndex("user_id", "created_at");
+
+                    b.HasIndex("user_id", "type");
+
+                    b.ToTable("FavoriteItems");
+                });
+
+            modelBuilder.Entity("VideoCallAPI.Models.FriendRequest", b =>
+                {
+                    b.Property<int>("id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("id"));
+
+                    b.Property<DateTime>("created_at")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("note")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("receiver_id")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("requester_id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("source")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("updated_at")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("id");
+
+                    b.HasIndex("requester_id", "receiver_id")
+                        .IsUnique();
+
+                    b.HasIndex("receiver_id", "status", "created_at");
+
+                    b.HasIndex("requester_id", "status", "created_at");
+
+                    b.ToTable("FriendRequests");
+                });
+
+            modelBuilder.Entity("VideoCallAPI.Models.GroupChatMessage", b =>
+                {
+                    b.Property<int>("id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("id"));
+
+                    b.Property<string>("content")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("created_at")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("duration")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("file_path")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int?>("file_size")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("group_id")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("sender_id")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("timestamp")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("type")
+                        .HasColumnType("integer");
+
+                    b.HasKey("id");
+
+                    b.HasIndex("sender_id");
+
+                    b.HasIndex("group_id", "created_at");
+
+                    b.ToTable("GroupChatMessages");
+                });
+
             modelBuilder.Entity("VideoCallAPI.Models.Room", b =>
                 {
                     b.Property<int>("id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("id"));
 
                     b.Property<DateTime>("created_at")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("created_by")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<bool>("is_active")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<int>("max_participants")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<string>("room_code")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("room_name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.HasKey("id");
 
@@ -187,22 +416,24 @@ namespace VideoCallAPI.Migrations
                 {
                     b.Property<int>("id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("id"));
 
                     b.Property<bool>("is_active")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime>("joined_at")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("left_at")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("room_id")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("user_id")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("id");
 
@@ -217,46 +448,102 @@ namespace VideoCallAPI.Migrations
                 {
                     b.Property<int>("id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("id"));
 
                     b.Property<string>("avatar_path")
                         .HasMaxLength(255)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("birthday")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("country")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<DateTime>("created_at")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("display_name")
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("email")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("gender")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
 
                     b.Property<bool>("is_online")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("last_heartbeat_at")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("last_login_at")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("password_hash")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
+
+                    b.Property<string>("province")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("qq_avatar_url")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("qq_bound_at")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("qq_nickname")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("qq_open_id")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("qq_union_id")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("region")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("signature")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTime>("updated_at")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("username")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(50)");
 
                     b.HasKey("id");
 
                     b.HasIndex("email")
                         .IsUnique();
+
+                    b.HasIndex("qq_open_id")
+                        .IsUnique()
+                        .HasFilter("\"qq_open_id\" IS NOT NULL");
+
+                    b.HasIndex("qq_union_id")
+                        .IsUnique()
+                        .HasFilter("\"qq_union_id\" IS NOT NULL");
 
                     b.HasIndex("username")
                         .IsUnique();
@@ -281,6 +568,36 @@ namespace VideoCallAPI.Migrations
                     b.Navigation("Caller");
 
                     b.Navigation("receiver");
+                });
+
+            modelBuilder.Entity("VideoCallAPI.Models.ChatGroup", b =>
+                {
+                    b.HasOne("VideoCallAPI.Models.User", "owner")
+                        .WithMany("OwnedChatGroups")
+                        .HasForeignKey("owner_id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("owner");
+                });
+
+            modelBuilder.Entity("VideoCallAPI.Models.ChatGroupMember", b =>
+                {
+                    b.HasOne("VideoCallAPI.Models.ChatGroup", "group")
+                        .WithMany("members")
+                        .HasForeignKey("group_id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("VideoCallAPI.Models.User", "user")
+                        .WithMany("ChatGroupMembers")
+                        .HasForeignKey("user_id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("group");
+
+                    b.Navigation("user");
                 });
 
             modelBuilder.Entity("VideoCallAPI.Models.ChatMessage", b =>
@@ -321,6 +638,55 @@ namespace VideoCallAPI.Migrations
                     b.Navigation("contact_user");
                 });
 
+            modelBuilder.Entity("VideoCallAPI.Models.FavoriteItem", b =>
+                {
+                    b.HasOne("VideoCallAPI.Models.User", "user")
+                        .WithMany("FavoriteItems")
+                        .HasForeignKey("user_id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("user");
+                });
+
+            modelBuilder.Entity("VideoCallAPI.Models.FriendRequest", b =>
+                {
+                    b.HasOne("VideoCallAPI.Models.User", "receiver")
+                        .WithMany("ReceivedFriendRequests")
+                        .HasForeignKey("receiver_id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("VideoCallAPI.Models.User", "requester")
+                        .WithMany("SentFriendRequests")
+                        .HasForeignKey("requester_id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("receiver");
+
+                    b.Navigation("requester");
+                });
+
+            modelBuilder.Entity("VideoCallAPI.Models.GroupChatMessage", b =>
+                {
+                    b.HasOne("VideoCallAPI.Models.ChatGroup", "group")
+                        .WithMany("messages")
+                        .HasForeignKey("group_id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("VideoCallAPI.Models.User", "sender")
+                        .WithMany("SentGroupMessages")
+                        .HasForeignKey("sender_id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("group");
+
+                    b.Navigation("sender");
+                });
+
             modelBuilder.Entity("VideoCallAPI.Models.Room", b =>
                 {
                     b.HasOne("VideoCallAPI.Models.User", "creator")
@@ -351,6 +717,13 @@ namespace VideoCallAPI.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("VideoCallAPI.Models.ChatGroup", b =>
+                {
+                    b.Navigation("members");
+
+                    b.Navigation("messages");
+                });
+
             modelBuilder.Entity("VideoCallAPI.Models.Room", b =>
                 {
                     b.Navigation("participants");
@@ -358,15 +731,27 @@ namespace VideoCallAPI.Migrations
 
             modelBuilder.Entity("VideoCallAPI.Models.User", b =>
                 {
+                    b.Navigation("ChatGroupMembers");
+
                     b.Navigation("ContactedBy");
 
                     b.Navigation("Contacts");
 
+                    b.Navigation("FavoriteItems");
+
                     b.Navigation("InitiatedCalls");
+
+                    b.Navigation("OwnedChatGroups");
 
                     b.Navigation("ReceivedCalls");
 
+                    b.Navigation("ReceivedFriendRequests");
+
                     b.Navigation("ReceivedMessages");
+
+                    b.Navigation("SentFriendRequests");
+
+                    b.Navigation("SentGroupMessages");
 
                     b.Navigation("SentMessages");
                 });

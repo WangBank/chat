@@ -1,220 +1,136 @@
-# Video Call API - SQLite版本
+# Forever Love Chat Backend
 
-这是一个基于 ASP.NET Core 8.0 的 WebRTC 视频通话后台 API 服务，使用 SQLite 作为数据库。
+后端是基于 ASP.NET Core 的即时通讯 API 服务，提供用户认证、联系人、聊天、通话、管理员接口和 SignalR WebRTC 信令。
 
-## 项目结构
+## 技术栈
 
-```
-chat/
-├── flutter_client/          # Flutter 客户端项目
-│   ├── lib/                 # Flutter 源代码
-│   ├── assets/              # 资源文件
-│   ├── android/             # Android 平台配置
-│   ├── ios/                 # iOS 平台配置
-│   ├── web/                 # Web 平台配置
-│   └── pubspec.yaml         # Flutter 依赖配置
-├── backend_new/             # C# 后端 API 项目
-│   ├── Models/              # 数据模型
-│   ├── Data/                # 数据库上下文
-│   ├── Services/            # 业务逻辑服务
-│   ├── Controllers/         # API 控制器
-│   ├── Hubs/                # SignalR Hub
-│   ├── Program.cs           # 应用入口
-│   ├── appsettings.json     # 配置文件
-│   └── VideoCallAPI.csproj  # 项目文件
-└── README.md               # 本文档
-```
+- .NET 10 / C# latest
+- ASP.NET Core Web API
+- Entity Framework Core 10
+- Npgsql / PostgreSQL
+- SignalR
+- JWT Bearer
+- BCrypt.Net-Next
+- Serilog
+- Swashbuckle / OpenAPI
 
-## 数据库配置
+## 本地数据库
 
-### SQLite 优势
-- **轻量级**: 无需安装独立的数据库服务器
-- **便携性**: 数据库文件可以随项目移动
-- **开发友好**: 快速启动，无需配置
-- **跨平台**: 支持所有操作系统
-
-### 数据库文件
-- 开发环境: `videocall_dev.db`
-- 生产环境: `videocall.db`
-
-## 快速开始
-
-### 1. 启动后端服务
+开发环境使用 Docker PostgreSQL：
 
 ```bash
-cd backend_new
-chmod +x start.sh
-./start.sh
+docker run --name foreverlove-chat-postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=foreverlove_chat_dev \
+  -p 54329:5432 \
+  -d postgres:latest
 ```
 
-或者手动启动：
+默认连接串位于 `appsettings.Development.json`：
+
+```text
+Host=localhost;Port=54329;Database=foreverlove_chat_dev;Username=postgres;Password=postgres
+```
+
+生产默认连接串位于 `appsettings.json`，也可以通过环境变量 `ConnectionStrings__DefaultConnection` 覆盖。
+
+## 开发命令
 
 ```bash
-cd backend_new
 dotnet restore
-dotnet run
+dotnet build
+dotnet ef database update
+ASPNETCORE_ENVIRONMENT=Development dotnet run
 ```
 
-### 2. 启动Flutter客户端
+服务默认监听 `http://localhost:7001`，Swagger UI 位于 `http://localhost:7001/swagger`。
+
+## Docker 一键部署
+
+仓库根目录提供 API Docker 部署脚本，会自动创建 Docker network、确认 PostgreSQL 容器、构建 API 镜像、停止旧 API 容器或占用 API 端口的本地服务，并启动新容器：
 
 ```bash
-cd flutter_client
-flutter pub get
-flutter run
+./deploy-api-docker.sh
 ```
 
-### 认证相关
+默认访问地址：
+
+```text
+http://localhost:7001/swagger
+```
+
+常用覆盖项：
+
+```bash
+API_PORT=7002 ./deploy-api-docker.sh
+API_IMAGE=foreverlove-chat-api:prod API_CONTAINER=foreverlove-chat-api-prod ./deploy-api-docker.sh
+```
+
+如果使用外部 PostgreSQL，不让脚本管理数据库容器：
+
+```bash
+API_ENVIRONMENT=Production \
+POSTGRES_HOST=host.docker.internal \
+POSTGRES_CONTAINER_PORT=54329 \
+SKIP_POSTGRES=1 \
+./deploy-api-docker.sh
+```
+
+## 数据库迁移
+
+当前 provider 是 PostgreSQL：
+
+```bash
+dotnet ef migrations add <MigrationName>
+dotnet ef database update
+```
+
+应用启动时会执行 `Database.MigrateAsync()`，首次启动会自动应用未执行的 migration，并创建默认 `admin` 账号记录。
+
+## API 摘要
+
 - `POST /api/auth/register` - 用户注册
 - `POST /api/auth/login` - 用户登录
 - `POST /api/auth/change-password` - 修改密码
 - `GET /api/auth/profile` - 获取用户信息
-
-### 联系人管理
 - `GET /api/contacts` - 获取联系人列表
 - `POST /api/contacts` - 添加联系人
 - `DELETE /api/contacts/{id}` - 删除联系人
-- `PATCH /api/contacts/{id}/block` - 屏蔽/取消屏蔽联系人
-
-### 通话相关
+- `PATCH /api/contacts/{id}/block` - 屏蔽或取消屏蔽联系人
+- `PATCH /api/contacts/{id}/display-name` - 修改联系人备注
+- `POST /api/chat/send` - 发送消息
+- `GET /api/chat/history/{contactId}` - 获取聊天记录
+- `GET /api/chat/unread` - 获取未读消息
 - `GET /api/calls/history` - 获取通话记录
 - `POST /api/calls/rooms` - 创建群组通话房间
+- `GET /api/admin/online-users` - 管理员查看在线用户
+- `GET /api/admin/users` - 管理员查看用户
 
-## 测试账号
+## 日志
 
-系统会自动创建以下测试账号：
-- **用户名**: `testuser1`, **密码**: `123`
-- **用户名**: `testuser2`, **密码**: `123`
+Serilog 同时输出控制台和文件：
 
-## Flutter客户端集成
+- 日志目录：`logs/`
+- 文件格式：`videocall-YYYYMMDD.log`
+- 滚动策略：每天一个文件
+- 保留数量：30 个文件
 
-### 1. 添加依赖
-
-在 `flutter_client/pubspec.yaml` 中添加：
-
-```yaml
-dependencies:
-  flutter:
-    sdk: flutter
-  signalr_netcore: ^1.3.7
-  flutter_webrtc: ^0.9.46
-  http: ^1.1.0
-  permission_handler: ^11.0.1
-```
-
-## 开发特性
-
-### 1. 热重载支持
-- 后端支持代码更改时自动重新编译
-- Flutter支持热重载
-
-### 2. 自动数据库初始化
-- 首次运行时自动创建数据库表
-- 自动插入测试数据
-
-### 3. 开发工具
-- Swagger API 文档
-- Entity Framework 迁移工具
-- 详细的日志输出
-
-## 部署说明
-
-### 开发环境
-```bash
-# 后端
-cd backend_new
-dotnet run --environment Development
-
-# 前端
-cd flutter_client
-flutter run -d chrome  # Web版本
-flutter run            # 移动端
-```
-
-### 生产环境
-```bash
-# 后端
-cd backend
-dotnet publish -c Release -o ./release --self-contained false
-cd publish
-dotnet VideoCallAPI.dll
-
-# 前端
-cd flutter_client
-flutter build web       # 构建Web版本
-flutter build apk       # 构建Android APK
-flutter build ios       # 构建iOS (需要macOS)
-```
-
-## 数据库管理
-
-### 查看数据库
-推荐使用以下工具查看SQLite数据库：
-- **DB Browser for SQLite** (图形界面)
-- **sqlite3** (命令行)
-- **VS Code SQLite扩展**
+常用命令：
 
 ```bash
-# 命令行查看
-sqlite3 videocall_dev.db
-.tables          # 查看所有表
-.schema users    # 查看用户表结构
-SELECT * FROM users;  # 查询所有用户
+tail -f logs/videocall-*.log
+grep "ERR" logs/videocall-*.log
 ```
 
-### 重置数据库
+## 功能校验
+
+基础 smoke test：
+
 ```bash
-cd backend_new
-rm videocall_dev.db  # 删除数据库文件
-dotnet run           # 重新运行，会自动创建新数据库
+curl -s http://localhost:7001/swagger/v1/swagger.json
+curl -s -X POST http://localhost:7001/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"demo","email":"demo@example.com","password":"Password123!"}'
 ```
 
-## 故障排除
-
-### 1. 端口占用
-如果7000端口被占用，修改 `appsettings.json`：
-
-
-### 2. 数据库权限问题
-确保应用对数据库文件所在目录有读写权限：
-```bash
-chmod 755 backend_new/
-```
-
-### 3. Flutter依赖问题
-```bash
-cd flutter_client
-flutter clean
-flutter pub get
-```
-
-## 下一步开发
-
-1. **增强安全性**
-   - 实现更强的JWT验证
-   - 添加用户权限控制
-
-2. **功能扩展**
-   - 文件上传（头像）
-   - 推送通知
-   - 聊天消息功能
-
-3. **性能优化**
-   - 数据库索引优化
-   - WebRTC连接池管理
-
-4. **监控和日志**
-   - 添加应用性能监控
-   - 详细的错误日志
-
-## 技术支持
-
-如遇到问题，请检查：
-1. .NET 8.0 SDK 是否正确安装
-2. Flutter SDK 是否正确配置
-3. 防火墙是否允许相应端口
-4. 证书是否正确配置（HTTPS）
-ifconfig | grep inet
-
----
-
-**祝开发顺利！** 🚀
+完整进度和最新验证记录见 [PROGRESS.md](PROGRESS.md)。

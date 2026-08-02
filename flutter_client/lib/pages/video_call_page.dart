@@ -3,6 +3,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../models/call.dart';
 import '../services/call_manager.dart';
 import '../models/user.dart';
+import '../config/app_config.dart';
 
 class VideoCallPage extends StatefulWidget {
   final Call call;
@@ -19,6 +20,9 @@ class VideoCallPage extends StatefulWidget {
 }
 
 class _VideoCallPageState extends State<VideoCallPage> {
+  static const Color _qqBlue = Color(0xFF12A8F4);
+  static const Color _callBackground = Color(0xFF0B1118);
+
   bool _isMuted = false;
   bool _isCameraOff = false;
   bool _isSpeakerOn = true;
@@ -55,21 +59,23 @@ class _VideoCallPageState extends State<VideoCallPage> {
 
   void _onCallManagerChanged() {
     // 如果通话结束，自动关闭页面
-    if (widget.callManager.currentCall == null || !widget.callManager.isInCall) {
+    if (widget.callManager.currentCall == null ||
+        !widget.callManager.isInCall) {
       print('📞 VideoCallPage: 检测到通话结束，自动关闭页面');
       _safePop();
     }
   }
 
   // 辅助：判断当前是否为主叫方、获取自己与对方的用户信息
-  bool get _isCaller => widget.callManager.currentUser?.id == widget.call.caller.id;
+  bool get _isCaller =>
+      widget.callManager.currentUser?.id == widget.call.caller.id;
   User get _selfUser => widget.callManager.currentUser ?? widget.call.caller;
   User get _otherUser => _isCaller ? widget.call.receiver : widget.call.caller;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _callBackground,
       body: SafeArea(
         child: Stack(
           children: [
@@ -85,13 +91,16 @@ class _VideoCallPageState extends State<VideoCallPage> {
               left: 0,
               right: 0,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.black.withOpacity(0.7),
+                      Colors.black.withValues(alpha: 0.7),
                       Colors.transparent,
                     ],
                   ),
@@ -137,7 +146,7 @@ class _VideoCallPageState extends State<VideoCallPage> {
                           Text(
                             '视频通话中...',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.7),
+                              color: Colors.white.withValues(alpha: 0.7),
                               fontSize: 14,
                             ),
                           ),
@@ -161,7 +170,7 @@ class _VideoCallPageState extends State<VideoCallPage> {
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                     colors: [
-                      Colors.black.withOpacity(0.7),
+                      Colors.black.withValues(alpha: 0.7),
                       Colors.transparent,
                     ],
                   ),
@@ -245,16 +254,17 @@ class _VideoCallPageState extends State<VideoCallPage> {
     } else {
       // 视频未就绪时显示对应用户头像/首字母
       final user = isLocalMain ? _selfUser : _otherUser;
+      final avatarUrl = AppConfig.resolveMediaUrl(user.avatarPath);
       return Container(
-        color: Colors.black,
+        color: _callBackground,
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (user.avatarPath != null && user.avatarPath!.isNotEmpty)
+              if (avatarUrl != null)
                 ClipOval(
                   child: Image.network(
-                    user.avatarPath!,
+                    avatarUrl,
                     width: 120,
                     height: 120,
                     fit: BoxFit.cover,
@@ -269,7 +279,7 @@ class _VideoCallPageState extends State<VideoCallPage> {
               Text(
                 isLocalMain ? '本地视频' : '等待对方视频...',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   fontSize: 18,
                 ),
               ),
@@ -290,58 +300,69 @@ class _VideoCallPageState extends State<VideoCallPage> {
     return Positioned(
       top: 60,
       right: 20,
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _isLocalVideoExpanded = !_isLocalVideoExpanded;
-          });
-        },
-        child: Container(
-          width: 120,
-          height: 160,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Stack(
-              children: [
-                renderer != null
-                    ? RTCVideoView(
-                        renderer,
-                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                      )
-                    : Container(
-                        color: Colors.grey[800],
-                        child: Center(
-                          child: _buildInitialAvatar(isLocalSmall ? _selfUser : _otherUser),
-                        ),
-                      ),
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Icon(
-                      Icons.fullscreen,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                  ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          splashColor: Colors.white.withValues(alpha: 0.12),
+          highlightColor: Colors.white.withValues(alpha: 0.08),
+          onTap: () {
+            setState(() {
+              _isLocalVideoExpanded = !_isLocalVideoExpanded;
+            });
+          },
+          child: Container(
+            width: 120,
+            height: 160,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
                 ),
               ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Stack(
+                children: [
+                  renderer != null
+                      ? RTCVideoView(
+                          renderer,
+                          objectFit:
+                              RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        )
+                      : Container(
+                          color: Colors.grey[800],
+                          child: Center(
+                            child: _buildInitialAvatar(
+                              isLocalSmall ? _selfUser : _otherUser,
+                            ),
+                          ),
+                        ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Icon(
+                        Icons.fullscreen,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -354,20 +375,21 @@ class _VideoCallPageState extends State<VideoCallPage> {
     required Color color,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 60,
-        height: 60,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: color.withOpacity(0.2),
-          border: Border.all(color: color, width: 2),
-        ),
-        child: Icon(
-          icon,
-          color: color,
-          size: 28,
+    final isLight = color == Colors.white;
+
+    return SizedBox(
+      width: 60,
+      height: 60,
+      child: IconButton.filled(
+        onPressed: onTap,
+        icon: Icon(icon, size: 28),
+        style: ButtonStyle(
+          foregroundColor: WidgetStatePropertyAll(color),
+          backgroundColor: WidgetStatePropertyAll(
+            color.withValues(alpha: isLight ? 0.18 : 0.22),
+          ),
+          side: WidgetStatePropertyAll(BorderSide(color: color, width: 1.5)),
+          shape: const WidgetStatePropertyAll(CircleBorder()),
         ),
       ),
     );
@@ -386,7 +408,7 @@ class _VideoCallPageState extends State<VideoCallPage> {
       height: 80,
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        color: Colors.blue,
+        color: _qqBlue,
       ),
       alignment: Alignment.center,
       child: Text(

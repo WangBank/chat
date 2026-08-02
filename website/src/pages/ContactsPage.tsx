@@ -3,7 +3,6 @@ import { Card, List, Avatar, Button, Input, Space, message, Empty, Tag } from 'a
 import { UserAddOutlined, SearchOutlined, UserOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { observer } from 'mobx-react-lite';
 import { useNavigate } from 'react-router-dom';
-import { chatStore } from '../stores/chat.store';
 import { apiService } from '../services/api.service';
 import { APP_CONFIG } from '../config/app.config';
 import '../styles/common.css';
@@ -40,12 +39,17 @@ const ContactsPage = observer(() => {
   };
 
   const handleAddContact = async (username: string) => {
-    const result = await chatStore.addContact(username);
-    if (result.success) {
-      message.success('Contact added successfully');
-      loadUsers(searchQuery);
-    } else {
-      message.error(result.message || 'Failed to add contact');
+    try {
+      const result = await apiService.createFriendRequest({ username, source: '账号搜索' });
+      if (result.success) {
+        message.success('Friend request sent');
+        loadUsers(searchQuery);
+      } else {
+        message.error(result.message || 'Failed to send friend request');
+      }
+    } catch (error: unknown) {
+      const maybeError = error as { response?: { data?: { message?: string } } };
+      message.error(maybeError.response?.data?.message || 'Failed to send friend request');
     }
   };
 
@@ -68,7 +72,7 @@ const ContactsPage = observer(() => {
             >
               Back
             </Button>
-            <span>Add Contact</span>
+        <span>Friend Requests</span>
           </Space>
         }
         extra={
@@ -95,7 +99,7 @@ const ContactsPage = observer(() => {
                     icon={<UserAddOutlined />}
                     onClick={() => handleAddContact(user.username)}
                   >
-                    Add
+                    Request
                   </Button>,
                 ]}
               >

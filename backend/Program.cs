@@ -12,6 +12,7 @@ using Microsoft.Extensions.FileProviders;
 using BCrypt.Net;
 using Serilog;
 using Serilog.Events;
+using System.Threading.RateLimiting;
 
 // 配置 Serilog
 Log.Logger = new LoggerConfiguration()
@@ -59,9 +60,31 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// 配置SQLite数据库
+// 全局限流，按客户端 IP 控制突发请求，降低暴力尝试和接口刷量风险。
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            clientIp,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 180,
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                Window = TimeSpan.FromMinutes(1)
+            });
+    });
+});
+
+// 配置PostgreSQL数据库
+var databaseConnectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' is not configured.");
 builder.Services.AddDbContext<VideoCallDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(databaseConnectionString));
 
 // 配置JWT认证
 var jwtSecret = builder.Configuration["Jwt:SecretKey"] ?? "VideoCallSecretKey123456789012345678901234567890";
@@ -106,12 +129,17 @@ builder.Services.AddScoped<IContactService, ContactService>();
 builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddScoped<ICallService, CallService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IContentSecurityService, ContentSecurityService>();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient<IQQAuthService, QQAuthService>();
 builder.Services.AddSingleton<IWebRTCService, WebRTCService>();
 
 // 配置SignalR
 builder.Services.AddSignalR(options =>
 {
     options.EnableDetailedErrors = true;
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(90);
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
 });
 
 // 配置CORS
@@ -219,7 +247,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<VideoCallDbContext>();
-    context.Database.EnsureCreated();
+    await context.Database.MigrateAsync();
     
     // 检查admin账号是否存在
     var adminUser = await context.users.FirstOrDefaultAsync(u => u.username == "admin");
@@ -243,9 +271,29 @@ using (var scope = app.Services.CreateScope())
         await context.SaveChangesAsync();
         Console.WriteLine("Admin账号已创建: admin / " + adminPassword);
     }
+
+    if (builder.Configuration.GetValue<bool>("DemoSeed:Enabled"))
+    {
+        await SeedDemoChatDataAsync(context, builder.Configuration);
+    }
 }
 
 // Configure the HTTP request pipeline.
+app.Use(async (context, next) =>
+{
+    context.Response.OnStarting(() =>
+    {
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        context.Response.Headers["X-Frame-Options"] = "DENY";
+        context.Response.Headers["Referrer-Policy"] = "no-referrer";
+        context.Response.Headers["X-XSS-Protection"] = "0";
+        context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+        return Task.CompletedTask;
+    });
+
+    await next();
+});
+
 // 仅在开发环境启用Swagger，Release模式禁用
 if (app.Environment.IsDevelopment())
 {
@@ -274,6 +322,8 @@ else
     app.UseCors("Production");
 }
 
+app.UseRateLimiter();
+
 // 配置静态文件服务
 app.UseStaticFiles();
 
@@ -289,6 +339,18 @@ app.UseStaticFiles(new StaticFileOptions
     RequestPath = "/avatar"
 });
 
+// 配置聊天文件夹的静态文件服务
+var chatFilesPath = Path.Combine(Directory.GetCurrentDirectory(), "chat-files");
+if (!Directory.Exists(chatFilesPath))
+{
+    Directory.CreateDirectory(chatFilesPath);
+}
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(chatFilesPath),
+    RequestPath = "/chat-files"
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -302,13 +364,183 @@ if (app.Environment.IsDevelopment())
 else
 {
     // 生产环境使用Production策略，支持部署后的网站和手机访问
-    app.MapHub<VideoCallHub>("/videocallhub").RequireCors("Production");
+app.MapHub<VideoCallHub>("/videocallhub").RequireCors("Production");
 }
 
 app.Run();
+
+static async Task SeedDemoChatDataAsync(VideoCallDbContext context, IConfiguration configuration)
+{
+    var demoPassword = configuration["DemoSeed:Password"] ?? "Test123456!";
+    var passwordHash = BCrypt.Net.BCrypt.HashPassword(demoPassword);
+    var now = DateTime.UtcNow;
+    var testUsers = new List<User>();
+
+    for (var index = 1; index <= 10; index++)
+    {
+        var username = $"testuser{index:00}";
+        var user = await context.users.FirstOrDefaultAsync(item => item.username == username);
+        if (user == null)
+        {
+            user = new User
+            {
+                username = username,
+                email = $"{username}@example.com",
+                password_hash = passwordHash,
+                display_name = $"测试用户{index:00}",
+                signature = $"QQ 风格测试账号 {index:00}",
+                gender = index % 2 == 0 ? "女" : "男",
+                birthday = $"199{index % 10}-0{(index % 9) + 1}-15",
+                country = "中国",
+                province = index % 2 == 0 ? "上海" : "山东",
+                region = index % 2 == 0 ? "上海" : "青岛",
+                qq_open_id = $"seed_qq_testuser{index:00}",
+                qq_nickname = $"QQ测试{index:00}",
+                qq_bound_at = now,
+                created_at = now,
+                updated_at = now
+            };
+            context.users.Add(user);
+        }
+        else
+        {
+            user.display_name ??= $"测试用户{index:00}";
+            user.signature ??= $"QQ 风格测试账号 {index:00}";
+            user.qq_open_id ??= $"seed_qq_testuser{index:00}";
+            user.qq_nickname ??= $"QQ测试{index:00}";
+            user.qq_bound_at ??= now;
+            user.updated_at = now;
+        }
+
+        testUsers.Add(user);
+    }
+
+    await context.SaveChangesAsync();
+
+    var owner = testUsers[0];
+    foreach (var friend in testUsers.Skip(1))
+    {
+        await EnsureContactPairAsync(context, owner.id, friend.id, null, now);
+    }
+
+    var admin = await context.users.FirstOrDefaultAsync(item => item.username == "admin");
+    if (admin != null)
+    {
+        foreach (var testUser in testUsers)
+        {
+            await EnsureContactPairAsync(context, admin.id, testUser.id, null, now);
+        }
+    }
+
+    await context.SaveChangesAsync();
+
+    var group = await context.ChatGroups
+        .Include(item => item.members)
+        .FirstOrDefaultAsync(item => item.owner_id == owner.id && item.name == "QQ功能测试群");
+
+    if (group == null)
+    {
+        group = new ChatGroup
+        {
+            name = "QQ功能测试群",
+            category = "测试群聊",
+            owner_id = owner.id,
+            announcement = "用于验证群聊资料、成员列表、图片文件和表情发送。",
+            note = "10个测试用户自动创建的群聊。",
+            pinned = true,
+            created_at = now,
+            updated_at = now
+        };
+        context.ChatGroups.Add(group);
+        await context.SaveChangesAsync();
+    }
+
+    await EnsureGroupMemberAsync(context, group.id, owner.id, "owner", now);
+    foreach (var member in testUsers.Skip(1))
+    {
+        await EnsureGroupMemberAsync(context, group.id, member.id, "member", now);
+    }
+
+    if (!await context.GroupChatMessages.AnyAsync(item => item.group_id == group.id))
+    {
+        context.GroupChatMessages.AddRange(
+            new GroupChatMessage
+            {
+                group_id = group.id,
+                sender_id = owner.id,
+                content = "大家好，这里是 QQ 功能测试群 😀",
+                type = MessageType.Text,
+                timestamp = now,
+                created_at = now
+            },
+            new GroupChatMessage
+            {
+                group_id = group.id,
+                sender_id = testUsers[1].id,
+                content = "已加入群聊，可以测试表情、图片和文件。",
+                type = MessageType.Text,
+                timestamp = now.AddSeconds(8),
+                created_at = now.AddSeconds(8)
+            });
+    }
+
+    group.updated_at = now;
+    await context.SaveChangesAsync();
+}
+
+static async Task EnsureContactPairAsync(VideoCallDbContext context, int userId, int contactUserId, string? displayName, DateTime now)
+{
+    if (!await context.Contacts.AnyAsync(item => item.user_id == userId && item.contact_user_id == contactUserId))
+    {
+        context.Contacts.Add(new Contact
+        {
+            user_id = userId,
+            contact_user_id = contactUserId,
+            display_name = displayName,
+            added_at = now
+        });
+    }
+
+    if (!await context.Contacts.AnyAsync(item => item.user_id == contactUserId && item.contact_user_id == userId))
+    {
+        context.Contacts.Add(new Contact
+        {
+            user_id = contactUserId,
+            contact_user_id = userId,
+            added_at = now
+        });
+    }
+}
+
+static async Task EnsureGroupMemberAsync(VideoCallDbContext context, int groupId, int userId, string role, DateTime now)
+{
+    var member = await context.ChatGroupMembers
+        .FirstOrDefaultAsync(item => item.group_id == groupId && item.user_id == userId);
+
+    if (member == null)
+    {
+        context.ChatGroupMembers.Add(new ChatGroupMember
+        {
+            group_id = groupId,
+            user_id = userId,
+            role = role,
+            joined_at = now,
+            is_active = true
+        });
+        return;
+    }
+
+    member.role = role;
+    member.is_active = true;
+}
 }
 catch (Exception ex)
 {
+    if (ex is HostAbortedException)
+    {
+        throw;
+    }
+
     Log.Fatal(ex, "应用程序启动失败");
     throw;
 }

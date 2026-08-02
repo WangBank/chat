@@ -25,8 +25,10 @@ class AdminStore {
     makeAutoObservable(this);
   }
 
-  async loadOnlineUsers() {
-    this.isLoading = true;
+  async loadOnlineUsers(options: { silent?: boolean } = {}) {
+    if (!options.silent) {
+      this.isLoading = true;
+    }
     try {
       const response = await apiService.getOnlineUsers();
       if (response.success && response.data) {
@@ -35,12 +37,16 @@ class AdminStore {
     } catch (error) {
       console.error('Failed to load online users:', error);
     } finally {
-      this.isLoading = false;
+      if (!options.silent) {
+        this.isLoading = false;
+      }
     }
   }
 
-  async loadAllUsers(page: number = 1) {
-    this.isLoading = true;
+  async loadAllUsers(page: number = 1, options: { silent?: boolean } = {}) {
+    if (!options.silent) {
+      this.isLoading = true;
+    }
     this.currentPage = page;
     try {
       const response = await apiService.getAllUsers(page, this.pageSize);
@@ -51,10 +57,11 @@ class AdminStore {
     } catch (error) {
       console.error('Failed to load all users:', error);
     } finally {
-      this.isLoading = false;
+      if (!options.silent) {
+        this.isLoading = false;
+      }
     }
   }
 }
 
 export const adminStore = new AdminStore();
-

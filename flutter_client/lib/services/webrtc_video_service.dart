@@ -16,15 +16,15 @@ class WebRTCVideoService extends ChangeNotifier {
   Call? _currentCall;
   bool _isInCall = false;
   User? _currentUser;
-  
+
   // WebRTC 连接
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
   MediaStream? _remoteStream;
-  
+
   // 🔧 防重复处理：记录正在处理的通话结束事件
   final Set<String> _processingCallEnded = {};
-  
+
   // 🔧 防竞态条件：标记是否正在释放摄像头
   bool _isReleasingCamera = false;
 
@@ -122,12 +122,10 @@ class WebRTCVideoService extends ChangeNotifier {
       // 预检查媒体权限
       try {
         print('🔍 预检查媒体权限...');
-        final testConstraints = {
-          'audio': true,
-          'video': false,
-        };
-        final testStream =
-            await navigator.mediaDevices.getUserMedia(testConstraints);
+        final testConstraints = {'audio': true, 'video': false};
+        final testStream = await navigator.mediaDevices.getUserMedia(
+          testConstraints,
+        );
         testStream.getTracks().forEach((track) => track.stop());
         print('✅ 媒体权限检查通过');
       } catch (e) {
@@ -142,6 +140,28 @@ class WebRTCVideoService extends ChangeNotifier {
       print('❌ WebRTC视频服务初始化失败: $e');
       onError?.call('WebRTC视频服务初始化失败: $e');
     }
+  }
+
+  Future<void> ensureSignalRConnection(String token, User user) async {
+    try {
+      _currentUser = user;
+      await _signalRService.ensureConnectedAndAuthenticated(token, user.id);
+
+      if (!_isInitialized) {
+        _isInitialized = true;
+        notifyListeners();
+      }
+
+      print('✅ SignalR在线状态已恢复: user=${user.id}');
+    } catch (e) {
+      print('❌ 恢复SignalR在线状态失败: $e');
+      onError?.call('恢复SignalR在线状态失败: $e');
+      rethrow;
+    }
+  }
+
+  void updateCurrentUser(User user) {
+    _currentUser = user;
   }
 
   // 确保渲染器已初始化
@@ -173,7 +193,8 @@ class WebRTCVideoService extends ChangeNotifier {
     _signalRService.onCallAccepted = (callId) {
       print('📞 WebRTCService收到通话接受事件: $callId');
       print(
-          '📞 WebRTCService当前状态: _currentCall=${_currentCall?.callId}, _isInCall=$_isInCall');
+        '📞 WebRTCService当前状态: _currentCall=${_currentCall?.callId}, _isInCall=$_isInCall',
+      );
 
       if (_currentCall != null) {
         _isInCall = true;
@@ -188,7 +209,8 @@ class WebRTCVideoService extends ChangeNotifier {
         );
 
         print(
-            '📞 WebRTCService更新后状态: _currentCall=${_currentCall?.callId}, _isInCall=$_isInCall');
+          '📞 WebRTCService更新后状态: _currentCall=${_currentCall?.callId}, _isInCall=$_isInCall',
+        );
         print('📞 WebRTCService准备调用onCallAccepted回调');
 
         onCallAccepted?.call(_currentCall!);
@@ -208,10 +230,7 @@ class WebRTCVideoService extends ChangeNotifier {
             _peerConnection!.createOffer().then((offer) {
               _peerConnection!.setLocalDescription(offer).then((_) {
                 _signalRService.sendOffer(
-                  WebRTCOffer(
-                    callId: callId,
-                    offer: jsonEncode(offer.toMap()),
-                  ),
+                  WebRTCOffer(callId: callId, offer: jsonEncode(offer.toMap())),
                   _currentCall!.receiver.id,
                 );
                 print('📤 主叫方已发送Offer');
@@ -227,13 +246,17 @@ class WebRTCVideoService extends ChangeNotifier {
     _signalRService.onCallRejected = (callId) {
       print('🔍 [onCallRejected] ========== 开始处理通话拒绝事件 ==========');
       print('🔍 [onCallRejected] callId: $callId');
-      print('🔍 [onCallRejected] current_user: ${_currentUser?.id}/${_currentUser?.username}');
-      print('🔍 [onCallRejected] _localStream状态: ${_localStream != null ? "存在" : "null"}');
+      print(
+        '🔍 [onCallRejected] current_user: ${_currentUser?.id}/${_currentUser?.username}',
+      );
+      print(
+        '🔍 [onCallRejected] _localStream状态: ${_localStream != null ? "存在" : "null"}',
+      );
       if (_localStream != null) {
         final tracks = _localStream!.getTracks();
         print('🔍 [onCallRejected] _localStream轨道数: ${tracks.length}');
       }
-      
+
       // 🔧 修复：使用立即执行的异步函数，确保摄像头释放完成
       (() async {
         print('🔍 [onCallRejected] 开始异步执行 _endVideoCall()');
@@ -244,29 +267,35 @@ class WebRTCVideoService extends ChangeNotifier {
           print('❌ [onCallRejected] _endVideoCall() 执行失败: $e');
           print('❌ [onCallRejected] 错误堆栈: $stackTrace');
         }
-        
+
         final call = _currentCall;
         _currentCall = null;
         _isInCall = false;
         notifyListeners();
-        
-        print('🔍 [onCallRejected] 状态已重置: currentCall=${_currentCall?.callId}, isInCall=$_isInCall');
-        print('🔍 [onCallRejected] _localStream最终状态: ${_localStream != null ? "仍存在⚠️" : "已清空✅"}');
-        
+
+        print(
+          '🔍 [onCallRejected] 状态已重置: currentCall=${_currentCall?.callId}, isInCall=$_isInCall',
+        );
+        print(
+          '🔍 [onCallRejected] _localStream最终状态: ${_localStream != null ? "仍存在⚠️" : "已清空✅"}',
+        );
+
         if (call != null) {
           onCallRejected?.call(call);
           print('🔍 [onCallRejected] 已触发 onCallRejected 回调');
         } else {
           print('⚠️ [onCallRejected] call 为 null，未触发回调');
         }
-        
+
         try {
           await _signalRService.leaveCall(callId);
-          print('🔗 [onCallRejected] 已离开通话组(拒绝): $callId, user=${_currentUser?.id}');
+          print(
+            '🔗 [onCallRejected] 已离开通话组(拒绝): $callId, user=${_currentUser?.id}',
+          );
         } catch (e) {
           print('❌ [onCallRejected] 离开通话组失败(拒绝): $e');
         }
-        
+
         print('🔍 [onCallRejected] ========== 通话拒绝事件处理完成 ==========');
       })();
     };
@@ -274,10 +303,12 @@ class WebRTCVideoService extends ChangeNotifier {
     _signalRService.onCallEnded = (callId) {
       print('🔍 [onCallEnded] ========== 开始处理通话结束事件 ==========');
       print('🔍 [onCallEnded] callId: $callId');
-      print('🔍 [onCallEnded] current_user: ${_currentUser?.id}/${_currentUser?.username}');
+      print(
+        '🔍 [onCallEnded] current_user: ${_currentUser?.id}/${_currentUser?.username}',
+      );
       print('🔍 [onCallEnded] prev_call: ${_currentCall?.callId}');
       print('🔍 [onCallEnded] prev_isInCall: $_isInCall');
-      
+
       // 🔧 防重复处理：如果已经在处理这个通话的结束事件，直接返回
       if (_processingCallEnded.contains(callId)) {
         print('⚠️ [onCallEnded] 通话 $callId 的结束事件正在处理中，跳过重复处理');
@@ -290,32 +321,40 @@ class WebRTCVideoService extends ChangeNotifier {
         }
         return;
       }
-      
+
       // 🔧 关键修复：即使当前通话ID不匹配，如果 _localStream 存在，也要释放
       // 这可能是另一个浏览器/账号的结束事件，但摄像头仍被占用
-      final shouldRelease = _currentCall?.callId == callId || 
-                           _localStream != null || 
-                           _peerConnection != null;
-      
+      final shouldRelease = _currentCall?.callId == callId ||
+          _localStream != null ||
+          _peerConnection != null;
+
       if (!shouldRelease && _currentCall?.callId != callId) {
-        print('⚠️ [onCallEnded] 通话ID不匹配（当前: ${_currentCall?.callId}, 事件: $callId），且无资源需要释放，跳过');
+        print(
+          '⚠️ [onCallEnded] 通话ID不匹配（当前: ${_currentCall?.callId}, 事件: $callId），且无资源需要释放，跳过',
+        );
         return;
       }
-      
+
       // 标记为正在处理
       _processingCallEnded.add(callId);
       print('🔍 [onCallEnded] 已标记通话 $callId 为处理中');
-      
-      print('🔍 [onCallEnded] _localStream状态: ${_localStream != null ? "存在" : "null"}');
+
+      print(
+        '🔍 [onCallEnded] _localStream状态: ${_localStream != null ? "存在" : "null"}',
+      );
       if (_localStream != null) {
         final tracks = _localStream!.getTracks();
         print('🔍 [onCallEnded] _localStream轨道数: ${tracks.length}');
         for (var track in tracks) {
-          print('🔍 [onCallEnded] 轨道: kind=${track.kind}, id=${track.id}, enabled=${track.enabled}');
+          print(
+            '🔍 [onCallEnded] 轨道: kind=${track.kind}, id=${track.id}, enabled=${track.enabled}',
+          );
         }
       }
-      print('🔍 [onCallEnded] _peerConnection状态: ${_peerConnection != null ? "存在" : "null"}');
-      
+      print(
+        '🔍 [onCallEnded] _peerConnection状态: ${_peerConnection != null ? "存在" : "null"}',
+      );
+
       // 🔧 修复：使用立即执行的异步函数，确保摄像头释放完成
       (() async {
         print('🔍 [onCallEnded] 开始异步执行 _endVideoCall()');
@@ -327,16 +366,18 @@ class WebRTCVideoService extends ChangeNotifier {
           print('❌ [onCallEnded] _endVideoCall() 执行失败: $e');
           print('❌ [onCallEnded] 错误堆栈: $stackTrace');
         }
-        
+
         // 只有在通话ID匹配时才更新状态
         if (_currentCall?.callId == callId) {
           final call = _currentCall;
           _currentCall = null;
           _isInCall = false;
           notifyListeners();
-          
-          print('🔍 [onCallEnded] 状态已重置: currentCall=${_currentCall?.callId}, isInCall=$_isInCall');
-          
+
+          print(
+            '🔍 [onCallEnded] 状态已重置: currentCall=${_currentCall?.callId}, isInCall=$_isInCall',
+          );
+
           if (call != null) {
             onCallEnded?.call(call);
             print('🔍 [onCallEnded] 已触发 onCallEnded 回调');
@@ -346,23 +387,27 @@ class WebRTCVideoService extends ChangeNotifier {
         } else {
           print('⚠️ [onCallEnded] 通话ID不匹配，仅释放资源，不更新状态');
         }
-        
-        print('🔍 [onCallEnded] _localStream最终状态: ${_localStream != null ? "仍存在⚠️" : "已清空✅"}');
+
+        print(
+          '🔍 [onCallEnded] _localStream最终状态: ${_localStream != null ? "仍存在⚠️" : "已清空✅"}',
+        );
         print('🔍 [onCallEnded] 通话结束事件处理完成');
-        
+
         try {
           await _signalRService.leaveCall(callId);
-          print('🔗 [onCallEnded] 已离开通话组(被动结束): $callId, user=${_currentUser?.id}');
+          print(
+            '🔗 [onCallEnded] 已离开通话组(被动结束): $callId, user=${_currentUser?.id}',
+          );
         } catch (e) {
           print('❌ [onCallEnded] 离开通话组失败(被动结束): $e');
         }
-        
+
         // 移除处理标记（延迟移除，确保不会立即重复处理）
         Future.delayed(const Duration(seconds: 2), () {
           _processingCallEnded.remove(callId);
           print('🔍 [onCallEnded] 已移除通话 $callId 的处理标记');
         });
-        
+
         print('🔍 [onCallEnded] ========== 通话结束事件处理完成 ==========');
       })();
     };
@@ -394,10 +439,7 @@ class WebRTCVideoService extends ChangeNotifier {
     };
 
     final constraints = {
-      'mandatory': {
-        'OfferToReceiveAudio': true,
-        'OfferToReceiveVideo': true,
-      },
+      'mandatory': {'OfferToReceiveAudio': true, 'OfferToReceiveVideo': true},
       'optional': [],
     };
 
@@ -484,7 +526,9 @@ class WebRTCVideoService extends ChangeNotifier {
   Future<MediaStream?> _getUserMedia() async {
     try {
       print('📹 请求摄像头和麦克风权限...');
-      print('🔍 [_getUserMedia] 当前用户: ${_currentUser?.id}/${_currentUser?.username}');
+      print(
+        '🔍 [_getUserMedia] 当前用户: ${_currentUser?.id}/${_currentUser?.username}',
+      );
 
       // 先请求权限
       final hasPermissions = await _requestPermissions();
@@ -504,7 +548,7 @@ class WebRTCVideoService extends ChangeNotifier {
           },
           'facingMode': 'user',
           'optional': [],
-        }
+        },
       };
 
       print('🔍 [_getUserMedia] 开始调用 getUserMedia...');
@@ -520,9 +564,9 @@ class WebRTCVideoService extends ChangeNotifier {
       final errorMsg = e.toString();
       print('❌ [_getUserMedia] 获取媒体流失败: $e');
       print('🔍 [_getUserMedia] 错误详情: $errorMsg');
-      
+
       // 检查是否是摄像头被占用（同一台机器上其他浏览器可能正在使用）
-      if (errorMsg.contains('NotReadableError') || 
+      if (errorMsg.contains('NotReadableError') ||
           errorMsg.contains('NotAllowedError') ||
           errorMsg.contains('OverconstrainedError') ||
           errorMsg.contains('device') ||
@@ -536,12 +580,10 @@ class WebRTCVideoService extends ChangeNotifier {
       if (errorMsg.contains('video') || errorMsg.contains('camera')) {
         try {
           print('🔄 [_getUserMedia] 尝试仅获取音频流...');
-          final audioConstraints = {
-            'audio': true,
-            'video': false,
-          };
-          final audioStream =
-              await navigator.mediaDevices.getUserMedia(audioConstraints);
+          final audioConstraints = {'audio': true, 'video': false};
+          final audioStream = await navigator.mediaDevices.getUserMedia(
+            audioConstraints,
+          );
           print('✅ [_getUserMedia] 成功获取音频流');
           return audioStream;
         } catch (audioError) {
@@ -557,7 +599,9 @@ class WebRTCVideoService extends ChangeNotifier {
 
   // 安全地设置渲染器的srcObject
   void _safeSetRendererSrcObject(
-      RTCVideoRenderer? renderer, MediaStream? stream) {
+    RTCVideoRenderer? renderer,
+    MediaStream? stream,
+  ) {
     try {
       if (renderer != null) {
         // 先清除旧的srcObject
@@ -584,9 +628,11 @@ class WebRTCVideoService extends ChangeNotifier {
   Future<void> _startVideoCall() async {
     print('🔍 [_startVideoCall] ========== 开始视频通话 ==========');
     print('🔍 [_startVideoCall] call: ${_currentCall?.callId}');
-    print('🔍 [_startVideoCall] user: ${_currentUser?.id}/${_currentUser?.username}');
+    print(
+      '🔍 [_startVideoCall] user: ${_currentUser?.id}/${_currentUser?.username}',
+    );
     print('🔍 [_startVideoCall] _isReleasingCamera: $_isReleasingCamera');
-    
+
     // 🔧 防竞态条件：如果正在释放摄像头，等待释放完成
     if (_isReleasingCamera) {
       print('⚠️ [_startVideoCall] 检测到正在释放摄像头，等待释放完成...');
@@ -601,7 +647,7 @@ class WebRTCVideoService extends ChangeNotifier {
         print('✅ [_startVideoCall] 摄像头释放完成，继续执行');
       }
     }
-    
+
     try {
       // 确保渲染器已初始化
       print('🔍 [_startVideoCall] 确保渲染器已初始化...');
@@ -609,17 +655,23 @@ class WebRTCVideoService extends ChangeNotifier {
       print('🔍 [_startVideoCall] 渲染器初始化完成');
 
       // 如果还没有本地流，才获取媒体流
-      print('🔍 [_startVideoCall] 检查 _localStream: ${_localStream != null ? "已存在" : "null"}');
+      print(
+        '🔍 [_startVideoCall] 检查 _localStream: ${_localStream != null ? "已存在" : "null"}',
+      );
       if (_localStream == null) {
         print('🔍 [_startVideoCall] 开始获取媒体流...');
         _localStream = await _getUserMedia();
-        print('🔍 [_startVideoCall] 获取媒体流结果: ${_localStream != null ? "成功" : "失败"}');
+        print(
+          '🔍 [_startVideoCall] 获取媒体流结果: ${_localStream != null ? "成功" : "失败"}',
+        );
         if (_localStream != null) {
           final tracks = _localStream!.getTracks();
           print('🔍 [_startVideoCall] 获取到的轨道数: ${tracks.length}');
           for (var i = 0; i < tracks.length; i++) {
             final track = tracks[i];
-            print('🔍 [_startVideoCall] 轨道[$i]: kind=${track.kind}, id=${track.id}, enabled=${track.enabled}');
+            print(
+              '🔍 [_startVideoCall] 轨道[$i]: kind=${track.kind}, id=${track.id}, enabled=${track.enabled}',
+            );
           }
           _safeSetRendererSrcObject(_localRenderer, _localStream);
           print('🔍 [_startVideoCall] 已设置本地渲染器');
@@ -666,61 +718,73 @@ class WebRTCVideoService extends ChangeNotifier {
     }
   }
 
-// 结束视频通话
+  // 结束视频通话
   Future<void> _endVideoCall() async {
     print('🔍 [_endVideoCall] ========== 开始结束视频通话 ==========');
     print('🔍 [_endVideoCall] call: ${_currentCall?.callId}');
-    print('🔍 [_endVideoCall] user: ${_currentUser?.id}/${_currentUser?.username}');
+    print(
+      '🔍 [_endVideoCall] user: ${_currentUser?.id}/${_currentUser?.username}',
+    );
     print('🔍 [_endVideoCall] isInCall: $_isInCall');
     print('🔍 [_endVideoCall] _isReleasingCamera: $_isReleasingCamera');
-    
+
     // 🔧 防竞态条件：如果已经在释放，直接返回
     if (_isReleasingCamera) {
       print('⚠️ [_endVideoCall] 已经在释放摄像头，跳过重复释放');
       return;
     }
-    
+
     // 标记为正在释放
     _isReleasingCamera = true;
     print('🔍 [_endVideoCall] 已标记为正在释放摄像头');
-    
+
     try {
-      print('🔍 [_endVideoCall] 检查 _localStream: ${_localStream != null ? "存在" : "null"}');
+      print(
+        '🔍 [_endVideoCall] 检查 _localStream: ${_localStream != null ? "存在" : "null"}',
+      );
       if (_localStream != null) {
         final tracks = _localStream!.getTracks();
         print('🔍 [_endVideoCall] 本地流轨道数: ${tracks.length}');
         for (var i = 0; i < tracks.length; i++) {
           final track = tracks[i];
-          print('🔍 [_endVideoCall] 轨道[$i]: kind=${track.kind}, id=${track.id}, enabled=${track.enabled}, muted=${track.muted}');
+          print(
+            '🔍 [_endVideoCall] 轨道[$i]: kind=${track.kind}, id=${track.id}, enabled=${track.enabled}, muted=${track.muted}',
+          );
         }
       } else {
         print('⚠️ [_endVideoCall] _localStream 为 null，可能已经释放或未初始化');
       }
-      
-      print('🔍 [_endVideoCall] 检查 _peerConnection: ${_peerConnection != null ? "存在" : "null"}');
+
+      print(
+        '🔍 [_endVideoCall] 检查 _peerConnection: ${_peerConnection != null ? "存在" : "null"}',
+      );
 
       // 🔧 修复：先停止所有轨道，然后关闭 PeerConnection
       // 关键：必须先停止轨道，再关闭 PeerConnection，才能确保摄像头被释放
-      
+
       // 第一步：停止本地流的所有轨道（确保释放摄像头）
       print('🔍 [_endVideoCall] 开始处理本地流...');
       if (_localStream != null) {
         final tracks = _localStream!.getTracks();
         print('🔍 [_endVideoCall] 准备停止 ${tracks.length} 个本地轨道');
-        
+
         // 保存轨道引用，因为停止后可能无法再获取
         final tracksToStop = List<MediaStreamTrack>.from(tracks);
-        
+
         for (var i = 0; i < tracksToStop.length; i++) {
           final track = tracksToStop[i];
           try {
-            print('🔍 [_endVideoCall] 停止本地轨道[$i]: kind=${track.kind}, id=${track.id}');
+            print(
+              '🔍 [_endVideoCall] 停止本地轨道[$i]: kind=${track.kind}, id=${track.id}',
+            );
             // 先禁用轨道
             track.enabled = false;
             // 然后停止轨道
             track.stop();
-            print('🛑 [_endVideoCall] 已停止本地轨道[$i]: ${track.kind}, enabled=${track.enabled}');
-            
+            print(
+              '🛑 [_endVideoCall] 已停止本地轨道[$i]: ${track.kind}, enabled=${track.enabled}',
+            );
+
             // 尝试从 MediaStream 中移除轨道（如果支持）
             try {
               _localStream!.removeTrack(track);
@@ -733,11 +797,13 @@ class WebRTCVideoService extends ChangeNotifier {
             print('❌ [_endVideoCall] 错误堆栈: $stackTrace');
           }
         }
-        
+
         // 确保所有轨道都被移除
         final remainingTracks = _localStream!.getTracks();
         if (remainingTracks.isNotEmpty) {
-          print('⚠️ [_endVideoCall] MediaStream 中仍有 ${remainingTracks.length} 个轨道未移除');
+          print(
+            '⚠️ [_endVideoCall] MediaStream 中仍有 ${remainingTracks.length} 个轨道未移除',
+          );
           for (var track in remainingTracks) {
             try {
               track.stop();
@@ -747,12 +813,12 @@ class WebRTCVideoService extends ChangeNotifier {
             }
           }
         }
-        
+
         // 清空本地流引用
         final streamToDispose = _localStream;
         _localStream = null;
         print('✅ [_endVideoCall] 本地流已释放，_localStream 已设为 null');
-        
+
         // 尝试释放 MediaStream（如果支持 dispose 方法）
         try {
           // 注意：MediaStream 可能没有 dispose 方法，这里只是尝试
@@ -783,12 +849,16 @@ class WebRTCVideoService extends ChangeNotifier {
           print('🔍 [_endVideoCall] 开始获取发送器...');
           final senders = await _peerConnection!.getSenders();
           print('🔍 [_endVideoCall] 发送器数量: ${senders.length}');
-          
+
           for (var i = 0; i < senders.length; i++) {
             final sender = senders[i];
-            print('🔍 [_endVideoCall] 发送器[$i]: track=${sender.track != null ? "存在" : "null"}');
+            print(
+              '🔍 [_endVideoCall] 发送器[$i]: track=${sender.track != null ? "存在" : "null"}',
+            );
             if (sender.track != null) {
-              print('🔍 [_endVideoCall] 发送器[$i]轨道: kind=${sender.track!.kind}, id=${sender.track!.id}');
+              print(
+                '🔍 [_endVideoCall] 发送器[$i]轨道: kind=${sender.track!.kind}, id=${sender.track!.id}',
+              );
               try {
                 // 先禁用轨道
                 sender.track!.enabled = false;
@@ -814,17 +884,19 @@ class WebRTCVideoService extends ChangeNotifier {
       if (_remoteStream != null) {
         final tracks = _remoteStream!.getTracks();
         print('🔍 [_endVideoCall] 准备停止 ${tracks.length} 个远程轨道');
-        
+
         for (var track in tracks) {
           try {
-            print('🔍 [_endVideoCall] 停止远程轨道: kind=${track.kind}, id=${track.id}');
+            print(
+              '🔍 [_endVideoCall] 停止远程轨道: kind=${track.kind}, id=${track.id}',
+            );
             track.stop();
             print('🛑 [_endVideoCall] 已停止远程轨道: ${track.kind}');
           } catch (e) {
             print('❌ [_endVideoCall] 停止远程轨道失败: $e');
           }
         }
-        
+
         _remoteStream = null;
         print('✅ [_endVideoCall] 远程流已释放');
       } else {
@@ -861,7 +933,7 @@ class WebRTCVideoService extends ChangeNotifier {
             print('⚠️ [_endVideoCall] 清空本地渲染器 srcObject 失败: $e');
           }
         }
-        
+
         // 使用安全方法清空远程渲染器
         _safeSetRendererSrcObject(_remoteRenderer, null);
         // 直接清空远程渲染器（双重保险）
@@ -877,16 +949,18 @@ class WebRTCVideoService extends ChangeNotifier {
       } catch (e) {
         print('❌ [_endVideoCall] 清空渲染器时出错: $e');
       }
-      
+
       // 第五步：等待一段时间，确保系统真正释放摄像头资源
       print('🔍 [_endVideoCall] 等待系统释放摄像头资源（300ms）...');
       await Future.delayed(const Duration(milliseconds: 300));
       print('✅ [_endVideoCall] 等待完成');
 
       notifyListeners();
-      print('✅ [_endVideoCall] 视频通话结束成功: user=${_currentUser?.id}, call_cleared=${_currentCall == null}, isInCall=$_isInCall');
+      print(
+        '✅ [_endVideoCall] 视频通话结束成功: user=${_currentUser?.id}, call_cleared=${_currentCall == null}, isInCall=$_isInCall',
+      );
       print('🔍 [_endVideoCall] ========== 结束视频通话完成 ==========');
-      
+
       // 移除释放标记
       _isReleasingCamera = false;
       print('🔍 [_endVideoCall] 已移除释放摄像头标记');
@@ -915,7 +989,7 @@ class WebRTCVideoService extends ChangeNotifier {
       } catch (e) {
         print('❌ [_endVideoCall] 错误恢复：清理本地流失败: $e');
       }
-      
+
       try {
         if (_remoteStream != null) {
           final tracks = _remoteStream!.getTracks();
@@ -936,10 +1010,10 @@ class WebRTCVideoService extends ChangeNotifier {
       } catch (e) {
         print('❌ [_endVideoCall] 错误恢复：清理远程流失败: $e');
       }
-      
+
       _peerConnection = null;
       print('🔍 [_endVideoCall] ========== 错误恢复完成 ==========');
-      
+
       // 移除释放标记（即使出错也要移除）
       _isReleasingCamera = false;
       print('🔍 [_endVideoCall] 已移除释放摄像头标记（错误恢复后）');
@@ -971,10 +1045,7 @@ class WebRTCVideoService extends ChangeNotifier {
       await _peerConnection!.setLocalDescription(answer);
 
       _signalRService.sendAnswer(
-        WebRTCAnswer(
-          callId: callId,
-          answer: jsonEncode(answer.toMap()),
-        ),
+        WebRTCAnswer(callId: callId, answer: jsonEncode(answer.toMap())),
         senderId,
       );
 
@@ -1010,12 +1081,16 @@ class WebRTCVideoService extends ChangeNotifier {
 
   // 处理ICE候选
   Future<void> _handleIceCandidate(
-      String callId, String candidate, int senderId) async {
+    String callId,
+    String candidate,
+    int senderId,
+  ) async {
     try {
       // PeerConnection 未就绪时直接忽略，避免异常
       if (_peerConnection == null) {
         print(
-            '⚠️ ICE候选到达但PeerConnection为空，忽略: call=$callId, user=${_currentUser?.id}/${_currentUser?.username}');
+          '⚠️ ICE候选到达但PeerConnection为空，忽略: call=$callId, user=${_currentUser?.id}/${_currentUser?.username}',
+        );
         return;
       }
 
@@ -1055,7 +1130,8 @@ class WebRTCVideoService extends ChangeNotifier {
 
       // 记录解析后的关键信息
       print(
-          '🔧 解析ICE候选: call=$callId, mid=$sdpMid, index=$sdpMLineIndex, user=${_currentUser?.id}/${_currentUser?.username}');
+        '🔧 解析ICE候选: call=$callId, mid=$sdpMid, index=$sdpMLineIndex, user=${_currentUser?.id}/${_currentUser?.username}',
+      );
 
       final iceCandidate = RTCIceCandidate(candStr, sdpMid, sdpMLineIndex);
       await _peerConnection!.addCandidate(iceCandidate);
@@ -1066,7 +1142,8 @@ class WebRTCVideoService extends ChangeNotifier {
           ? '${candidate.substring(0, 120)}...'
           : candidate;
       print(
-          '❌ ICE候选处理失败: $e, user=${_currentUser?.id}/${_currentUser?.username}, raw="$snippet"');
+        '❌ ICE候选处理失败: $e, user=${_currentUser?.id}/${_currentUser?.username}, raw="$snippet"',
+      );
       onError?.call('ICE候选处理失败: $e');
     }
   }
@@ -1095,10 +1172,9 @@ class WebRTCVideoService extends ChangeNotifier {
       }
 
       // 通过SignalR发起通话
-      await _signalRService.initiateCall(InitiateCallRequest(
-        receiverId: receiver.id,
-        callType: callType,
-      ));
+      await _signalRService.initiateCall(
+        InitiateCallRequest(receiverId: receiver.id, callType: callType),
+      );
 
       // 设置当前通话状态（临时ID，等待后端返回真实ID）
       _currentCall = Call(
@@ -1132,10 +1208,9 @@ class WebRTCVideoService extends ChangeNotifier {
       }
 
       // 通过SignalR应答通话
-      await _signalRService.answerCall(AnswerCallRequest(
-        callId: callId,
-        accept: accept,
-      ));
+      await _signalRService.answerCall(
+        AnswerCallRequest(callId: callId, accept: accept),
+      );
 
       if (accept) {
         _isInCall = true;
@@ -1164,7 +1239,9 @@ class WebRTCVideoService extends ChangeNotifier {
       } else {
         // 🔧 修复：被叫方拒绝通话时，释放可能已获取的摄像头
         print('🔍 [answerCall] 被叫方拒绝通话，检查是否需要释放摄像头...');
-        print('🔍 [answerCall] _localStream状态: ${_localStream != null ? "存在" : "null"}');
+        print(
+          '🔍 [answerCall] _localStream状态: ${_localStream != null ? "存在" : "null"}',
+        );
         if (_localStream != null) {
           print('🔍 [answerCall] 被叫方拒绝通话，但检测到 _localStream 存在，开始释放...');
           try {
@@ -1186,7 +1263,7 @@ class WebRTCVideoService extends ChangeNotifier {
             print('❌ [answerCall] 释放摄像头失败: $e');
           }
         }
-        
+
         // 如果已创建 PeerConnection，也需要关闭
         if (_peerConnection != null) {
           try {
@@ -1198,7 +1275,7 @@ class WebRTCVideoService extends ChangeNotifier {
             _peerConnection = null;
           }
         }
-        
+
         _currentCall = null;
         _isInCall = false;
       }
@@ -1224,7 +1301,9 @@ class WebRTCVideoService extends ChangeNotifier {
       final callId = _currentCall!.callId;
       print('🔍 [endCall] callId: $callId');
       print('🔍 [endCall] user: ${_currentUser?.id}/${_currentUser?.username}');
-      print('🔍 [endCall] _localStream状态: ${_localStream != null ? "存在" : "null"}');
+      print(
+        '🔍 [endCall] _localStream状态: ${_localStream != null ? "存在" : "null"}',
+      );
       if (_localStream != null) {
         final tracks = _localStream!.getTracks();
         print('🔍 [endCall] _localStream轨道数: ${tracks.length}');
@@ -1244,13 +1323,19 @@ class WebRTCVideoService extends ChangeNotifier {
       _isInCall = false;
       notifyListeners();
 
-      print('✅ [endCall] 结束通话完成: call=$callId, user=${_currentUser?.id}, isInCall=$_isInCall');
-      print('🔍 [endCall] _localStream最终状态: ${_localStream != null ? "仍存在⚠️" : "已清空✅"}');
+      print(
+        '✅ [endCall] 结束通话完成: call=$callId, user=${_currentUser?.id}, isInCall=$_isInCall',
+      );
+      print(
+        '🔍 [endCall] _localStream最终状态: ${_localStream != null ? "仍存在⚠️" : "已清空✅"}',
+      );
       print('🔍 [endCall] ========== 主动结束通话完成 ==========');
     } catch (e, stackTrace) {
       print('❌ [endCall] 结束通话失败: $e');
       print('❌ [endCall] 错误堆栈: $stackTrace');
-      print('🔍 [endCall] _localStream状态: ${_localStream != null ? "仍存在⚠️" : "已清空"}');
+      print(
+        '🔍 [endCall] _localStream状态: ${_localStream != null ? "仍存在⚠️" : "已清空"}',
+      );
       onError?.call('结束通话失败: $e');
       rethrow;
     }

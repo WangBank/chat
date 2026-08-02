@@ -131,6 +131,7 @@ videocall_dev.db
 *.log
 logs/
 backend/logs/
+.docker/
 
 # Temporary files
 *.tmp
@@ -168,6 +169,10 @@ coverage/
 
 # Flutter integration example (不需要提交到版本控制)
 backend/flutter_integration_example.dart
+
+# Runtime uploads
+backend/avatar/
+backend/chat-files/
 
 # Platform specific files (at root level - these are old files)
 android/

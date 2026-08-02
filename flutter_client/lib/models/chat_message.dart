@@ -6,6 +6,9 @@ class ChatMessage {
   final MessageType type;
   final DateTime timestamp;
   final bool isRead;
+  final String? filePath;
+  final int? fileSize;
+  final int? duration;
 
   ChatMessage({
     required this.id,
@@ -15,6 +18,9 @@ class ChatMessage {
     required this.type,
     required this.timestamp,
     this.isRead = false,
+    this.filePath,
+    this.fileSize,
+    this.duration,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -26,13 +32,16 @@ class ChatMessage {
       type: _parseMessageType(json['type']),
       timestamp: DateTime.parse(json['timestamp'] as String),
       isRead: json['is_read'] as bool? ?? false,
+      filePath: json['file_path'] as String?,
+      fileSize: (json['file_size'] as num?)?.toInt(),
+      duration: (json['duration'] as num?)?.toInt(),
     );
   }
 
   // 解析MessageType的辅助方法
   static MessageType _parseMessageType(dynamic typeValue) {
     if (typeValue == null) return MessageType.text;
-    
+
     String typeStr = typeValue.toString().toLowerCase();
     switch (typeStr) {
       case 'text':
@@ -64,6 +73,9 @@ class ChatMessage {
       'type': type.toString().split('.').last,
       'timestamp': timestamp.toIso8601String(),
       'is_read': isRead,
+      'file_path': filePath,
+      'file_size': fileSize,
+      'duration': duration,
     };
   }
 
@@ -75,6 +87,9 @@ class ChatMessage {
     MessageType? type,
     DateTime? timestamp,
     bool? isRead,
+    String? filePath,
+    int? fileSize,
+    int? duration,
   }) {
     return ChatMessage(
       id: id ?? this.id,
@@ -84,14 +99,11 @@ class ChatMessage {
       type: type ?? this.type,
       timestamp: timestamp ?? this.timestamp,
       isRead: isRead ?? this.isRead,
+      filePath: filePath ?? this.filePath,
+      fileSize: fileSize ?? this.fileSize,
+      duration: duration ?? this.duration,
     );
   }
 }
 
-enum MessageType {
-  text,
-  image,
-  video,
-  audio,
-  file,
-} 
+enum MessageType { text, image, video, audio, file }

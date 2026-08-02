@@ -1,56 +1,979 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  Layout,
-  List,
-  Input,
-  Button,
   Avatar,
   Badge,
-  Drawer,
-  Space,
-  message,
-  Modal,
+  Button,
+  Empty,
   Form,
-  Dropdown,
+  Input,
+  Modal,
+  Popover,
+  Segmented,
+  Space,
+  Tooltip,
+  message,
   type MenuProps,
+  Dropdown,
 } from 'antd';
 import {
-  MessageOutlined,
-  PhoneOutlined,
-  VideoCameraOutlined,
-  UserAddOutlined,
-  LogoutOutlined,
-  SettingOutlined,
+  AudioOutlined,
+  ArrowLeftOutlined,
+  BellOutlined,
+  CheckOutlined,
+  ClockCircleOutlined,
+  CloudOutlined,
+  DeleteOutlined,
+  DownOutlined,
   EditOutlined,
-  SearchOutlined,
+  FileOutlined,
+  FilterOutlined,
+  FolderOpenOutlined,
+  HeartOutlined,
+  LogoutOutlined,
+  MessageOutlined,
   MoreOutlined,
-  CloseOutlined,
+  PhoneOutlined,
+  PictureOutlined,
+  PlusOutlined,
+  ScissorOutlined,
+  SearchOutlined,
+  SendOutlined,
+  ShareAltOutlined,
+  SmileOutlined,
+  StopOutlined,
+  TeamOutlined,
+  UserAddOutlined,
+  UserOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons';
 import { observer } from 'mobx-react-lite';
+import { reaction } from 'mobx';
 import { useNavigate } from 'react-router-dom';
-import { chatStore } from '../stores/chat.store';
+import { chatStore, type ChatMessage, type Contact } from '../stores/chat.store';
 import { callStore } from '../stores/call.store';
 import { authStore } from '../stores/auth.store';
+import {
+  apiService,
+  type ChatGroupApiResponse,
+  type FavoriteItemApiResponse,
+  type GroupMessageApiResponse,
+} from '../services/api.service';
 import { CallType } from '../services/webrtc.service';
 import { signalRService } from '../services/signalr.service';
 import CallModal from '../components/CallModal';
 import CallPage from './CallPage';
 import { APP_CONFIG } from '../config/app.config';
-import { formatTime } from '../utils/time.utils';
 import '../styles/chat.css';
 import '../styles/common.css';
 
-const { Header, Content, Sider } = Layout;
 const { TextArea } = Input;
+
+type MainView = 'messages' | 'contacts' | 'favorites';
+type ContactPanel = 'friends' | 'groups';
+type ContactContent = 'profile' | 'requests' | 'groupProfile';
+type RequestStatus = 'pending' | 'accepted' | 'rejected';
+type RequestDirection = 'incoming' | 'outgoing';
+type FavoriteFilter = 'all' | 'chat' | 'media' | 'file' | 'link' | 'note';
+type ChatKind = 'contact' | 'group';
+type HistoryFilter = 'all' | 'image' | 'emoji' | 'file' | 'link';
+type AddContactTab = 'all' | 'user' | 'group' | 'channel' | 'mini' | 'emoji' | 'bot';
+
+interface FriendRequest {
+  id: number;
+  requester: UserSummary;
+  receiver: UserSummary;
+  note?: string;
+  source?: string;
+  status: RequestStatus;
+  direction: RequestDirection;
+  created_at: string;
+  updated_at?: string;
+}
+
+interface ContactGroup {
+  key: string;
+  name: string;
+  countText: string;
+  contacts: Contact[];
+}
+
+interface FavoriteItem {
+  id: string;
+  content: string;
+  type: 'chat' | 'media' | 'file' | 'link' | 'note';
+  sourceName: string;
+  createdAt: string;
+  filePath?: string;
+  fileSize?: number;
+}
+
+interface LocalChatGroup {
+  id: string;
+  name: string;
+  category: string;
+  memberIds: number[];
+  members?: UserSummary[];
+  pinned?: boolean;
+  ownerId?: number;
+  announcement?: string;
+  note?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+interface LocalGroupMessage {
+  id: string;
+  groupId: string;
+  senderId: number;
+  senderName: string;
+  content: string;
+  type?: number | string;
+  filePath?: string;
+  fileSize?: number;
+  duration?: number;
+  createdAt: string;
+}
+
+interface HistoryMessageItem {
+  id: string;
+  kind: ChatKind;
+  senderId: number;
+  senderName: string;
+  senderAvatarPath?: string;
+  content: string;
+  type?: number | string;
+  filePath?: string;
+  fileSize?: number;
+  duration?: number;
+  createdAt: string;
+}
+
+interface ShareTarget {
+  id: string;
+  type: ChatKind;
+  name: string;
+  avatarPath?: string;
+}
+
+interface AttachmentTarget {
+  kind: ChatKind;
+  contact?: Contact;
+  group?: LocalChatGroup;
+}
+
+interface GroupMessageSendDraft {
+  content: string;
+  type?: number;
+  file_path?: string;
+  file_size?: number;
+  duration?: number;
+}
+
+interface UserSummary {
+  id?: number;
+  username?: string;
+  email?: string;
+  display_name?: string;
+  signature?: string;
+  gender?: string;
+  birthday?: string;
+  country?: string;
+  province?: string;
+  region?: string;
+  avatar_path?: string;
+  is_online?: boolean;
+}
+
+interface WeatherState {
+  label: string;
+  temperature?: number;
+  location: string;
+  updatedAt?: string;
+}
+
+interface WeatherPosition {
+  latitude: number;
+  longitude: number;
+  location: string;
+}
+
+interface ProfileDraft {
+  display_name: string;
+  signature: string;
+  gender: string;
+  birthday: string;
+  country: string;
+  province: string;
+  region: string;
+}
+
+const DEFAULT_SIGNATURE = '事无对错，人分善恶。但行所愿，莫问前程。';
+const PROFILE_NAME_MAX_LENGTH = 36;
+const PROFILE_SIGNATURE_MAX_LENGTH = 100;
+const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024;
+const STORAGE_PREFIX = 'forever-love-chat';
+const MESSAGE_TYPES = {
+  Text: 1,
+  Image: 2,
+  Video: 3,
+  Audio: 4,
+  File: 5,
+} as const;
+const DEFAULT_WEATHER_POSITION: WeatherPosition = {
+  latitude: 31.2304,
+  longitude: 121.4737,
+  location: '上海',
+};
+
+const genderOptions = ['男', '女', '保密'];
+const countryOptions = ['中国', '美国', '日本', '韩国', '新加坡', '加拿大', '英国'];
+const provinceOptions = ['山东', '北京', '上海', '广东', '江苏', '浙江', '四川'];
+const regionOptions = ['青岛', '济南', '北京', '上海', '广州', '深圳', '杭州', '成都'];
+const DEFAULT_CONTACT_GROUP_NAME = '默认分组';
+const CONTACT_MANAGER_ALL_GROUP = '__all__';
+const addContactTabs: Array<{ key: AddContactTab; label: string }> = [
+  { key: 'all', label: '全部' },
+  { key: 'user', label: '用户' },
+  { key: 'group', label: '群聊' },
+  { key: 'channel', label: '频道' },
+  { key: 'mini', label: '小程序' },
+  { key: 'emoji', label: '表情' },
+  { key: 'bot', label: '机器人' },
+];
+const addContactRecommendTags = ['推荐', '同城', '可能认识', '最近活跃', '新注册'];
+
+const emojiSections = [
+  {
+    title: '最近表情',
+    emojis: [
+      '😀',
+      '😂',
+      '🥹',
+      '👍',
+      '❤️',
+      '😎',
+      '😳',
+      '😍',
+      '🙄',
+      '😭',
+      '😅',
+      '🥰',
+      '🤔',
+      '😇',
+      '🤩',
+      '🥳',
+      '😋',
+      '😌',
+      '😤',
+      '😱',
+      '🥺',
+      '🤗',
+      '👏',
+      '🙏',
+    ],
+  },
+  {
+    title: '超级表情',
+    emojis: [
+      '👏',
+      '🤝',
+      '🎉',
+      '🎂',
+      '🎁',
+      '🌙',
+      '⭐',
+      '🔥',
+      '🌈',
+      '✅',
+      '❌',
+      '🙏',
+      '🤗',
+      '😴',
+      '🤯',
+      '😤',
+      '😢',
+      '😜',
+      '😌',
+      '😋',
+      '🤭',
+      '🥲',
+      '😱',
+      '🥺',
+      '🫶',
+      '💘',
+      '💖',
+      '💔',
+      '💢',
+      '💋',
+      '☕',
+      '🎈',
+      '🎊',
+      '🎵',
+      '🏀',
+      '⚽',
+      '💤',
+      '💯',
+      '💬',
+      '✨',
+      '⚡',
+      '🍉',
+      '🍭',
+      '🍰',
+      '🚀',
+      '🚗',
+      '🎮',
+      '📷',
+    ],
+  },
+  {
+    title: '小黄脸表情',
+    emojis: [
+      '🙂',
+      '🙃',
+      '😉',
+      '😊',
+      '😄',
+      '😁',
+      '😆',
+      '😚',
+      '😘',
+      '😙',
+      '😗',
+      '😜',
+      '🤪',
+      '😝',
+      '🤤',
+      '🤭',
+      '🫢',
+      '🫣',
+      '🤫',
+      '🤨',
+      '🧐',
+      '😐',
+      '😑',
+      '😶',
+      '😏',
+      '😒',
+      '😞',
+      '😔',
+      '😟',
+      '😕',
+      '☹️',
+      '🙁',
+      '😣',
+      '😖',
+      '😫',
+      '😩',
+      '🥱',
+      '😮‍💨',
+      '😮',
+      '😲',
+      '😯',
+      '😦',
+      '😧',
+      '😨',
+      '😰',
+      '😥',
+      '😓',
+      '🤯',
+      '😬',
+      '😵‍💫',
+      '😵',
+      '🥴',
+      '🤒',
+      '🤕',
+      '🤢',
+      '🤮',
+      '🤧',
+      '😷',
+      '🤥',
+      '🤠',
+      '🥸',
+      '😈',
+      '👿',
+    ],
+  },
+  {
+    title: '手势与常用',
+    emojis: [
+      '👌',
+      '🤌',
+      '🤏',
+      '✌️',
+      '🤞',
+      '🫰',
+      '🤟',
+      '🤘',
+      '🤙',
+      '👈',
+      '👉',
+      '👆',
+      '👇',
+      '☝️',
+      '✋',
+      '🤚',
+      '🖐️',
+      '🖖',
+      '👋',
+      '🤲',
+      '🙌',
+      '🫵',
+      '👊',
+      '✊',
+      '🤛',
+      '🤜',
+      '👏',
+      '👐',
+      '🤝',
+      '🙏',
+      '💪',
+      '👀',
+      '👂',
+      '👃',
+      '🧠',
+    ],
+  },
+  {
+    title: '爱心与情绪',
+    emojis: [
+      '🩷',
+      '🧡',
+      '💛',
+      '💚',
+      '💙',
+      '💜',
+      '🤎',
+      '🖤',
+      '🤍',
+      '❤️‍🔥',
+      '❤️‍🩹',
+      '💕',
+      '💞',
+      '💓',
+      '💗',
+      '💝',
+      '💟',
+      '❣️',
+      '💌',
+      '💐',
+      '🌹',
+      '🌷',
+      '🌸',
+      '🌻',
+      '🌼',
+      '🪷',
+      '🍀',
+      '🌟',
+      '💫',
+      '🫧',
+      '🪄',
+      '🧸',
+    ],
+  },
+  {
+    title: '生活与符号',
+    emojis: [
+      '🍎',
+      '🍓',
+      '🍒',
+      '🍑',
+      '🍜',
+      '🍔',
+      '🍟',
+      '🍿',
+      '🍩',
+      '🍫',
+      '🍻',
+      '🥂',
+      '🏠',
+      '🏖️',
+      '🗺️',
+      '🛫',
+      '🎧',
+      '🎤',
+      '🎬',
+      '🎨',
+      '📚',
+      '💻',
+      '📱',
+      '⌚',
+      '🔔',
+      '📌',
+      '📎',
+      '🔗',
+      '📝',
+      '💡',
+      '🔒',
+      '🎯',
+    ],
+  },
+];
+
+function parseDate(timestamp?: string | Date) {
+  if (!timestamp) return null;
+  const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function pad(value: number) {
+  return value.toString().padStart(2, '0');
+}
+
+function formatClock(timestamp?: string | Date) {
+  const date = parseDate(timestamp);
+  if (!date) return '';
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatListTime(timestamp?: string | Date) {
+  const date = parseDate(timestamp);
+  if (!date) return '';
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+
+  if (sameDay) return formatClock(date);
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
+  }
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
+}
+
+function formatDateLabel(timestamp?: string | Date) {
+  const date = parseDate(timestamp);
+  if (!date) return '';
+  const week = ['日', '一', '二', '三', '四', '五', '六'][date.getDay()];
+  return `星期${week} ${formatClock(date)}`;
+}
+
+function formatHistoryDate(timestamp?: string | Date) {
+  const date = parseDate(timestamp);
+  if (!date) return '未知时间';
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
+}
+
+function getUserName(user?: UserSummary | null) {
+  return user?.display_name || user?.username || '未命名用户';
+}
+
+function getDisplaySignature(user?: UserSummary | null) {
+  if (!user || user.signature == null) return DEFAULT_SIGNATURE;
+  return user.signature.trim() || '点击编辑个性签名';
+}
+
+function getContactSignature(contact?: Contact | null) {
+  const signature = contact?.contact_user?.signature;
+  return typeof signature === 'string' && signature.trim()
+    ? signature.trim()
+    : '这个人很低调，暂时没有个性签名';
+}
+
+function getContactName(contact?: Contact | null) {
+  if (!contact) return '';
+  return contact.display_name || getUserName(contact.contact_user);
+}
+
+function getInitial(name?: string) {
+  return (name || 'U').trim().slice(0, 1).toUpperCase();
+}
+
+function isMessageFromCurrentUser(msg: ChatMessage, currentUserId: number) {
+  return msg.sender_id === currentUserId;
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  const maybeError = error as { response?: { data?: { message?: unknown } } };
+  return typeof maybeError.response?.data?.message === 'string'
+    ? maybeError.response.data.message
+    : fallback;
+}
+
+function normalizeMessageType(type?: number | string) {
+  if (typeof type === 'string') return type.toLowerCase();
+  if (type === MESSAGE_TYPES.Image) return 'image';
+  if (type === MESSAGE_TYPES.Video) return 'video';
+  if (type === MESSAGE_TYPES.Audio) return 'audio';
+  if (type === MESSAGE_TYPES.File) return 'file';
+  return 'text';
+}
+
+function isImageMessage(msg: { type?: number | string }) {
+  return normalizeMessageType(msg.type) === 'image';
+}
+
+function isAudioMessage(msg: { type?: number | string }) {
+  return normalizeMessageType(msg.type) === 'audio';
+}
+
+function isFileMessage(msg: { type?: number | string }) {
+  return normalizeMessageType(msg.type) === 'file';
+}
+
+function formatFileSize(size?: number) {
+  if (!size || size <= 0) return '';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatScreenshotFileName() {
+  const now = new Date();
+  return `screenshot-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.png`;
+}
+
+function formatVoiceFileName() {
+  const now = new Date();
+  return `voice-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.webm`;
+}
+
+function getWesternZodiac(month: number, day: number) {
+  const signs = [
+    ['摩羯座', 20],
+    ['水瓶座', 19],
+    ['双鱼座', 21],
+    ['白羊座', 20],
+    ['金牛座', 21],
+    ['双子座', 22],
+    ['巨蟹座', 23],
+    ['狮子座', 23],
+    ['处女座', 23],
+    ['天秤座', 24],
+    ['天蝎座', 23],
+    ['射手座', 22],
+  ] as const;
+
+  return day < signs[month - 1][1] ? signs[(month + 10) % 12][0] : signs[month - 1][0];
+}
+
+function parseBirthday(birthday?: string | null) {
+  if (!birthday) return null;
+  const date = new Date(birthday);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatAge(birthday?: string | null) {
+  const date = parseBirthday(birthday);
+  if (!date) return '年龄未填';
+
+  const now = new Date();
+  let age = now.getFullYear() - date.getFullYear();
+  const hasHadBirthday =
+    now.getMonth() > date.getMonth() ||
+    (now.getMonth() === date.getMonth() && now.getDate() >= date.getDate());
+  if (!hasHadBirthday) age -= 1;
+
+  return age >= 0 ? `${age}岁` : '年龄未填';
+}
+
+function formatBirthdayLabel(birthday?: string | null) {
+  const date = parseBirthday(birthday);
+  if (!date) return '生日未填';
+
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  return `${month}月${day}日 ${getWesternZodiac(month, day)}`;
+}
+
+function formatLocation(user?: UserSummary | null) {
+  const parts = [user?.country, user?.province, user?.region].filter(Boolean);
+  return parts.length > 0 ? `现居 ${parts.join('·')}` : '现居 未填写';
+}
+
+function formatPercent(value: number, total: number) {
+  if (total <= 0) return '0%';
+  return `${Math.round((value / total) * 100)}%`;
+}
+
+function getFriendRequestPeer(request: FriendRequest) {
+  return request.direction === 'incoming' ? request.requester : request.receiver;
+}
+
+function getFriendRequestStatus(request: FriendRequest) {
+  if (request.status === 'pending' && request.direction === 'outgoing') return 'waiting';
+  return request.status;
+}
+
+function getWeatherLabel(code: number) {
+  if (code === 0) return '晴';
+  if (code === 1 || code === 2) return '多云';
+  if (code === 3) return '阴';
+  if (code === 45 || code === 48) return '雾';
+  if (code >= 51 && code <= 57) return '毛毛雨';
+  if (code >= 61 && code <= 67) return '雨';
+  if (code >= 71 && code <= 77) return '雪';
+  if (code >= 80 && code <= 82) return '阵雨';
+  if (code >= 85 && code <= 86) return '阵雪';
+  if (code >= 95 && code <= 99) return '雷雨';
+  return '天气';
+}
+
+function resolveWeatherPosition(): Promise<WeatherPosition> {
+  if (!navigator.geolocation) {
+    return Promise.resolve(DEFAULT_WEATHER_POSITION);
+  }
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          location: '当前位置',
+        });
+      },
+      () => resolve(DEFAULT_WEATHER_POSITION),
+      {
+        enableHighAccuracy: false,
+        maximumAge: 10 * 60 * 1000,
+        timeout: 5000,
+      }
+    );
+  });
+}
+
+function createProfileDraft(user?: UserSummary | null): ProfileDraft {
+  return {
+    display_name: (user?.display_name || user?.username || '').slice(0, PROFILE_NAME_MAX_LENGTH),
+    signature: (user?.signature || '').slice(0, PROFILE_SIGNATURE_MAX_LENGTH),
+    gender: user?.gender || '男',
+    birthday: user?.birthday || '',
+    country: user?.country || '中国',
+    province: user?.province || '',
+    region: user?.region || '',
+  };
+}
+
+function getProfileOptions(options: string[], currentValue: string) {
+  return currentValue && !options.includes(currentValue) ? [currentValue, ...options] : options;
+}
+
+function getLocalKey(userId: number | string | undefined, name: string) {
+  return `${STORAGE_PREFIX}:${userId || 'guest'}:${name}`;
+}
+
+function readLocalJson<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLocalJson<T>(key: string, value: T) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function normalizeContactGroupName(name: string) {
+  return name.trim().replace(/\s+/g, ' ').slice(0, 24);
+}
+
+function mergeContactGroupNames(names: string[], assignments: Record<string, string>) {
+  const merged = [
+    DEFAULT_CONTACT_GROUP_NAME,
+    ...names,
+    ...Object.values(assignments),
+  ]
+    .map((name) => normalizeContactGroupName(name))
+    .filter(Boolean);
+
+  return Array.from(new Set(merged));
+}
+
+function createLocalId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function getFavoriteType(msg: ChatMessage): FavoriteItem['type'] {
+  if (isImageMessage(msg)) return 'media';
+  if (isFileMessage(msg)) return 'file';
+  return getContentFavoriteType(msg.content);
+}
+
+function getContentFavoriteType(content: string): FavoriteItem['type'] {
+  if (/^https?:\/\//i.test(content) || content.includes('http')) return 'link';
+  return 'chat';
+}
+
+function mapApiGroup(group: ChatGroupApiResponse): LocalChatGroup {
+  return {
+    id: String(group.id),
+    name: group.name || '未命名的群聊',
+    category: group.category || '我创建的群聊',
+    memberIds: group.member_ids || [],
+    members: group.members || [],
+    pinned: Boolean(group.pinned),
+    ownerId: group.owner_id,
+    announcement: group.announcement,
+    note: group.note,
+    createdAt: group.created_at,
+    updatedAt: group.updated_at,
+  };
+}
+
+function mapApiGroupMessage(message: GroupMessageApiResponse): LocalGroupMessage {
+  return {
+    id: String(message.id),
+    groupId: String(message.group_id),
+    senderId: message.sender_id,
+    senderName: message.sender_name || getUserName(message.sender),
+    content: message.content,
+    type: message.type ?? MESSAGE_TYPES.Text,
+    filePath: message.file_path,
+    fileSize: message.file_size,
+    duration: message.duration,
+    createdAt: message.created_at || message.timestamp || new Date().toISOString(),
+  };
+}
+
+function mapApiFavorite(item: FavoriteItemApiResponse): FavoriteItem {
+  return {
+    id: String(item.id),
+    content: item.content,
+    type: item.type,
+    sourceName: item.source_name,
+    createdAt: item.created_at,
+    filePath: item.file_path,
+    fileSize: item.file_size,
+  };
+}
+
+function isBackendId(id: string) {
+  return /^\d+$/.test(id);
+}
 
 const ChatPage = observer(() => {
   const navigate = useNavigate();
+  const initialContactGroupAssignments = readLocalJson<Record<string, string>>(
+    getLocalKey(authStore.user?.id, 'contact-groups'),
+    {}
+  );
+  const initialContactGroupNames = readLocalJson<string[]>(
+    getLocalKey(authStore.user?.id, 'contact-group-names'),
+    []
+  );
+  const [mainView, setMainView] = useState<MainView>('messages');
+  const [contactPanel, setContactPanel] = useState<ContactPanel>('friends');
+  const [contactContent, setContactContent] = useState<ContactContent>('profile');
+  const [activeChatKind, setActiveChatKind] = useState<ChatKind>('contact');
+  const [activeGroupId, setActiveGroupId] = useState<string>('');
+  const [mobileContentOpen, setMobileContentOpen] = useState(false);
   const [messageText, setMessageText] = useState('');
+  const [groupMessageText, setGroupMessageText] = useState('');
+  const [searchText, setSearchText] = useState('');
+  const [favoriteSearchText, setFavoriteSearchText] = useState('');
+  const [favoriteFilter, setFavoriteFilter] = useState<FavoriteFilter>('all');
+  const [favoriteNoteVisible, setFavoriteNoteVisible] = useState(false);
+  const [favoriteNoteDraft, setFavoriteNoteDraft] = useState('');
+  const [createGroupVisible, setCreateGroupVisible] = useState(false);
+  const [groupNameDraft, setGroupNameDraft] = useState('');
+  const [groupCategoryDraft, setGroupCategoryDraft] = useState('我创建的群聊');
+  const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<number[]>([]);
+  const [shareVisible, setShareVisible] = useState(false);
+  const [sharePayload, setSharePayload] = useState('');
+  const [shareSearchText, setShareSearchText] = useState('');
+  const [shareNote, setShareNote] = useState('');
+  const [selectedShareTargetIds, setSelectedShareTargetIds] = useState<string[]>([]);
   const [addContactVisible, setAddContactVisible] = useState(false);
+  const [addContactTab, setAddContactTab] = useState<AddContactTab>('all');
+  const [contactManagerVisible, setContactManagerVisible] = useState(false);
+  const [contactManagerGroup, setContactManagerGroup] = useState(CONTACT_MANAGER_ALL_GROUP);
+  const [contactManagerSearchText, setContactManagerSearchText] = useState('');
+  const [contactGroupCreateVisible, setContactGroupCreateVisible] = useState(false);
+  const [contactGroupDraft, setContactGroupDraft] = useState('');
   const [contactUsername, setContactUsername] = useState('');
+  const [contactNote, setContactNote] = useState('');
+  const [searchUsersLoading, setSearchUsersLoading] = useState(false);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+  const [lastUserSearchQuery, setLastUserSearchQuery] = useState('');
+  const [userResults, setUserResults] = useState<UserSummary[]>([]);
+  const [recommendedUsers, setRecommendedUsers] = useState<UserSummary[]>([]);
   const [editDisplayNameVisible, setEditDisplayNameVisible] = useState(false);
   const [displayNameForm] = Form.useForm();
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [historyVisible, setHistoryVisible] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyMode, setHistoryMode] = useState<ChatKind>('contact');
+  const [historyTitle, setHistoryTitle] = useState('聊天记录');
+  const [historyMessages, setHistoryMessages] = useState<HistoryMessageItem[]>([]);
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
+  const [signatureVisible, setSignatureVisible] = useState(false);
+  const [signatureDraft, setSignatureDraft] = useState('');
+  const [signatureSaving, setSignatureSaving] = useState(false);
+  const [profileVisible, setProfileVisible] = useState(false);
+  const [profileDraft, setProfileDraft] = useState<ProfileDraft>(() => createProfileDraft(authStore.user));
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileAvatarUploading, setProfileAvatarUploading] = useState(false);
+  const [weather, setWeather] = useState<WeatherState>({
+    label: '天气获取中',
+    location: DEFAULT_WEATHER_POSITION.location,
+  });
+  const [profileContact, setProfileContact] = useState<Contact | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    favorites: true,
+    friends: true,
+    friendNotice: true,
+    'friend-request-pending': true,
+    'friend-request-outgoing': true,
+    'friend-request-handled': false,
+  });
+  const [activeFriendRequestSection, setActiveFriendRequestSection] = useState('friend-request-pending');
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
+  const [friendRequestsLoading, setFriendRequestsLoading] = useState(false);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [voiceRecordSeconds, setVoiceRecordSeconds] = useState(0);
+  const [contactGroupAssignments, setContactGroupAssignments] = useState<Record<string, string>>(
+    initialContactGroupAssignments
+  );
+  const [contactGroupNames, setContactGroupNames] = useState<string[]>(() =>
+    mergeContactGroupNames(initialContactGroupNames, initialContactGroupAssignments)
+  );
+  const [favoriteItems, setFavoriteItems] = useState<FavoriteItem[]>(() =>
+    readLocalJson(getLocalKey(authStore.user?.id, 'favorites'), [])
+  );
+  const [localGroups, setLocalGroups] = useState<LocalChatGroup[]>(() =>
+    readLocalJson(getLocalKey(authStore.user?.id, 'groups'), [])
+  );
+  const [localGroupMessages, setLocalGroupMessages] = useState<LocalGroupMessage[]>(() =>
+    readLocalJson(getLocalKey(authStore.user?.id, 'group-messages'), [])
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const didPickInitialContact = useRef(false);
+  const profileAvatarInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceStartedAtRef = useRef(0);
+  const voiceTimerRef = useRef<number | null>(null);
+  const voiceCancelledRef = useRef(false);
+  const voiceTargetRef = useRef<AttachmentTarget | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (voiceTimerRef.current !== null) {
+        window.clearInterval(voiceTimerRef.current);
+        voiceTimerRef.current = null;
+      }
+      voiceCancelledRef.current = true;
+      const recorder = voiceRecorderRef.current;
+      if (recorder?.state === 'recording') {
+        recorder.onstop = null;
+        recorder.stop();
+      }
+      voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+      voiceStreamRef.current = null;
+      voiceRecorderRef.current = null;
+      voiceTargetRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!authStore.isAuthenticated) {
@@ -58,19 +981,15 @@ const ChatPage = observer(() => {
       return;
     }
 
-    // Ensure SignalR connection
     const ensureSignalRConnection = async () => {
       if (!signalRService.isConnected && authStore.token && authStore.user) {
         try {
           await signalRService.connect(authStore.token);
-          // authenticate waits for connection state after connect, so call directly here
           await signalRService.authenticate(authStore.user.id);
         } catch (error) {
           console.error('SignalR connection failed:', error);
-          // Keep silent to avoid disturbing users; reconnect will retry in background
         }
       } else if (signalRService.isConnected && authStore.user) {
-        // Try authenticate if connected but not authenticated yet
         try {
           await signalRService.authenticate(authStore.user.id);
         } catch (error) {
@@ -79,123 +998,459 @@ const ChatPage = observer(() => {
       }
     };
 
-    ensureSignalRConnection();
-    chatStore.loadContacts();
+    void ensureSignalRConnection();
+    void chatStore.loadContacts();
+    void loadFriendRequests();
   }, [navigate]);
 
   useEffect(() => {
-    // Auto-scroll to bottom when message list updates
-    // Use setTimeout to wait for DOM updates
-    const timer = setTimeout(() => {
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-      }
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [chatStore.messages.length, messageText]);
+    const dispose = reaction(
+      () => chatStore.contacts.length,
+      (contactsLength) => {
+        if (contactsLength === 0) return;
 
-  const handleSendMessage = async () => {
-    console.log('chatStore.currentContact', chatStore.currentContact);
-    if (!messageText.trim() || !chatStore.currentContact) return;
-
-    const result = await chatStore.sendMessage(
-      chatStore.currentContact.contact_user.id,
-      messageText
-    );
-    if (result.success) {
-      setMessageText('');
-    } else {
-      message.error(result.message || 'Failed to send');
-    }
-  };
-
-  const handleAddContact = async () => {
-    if (!contactUsername.trim()) {
-      message.warning('Please enter a username');
-      return;
-    }
-
-    const result = await chatStore.addContact(contactUsername);
-    if (result.success) {
-      message.success('Contact added successfully');
-      setAddContactVisible(false);
-      setContactUsername('');
-    } else {
-      message.error(result.message || 'Failed to add contact');
-    }
-  };
-
-  const handleInitiateCall = async (type: CallType) => {
-    if (!chatStore.currentContact) return;
-
-    // Check whether recipient is online
-    if (!chatStore.currentContact.contact_user.is_online) {
-      Modal.warning({
-        title: 'User Offline',
-        content: 'The user is currently offline and cannot receive calls.',
-      });
-      return;
-    }
-
-    try {
-      await callStore.initiateCall(
-        chatStore.currentContact.contact_user.id,
-        type,
-        chatStore.currentContact.contact_user // Pass receiver info
-      );
-    } catch (error) {
-      message.error('Failed to initiate call');
-    }
-  };
-
-  const handleLogout = () => {
-    Modal.confirm({
-      title: 'Confirm Logout',
-      content: 'Are you sure you want to log out?',
-      okText: 'Confirm',
-      cancelText: 'Cancel',
-      onOk: async () => {
-        await authStore.logout();
-        navigate('/');
+        const firstContact = chatStore.contacts[0];
+        if (!didPickInitialContact.current && !chatStore.currentContact) {
+          didPickInitialContact.current = true;
+          chatStore.setCurrentContact(firstContact);
+        }
+        setProfileContact((current) => current || firstContact);
       },
-    });
-  };
-
-  const handleCloseChat = () => {
-    chatStore.setCurrentContact(null);
-  };
-
-  const handleUpdateDisplayName = async (values: { display_name: string }) => {
-    if (!chatStore.currentContact) return;
-
-    const result = await chatStore.updateDisplayName(
-      chatStore.currentContact.id,
-      values.display_name
+      { fireImmediately: true }
     );
-    if (result.success) {
-      message.success('Display name updated');
-      setEditDisplayNameVisible(false);
-      displayNameForm.resetFields();
-    } else {
-      message.error(result.message || 'Update failed');
-    }
-  };
 
+    return () => dispose();
+  }, []);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  });
 
-  const getAvatarUrl = (avatarPath?: string) => {
-    if (avatarPath) {
-      return `${APP_CONFIG.API_BASE_URL}${avatarPath}?t=${Date.now()}`;
-    }
-    return undefined;
-  };
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadWeather = async () => {
+      try {
+        const position = await resolveWeatherPosition();
+        const response = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current=temperature_2m,weather_code&timezone=auto`
+        );
+        const data = await response.json();
+        const current = data.current;
+
+        if (!cancelled && current) {
+          setWeather({
+            label: getWeatherLabel(Number(current.weather_code)),
+            temperature: Math.round(Number(current.temperature_2m)),
+            location: position.location,
+            updatedAt: current.time,
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setWeather({
+            label: '天气暂不可用',
+            location: DEFAULT_WEATHER_POSITION.location,
+          });
+        }
+      }
+    };
+
+    void loadWeather();
+    const interval = window.setInterval(() => void loadWeather(), 10 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const currentUserId = authStore.user?.id || 0;
+  const currentUserName = authStore.user?.display_name || authStore.user?.username || '我的账号';
+  const currentSignature = getDisplaySignature(authStore.user);
+
+  useEffect(() => {
+    const nextContactGroupAssignments = readLocalJson<Record<string, string>>(
+      getLocalKey(currentUserId, 'contact-groups'),
+      {}
+    );
+    const nextContactGroupNames = readLocalJson<string[]>(getLocalKey(currentUserId, 'contact-group-names'), []);
+    setContactGroupAssignments(nextContactGroupAssignments);
+    setContactGroupNames(mergeContactGroupNames(nextContactGroupNames, nextContactGroupAssignments));
+    setContactManagerGroup(CONTACT_MANAGER_ALL_GROUP);
+    setFavoriteItems(readLocalJson(getLocalKey(currentUserId, 'favorites'), []));
+    setLocalGroups(readLocalJson(getLocalKey(currentUserId, 'groups'), []));
+    setLocalGroupMessages(readLocalJson(getLocalKey(currentUserId, 'group-messages'), []));
+    void loadFavorites();
+    void loadChatGroups();
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (activeGroupId) {
+      void loadGroupMessages(activeGroupId);
+    }
+  }, [activeGroupId, currentUserId]);
+
+  useEffect(() => {
+    writeLocalJson(getLocalKey(currentUserId, 'contact-groups'), contactGroupAssignments);
+  }, [contactGroupAssignments, currentUserId]);
+
+  useEffect(() => {
+    writeLocalJson(getLocalKey(currentUserId, 'contact-group-names'), contactGroupNames);
+  }, [contactGroupNames, currentUserId]);
+
+  useEffect(() => {
+    writeLocalJson(getLocalKey(currentUserId, 'favorites'), favoriteItems);
+  }, [favoriteItems, currentUserId]);
+
+  useEffect(() => {
+    writeLocalJson(getLocalKey(currentUserId, 'groups'), localGroups);
+  }, [localGroups, currentUserId]);
+
+  useEffect(() => {
+    writeLocalJson(getLocalKey(currentUserId, 'group-messages'), localGroupMessages);
+  }, [localGroupMessages, currentUserId]);
+
+  const openProfileSettings = () => {
+    setProfileDraft(createProfileDraft(authStore.user));
+    setProfileVisible(true);
+  };
+
+  const updateProfileDraft = (field: keyof ProfileDraft, value: string) => {
+    const nextValue =
+      field === 'display_name'
+        ? value.slice(0, PROFILE_NAME_MAX_LENGTH)
+        : field === 'signature'
+          ? value.slice(0, PROFILE_SIGNATURE_MAX_LENGTH)
+          : value;
+
+    setProfileDraft((current) => ({
+      ...current,
+      [field]: nextValue,
+    }));
+  };
+
+  const getAvatarUrl = (avatarPath?: string) => {
+    if (!avatarPath) return undefined;
+    if (/^https?:\/\//i.test(avatarPath)) return avatarPath;
+    return `${APP_CONFIG.API_BASE_URL}${avatarPath}?t=${Date.now()}`;
+  };
+
+  const getAttachmentUrl = (filePath?: string) => {
+    if (!filePath) return undefined;
+    if (/^https?:\/\//i.test(filePath)) return filePath;
+    return `${APP_CONFIG.API_BASE_URL}${filePath}`;
+  };
+
+  const loadFavorites = async () => {
+    if (!currentUserId) return;
+
+    try {
+      const response = await apiService.getFavorites();
+      if (response.success && response.data) {
+        setFavoriteItems(response.data.map(mapApiFavorite));
+      }
+    } catch {
+      // Keep the local cache visible when the backend is unavailable.
+    }
+  };
+
+  const loadChatGroups = async () => {
+    if (!currentUserId) return;
+
+    try {
+      const response = await apiService.getChatGroups();
+      if (response.success && response.data) {
+        setLocalGroups(response.data.map(mapApiGroup));
+      }
+    } catch {
+      // Keep the local cache visible when the backend is unavailable.
+    }
+  };
+
+  const loadGroupMessages = async (groupId: string) => {
+    if (!currentUserId || !isBackendId(groupId)) return;
+
+    try {
+      const response = await apiService.getGroupMessages(Number(groupId));
+      if (response.success && response.data) {
+        const remoteMessages = response.data.map(mapApiGroupMessage);
+        setLocalGroupMessages((messages) => [
+          ...messages.filter((msg) => msg.groupId !== groupId),
+          ...remoteMessages,
+        ]);
+      }
+    } catch {
+      // Keep the local cache visible when the backend is unavailable.
+    }
+  };
+
+  const handleProfileAvatarChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      message.error('只能上传图片文件');
+      return;
+    }
+    if (file.size / 1024 / 1024 >= 5) {
+      message.error('图片大小不能超过 5MB');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('avatar', file);
+    setProfileAvatarUploading(true);
+
+    try {
+      const response = await fetch(`${APP_CONFIG.API_BASE_URL}/api/auth/upload-avatar`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authStore.token}`,
+        },
+        body: formData,
+      });
+      const result = await response.json();
+      if (result.success && result.data) {
+        authStore.user = result.data;
+        localStorage.setItem('user', JSON.stringify(result.data));
+        message.success('头像已更新');
+      } else {
+        message.error(result.message || '头像上传失败');
+      }
+    } catch {
+      message.error('头像上传失败');
+    } finally {
+      setProfileAvatarUploading(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    const displayName = profileDraft.display_name.trim();
+
+    if (!displayName) {
+      message.warning('昵称不能为空');
+      return;
+    }
+
+    setProfileSaving(true);
+    try {
+      const response = await apiService.updateProfile({
+        display_name: displayName,
+        signature: profileDraft.signature.trim(),
+        gender: profileDraft.gender,
+        birthday: profileDraft.birthday,
+        country: profileDraft.country,
+        province: profileDraft.province,
+        region: profileDraft.region,
+      });
+
+      if (response.success && response.data) {
+        authStore.user = response.data;
+        localStorage.setItem('user', JSON.stringify(response.data));
+        setProfileVisible(false);
+        message.success('资料已保存');
+      } else {
+        message.error(response.message || '资料保存失败');
+      }
+    } catch (error) {
+      message.error(getErrorMessage(error, '资料保存失败'));
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const filteredContacts = chatStore.contacts.filter((contact) => {
+    const keyword = searchText.trim().toLowerCase();
+    if (!keyword) return true;
+    const name = getContactName(contact).toLowerCase();
+    const username = contact.contact_user?.username?.toLowerCase() || '';
+    return name.includes(keyword) || username.includes(keyword);
+  });
+
+  const pendingRequestCount = friendRequests.filter((item) => item.status === 'pending' && item.direction === 'incoming').length;
+  const activeGroup = localGroups.find((group) => group.id === activeGroupId) || null;
+  const activeGroupMessages = activeGroup
+    ? localGroupMessages.filter((msg) => msg.groupId === activeGroup.id)
+    : [];
+  const allGroupMembers: UserSummary[] = activeGroup
+    ? activeGroup.members && activeGroup.members.length > 0
+      ? activeGroup.members
+      : [
+        authStore.user as UserSummary | null,
+        ...chatStore.contacts
+          .filter((contact) => {
+            const memberId = contact.contact_user?.id;
+            return typeof memberId === 'number' && activeGroup.memberIds.includes(memberId);
+          })
+          .map((contact) => contact.contact_user as UserSummary),
+      ].filter((user): user is UserSummary => Boolean(user))
+    : [];
+  const allShareTargets: ShareTarget[] = [
+    ...chatStore.contacts.map((contact) => ({
+      id: `contact-${contact.id}`,
+      type: 'contact' as const,
+      name: getContactName(contact),
+      avatarPath: contact.contact_user?.avatar_path,
+    })),
+    ...localGroups.map((group) => ({
+      id: `group-${group.id}`,
+      type: 'group' as const,
+      name: group.name,
+    })),
+  ];
+  const recentShareTargets = allShareTargets.filter((target) =>
+    target.name.toLowerCase().includes(shareSearchText.trim().toLowerCase())
+  );
+  const selectedShareTargets = allShareTargets.filter((target) => selectedShareTargetIds.includes(target.id));
+  const filteredFavoriteItems = favoriteItems.filter((item) => {
+    const keyword = favoriteSearchText.trim().toLowerCase();
+    const filterMatches = favoriteFilter === 'all' || item.type === favoriteFilter;
+    const keywordMatches =
+      !keyword ||
+      item.content.toLowerCase().includes(keyword) ||
+      item.sourceName.toLowerCase().includes(keyword);
+    return filterMatches && keywordMatches;
+  });
+  const favoriteCounts = favoriteItems.reduce<Record<FavoriteFilter, number>>(
+    (counts, item) => {
+      counts.all += 1;
+      counts[item.type] += 1;
+      return counts;
+    },
+    { all: 0, chat: 0, media: 0, file: 0, link: 0, note: 0 }
+  );
+  const incomingPendingRequests = friendRequests.filter(
+    (request) => request.status === 'pending' && request.direction === 'incoming'
+  );
+  const outgoingPendingRequests = friendRequests.filter(
+    (request) => request.status === 'pending' && request.direction === 'outgoing'
+  );
+  const handledRequests = friendRequests.filter((request) => request.status !== 'pending');
+  const friendRequestSections = [
+    {
+      key: 'friend-request-pending',
+      title: '新的朋友',
+      count: incomingPendingRequests.length,
+      description: '需要你确认的好友申请',
+      requests: incomingPendingRequests,
+      emptyText: '暂无待处理申请',
+    },
+    {
+      key: 'friend-request-outgoing',
+      title: '我发出的',
+      count: outgoingPendingRequests.length,
+      description: '等待对方通过的验证消息',
+      requests: outgoingPendingRequests,
+      emptyText: '暂无等待验证的邀请',
+    },
+    {
+      key: 'friend-request-handled',
+      title: '已处理',
+      count: handledRequests.length,
+      description: '同意或拒绝过的历史通知',
+      requests: handledRequests,
+      emptyText: '暂无已处理记录',
+    },
+  ];
+  const friendRequestUsernameMap = new Map(
+    friendRequests
+      .map((request) => {
+        const username = getFriendRequestPeer(request).username;
+        return username ? [username, request] as const : null;
+      })
+      .filter((item): item is readonly [string, FriendRequest] => Boolean(item))
+  );
+  const existingContactUsernames = new Set(
+    chatStore.contacts
+      .map((contact) => contact.contact_user?.username)
+      .filter((username): username is string => Boolean(username))
+  );
+  const filterPotentialUsers = (users: UserSummary[]) => {
+    const seen = new Set<string>();
+    return users.filter((user) => {
+      const key = user.username || String(user.id || '');
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      if (user.id === currentUserId || user.username === authStore.user?.username) return false;
+      if (user.username && existingContactUsernames.has(user.username)) return false;
+      return true;
+    });
+  };
+  const visibleUserResults = filterPotentialUsers(userResults);
+  const visibleRecommendedUsers = filterPotentialUsers(recommendedUsers).slice(0, 12);
+  const getContactGroupName = (contact?: Contact | null) => {
+    if (!contact) return DEFAULT_CONTACT_GROUP_NAME;
+    const assignedGroup = normalizeContactGroupName(contactGroupAssignments[String(contact.id)] || '');
+    return assignedGroup || DEFAULT_CONTACT_GROUP_NAME;
+  };
+  const profileContactGroupName = getContactGroupName(profileContact);
+
+  const contactGroups: ContactGroup[] = contactGroupNames
+    .map((groupName) => {
+      const contacts = filteredContacts.filter(
+        (contact) => getContactGroupName(contact) === groupName
+      );
+      return {
+        key: groupName,
+        name: groupName,
+        countText: `${contacts.length}`,
+        contacts,
+      };
+    })
+    .filter((group) => group.contacts.length > 0 || group.key === DEFAULT_CONTACT_GROUP_NAME);
+  const contactManagerGroups = contactGroupNames.map((groupName) => ({
+    name: groupName,
+    count: chatStore.contacts.filter((contact) => getContactGroupName(contact) === groupName).length,
+  }));
+  const contactManagerKeyword = contactManagerSearchText.trim().toLowerCase();
+  const contactManagerContacts = chatStore.contacts.filter((contact) => {
+    const groupMatches =
+      contactManagerGroup === CONTACT_MANAGER_ALL_GROUP ||
+      getContactGroupName(contact) === contactManagerGroup;
+    const keywordMatches =
+      !contactManagerKeyword ||
+      getContactName(contact).toLowerCase().includes(contactManagerKeyword) ||
+      (contact.contact_user?.username || '').toLowerCase().includes(contactManagerKeyword) ||
+      (contact.display_name || '').toLowerCase().includes(contactManagerKeyword);
+    return groupMatches && keywordMatches;
+  });
+
+  const filteredLocalGroups = localGroups.filter((group) => {
+    const keyword = searchText.trim().toLowerCase();
+    return !keyword || group.name.toLowerCase().includes(keyword);
+  });
+  const groupCategories = ['置顶群聊', '未命名的群聊', '我创建的群聊', '我加入的群聊'].map((category) => {
+    const groups = filteredLocalGroups.filter((group) => {
+      if (category === '置顶群聊') return group.pinned;
+      if (category === '我创建的群聊') return !group.pinned && group.ownerId === currentUserId;
+      if (category === '我加入的群聊') return !group.pinned && group.ownerId !== currentUserId;
+      return !group.name.trim();
+    });
+    return { category, groups };
+  });
+
+  const filteredHistoryMessages = historyMessages.filter((msg) => {
+    const keyword = historyQuery.trim().toLowerCase();
+    if (keyword && !`${msg.senderName} ${msg.content}`.toLowerCase().includes(keyword)) return false;
+    const messageType = normalizeMessageType(msg.type);
+    if (historyFilter === 'emoji') {
+      return emojiSections.some((section) => section.emojis.some((emoji) => msg.content.includes(emoji)));
+    }
+    if (historyFilter === 'image') return messageType === 'image' || messageType === 'video';
+    if (historyFilter === 'file') return isFileMessage(msg);
+    if (historyFilter === 'link') return /^https?:\/\//i.test(msg.content) || msg.content.includes('http');
+    return true;
+  });
 
   const contactMenuItems: MenuProps['items'] = [
     {
       key: 'edit-name',
-      label: 'Edit Display Name',
+      label: '修改备注',
       icon: <EditOutlined />,
       onClick: () => {
         if (chatStore.currentContact) {
@@ -207,212 +1462,3096 @@ const ChatPage = observer(() => {
       },
     },
     {
-      key: 'search',
-      label: 'Search Chat History',
-      icon: <SearchOutlined />,
+      key: 'history',
+      label: '聊天记录',
+      icon: <ClockCircleOutlined />,
       onClick: () => {
-        if (chatStore.currentContact) {
-          navigate(`/chat-history/${chatStore.currentContact.id}`);
-        }
+        void openHistory();
+      },
+    },
+    {
+      key: 'remove',
+      label: '删除好友',
+      icon: <DeleteOutlined />,
+      danger: true,
+      onClick: () => {
+        void handleRemoveContact();
       },
     },
   ];
 
-  return (
-    <Layout style={{ height: '100vh' }}>
-      <Sider width={300} theme="light" className="chat-sider">
-        <div className="sider-header">
-          <h2 style={{ margin: 0 }}>SimpleChat</h2>
-          <Space>
-            <Button
-              type="text"
-              icon={<UserAddOutlined />}
-              onClick={() => navigate('/contacts')}
-              title="Add Contact"
-            />
-            <Button
-              type="text"
-              icon={<SettingOutlined />}
-              onClick={() => navigate('/settings')}
-              title="Settings"
-            />
-            <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout} title="Logout" />
-          </Space>
-        </div>
-        <div className="contacts-list-container">
-          <List
-            dataSource={chatStore.contacts}
-            loading={chatStore.isLoading}
-            renderItem={(contact) => (
-              <List.Item
-                className={`contact-item ${chatStore.currentContact?.id === contact.id ? 'active' : ''}`}
-                onClick={() => chatStore.setCurrentContact(contact)}
-              >
-                <List.Item.Meta
-                  avatar={
-                    <Badge 
-                      count={contact.unread_count} 
-                      offset={[-5, 5]}
-                      dot={contact.contact_user.is_online}
-                    >
-                      <Avatar src={getAvatarUrl(contact.contact_user.avatar_path)}>
-                        {contact.contact_user.display_name?.[0] || contact.contact_user.username[0]}
-                      </Avatar>
-                    </Badge>
-                  }
-                  title={
-                    <div className="contact-title">
-                      {contact.display_name || contact.contact_user.display_name || contact.contact_user.username}
-                    </div>
-                  }
-                  description={
-                    <div className="contact-description">
-                      {contact.last_message_at
-                        ? formatTime(contact.last_message_at)
-                        : 'No messages yet'}
-                    </div>
-                  }
-                />
-              </List.Item>
-            )}
-            locale={{ emptyText: 'No contacts' }}
-          />
-        </div>
-      </Sider>
+  const railItems: Array<{ key: MainView; label: string; icon: React.ReactNode; badge?: number }> = [
+    { key: 'messages', label: '消息', icon: <MessageOutlined />, badge: chatStore.totalUnreadCount },
+    { key: 'contacts', label: '联系人', icon: <UserOutlined />, badge: pendingRequestCount },
+    { key: 'favorites', label: '收藏', icon: <HeartOutlined /> },
+  ];
 
-      <Layout>
-        {chatStore.currentContact ? (
-          <>
-            <Header className="chat-header">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Space>
-                  <Avatar src={getAvatarUrl(chatStore.currentContact.contact_user.avatar_path)}>
-                    {chatStore.currentContact.contact_user.display_name?.[0] ||
-                      chatStore.currentContact.contact_user.username[0]}
-                  </Avatar>
-                  <span>
-                    {chatStore.currentContact.display_name ||
-                      chatStore.currentContact.contact_user.display_name ||
-                      chatStore.currentContact.contact_user.username}
-                  </span>
-                  {chatStore.currentContact.contact_user.is_online && (
-                    <span style={{ color: '#52c41a', fontSize: '12px' }}>Online</span>
-                  )}
-                </Space>
-                <Space>
-                  <Button
-                    type="text"
-                    icon={<PhoneOutlined />}
-                    onClick={() => handleInitiateCall(CallType.Voice)}
-                    disabled={!chatStore.currentContact.contact_user.is_online}
-                    title={chatStore.currentContact.contact_user.is_online ? 'Voice Call' : 'User Offline'}
-                  />
-                  <Button
-                    type="text"
-                    icon={<VideoCameraOutlined />}
-                    onClick={() => handleInitiateCall(CallType.Video)}
-                    disabled={!chatStore.currentContact.contact_user.is_online}
-                    title={chatStore.currentContact.contact_user.is_online ? 'Video Call' : 'User Offline'}
-                  />
-                  <Dropdown menu={{ items: contactMenuItems }} trigger={['click']}>
-                    <Button type="text" icon={<MoreOutlined />} />
-                  </Dropdown>
-                  <Button
-                    type="text"
-                    icon={<CloseOutlined />}
-                    onClick={handleCloseChat}
-                    title="Close Chat"
-                  />
-                </Space>
-              </div>
-            </Header>
-            <Content className="chat-content">
-              <div className="messages-container">
-                {chatStore.messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`message-item ${msg.sender_id === currentUserId ? 'sent' : 'received'}`}
-                  >
-                    <div className="message-content">
-                      <div className="message-text">{msg.content}</div>
-                      <div className="message-time">{formatTime(msg.created_at)}</div>
-                    </div>
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
-              <div className="message-input">
-                <TextArea
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  onPressEnter={(e) => {
-                    if (!e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
+  const getCurrentAttachmentTarget = (): AttachmentTarget | null => {
+    if (activeChatKind === 'group') {
+      return activeGroup ? { kind: 'group', group: activeGroup } : null;
+    }
+
+    return chatStore.currentContact ? { kind: 'contact', contact: chatStore.currentContact } : null;
+  };
+
+  const createLocalGroupMessageFromDraft = (
+    group: LocalChatGroup,
+    draft: GroupMessageSendDraft
+  ): LocalGroupMessage => ({
+    id: createLocalId('group-message'),
+    groupId: group.id,
+    senderId: currentUserId,
+    senderName: currentUserName,
+    content: draft.content,
+    type: draft.type ?? MESSAGE_TYPES.Text,
+    filePath: draft.file_path,
+    fileSize: draft.file_size,
+    duration: draft.duration,
+    createdAt: new Date().toISOString(),
+  });
+
+  const sendGroupMessagePayload = async (
+    group: LocalChatGroup,
+    draft: GroupMessageSendDraft,
+    options?: { allowOfflineFallback?: boolean }
+  ) => {
+    const content = draft.content.trim();
+    if (!content) return false;
+
+    let savedMessage: LocalGroupMessage;
+    try {
+      if (isBackendId(group.id)) {
+        const response = await apiService.sendGroupMessage(Number(group.id), {
+          content,
+          type: draft.type ?? MESSAGE_TYPES.Text,
+          file_path: draft.file_path,
+          file_size: draft.file_size,
+          duration: draft.duration,
+        });
+
+        if (!response.success || !response.data) {
+          message.error(response.message || '发送失败');
+          return false;
+        }
+
+        savedMessage = mapApiGroupMessage(response.data);
+      } else {
+        savedMessage = createLocalGroupMessageFromDraft(group, {
+          ...draft,
+          content,
+        });
+      }
+    } catch (error: unknown) {
+      const hasServerResponse = Boolean((error as { response?: unknown }).response);
+      if (hasServerResponse || options?.allowOfflineFallback === false) {
+        message.error(getErrorMessage(error, '发送失败'));
+        return false;
+      }
+
+      message.warning(getErrorMessage(error, '后端不可用，已发送本地群消息'));
+      savedMessage = createLocalGroupMessageFromDraft(group, {
+        ...draft,
+        content,
+      });
+    }
+
+    setLocalGroupMessages((messages) => [...messages, savedMessage]);
+    void loadChatGroups();
+    return true;
+  };
+
+  const handleSendMessage = async () => {
+    const text = messageText.trim();
+    if (!text || !chatStore.currentContact) return;
+
+    const result = await chatStore.sendMessage(chatStore.currentContact.contact_user.id, text);
+    if (result.success) {
+      setMessageText('');
+      setEmojiOpen(false);
+      void chatStore.loadContacts();
+    } else {
+      message.error(result.message || '发送失败');
+    }
+  };
+
+  const sendAttachment = async (
+    file: File,
+    type: number,
+    options?: { content?: string; duration?: number; successText?: string; target?: AttachmentTarget | null }
+  ) => {
+    const target = options?.target ?? getCurrentAttachmentTarget();
+    if (!target || (target.kind === 'contact' && !target.contact) || (target.kind === 'group' && !target.group)) {
+      message.warning('请先选择一个会话');
+      return;
+    }
+
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      message.warning('文件大小不能超过 20MB');
+      return;
+    }
+
+    setAttachmentUploading(true);
+    try {
+      const uploadResponse = await apiService.uploadChatFile(file);
+      if (!uploadResponse.success || !uploadResponse.data) {
+        message.error(uploadResponse.message || '文件上传失败');
+        return;
+      }
+
+      const content = options?.content || uploadResponse.data.file_name || file.name;
+      const filePath = uploadResponse.data.file_path;
+      const fileSize = Number(uploadResponse.data.file_size || file.size);
+      let result: { success: boolean; message?: string };
+
+      if (target.kind === 'group' && target.group) {
+        const sent = await sendGroupMessagePayload(target.group, {
+          content,
+          type,
+          file_path: filePath,
+          file_size: fileSize,
+          duration: options?.duration,
+        });
+        if (sent) {
+          message.success(options?.successText || (type === MESSAGE_TYPES.Image ? '图片已发送' : '文件已发送'));
+        }
+        return;
+      } else if (target.contact && target.contact.id !== chatStore.currentContact?.id) {
+        const response = await apiService.sendMessage({
+          receiver_id: target.contact.contact_user.id,
+          content,
+          type,
+          file_path: filePath,
+          file_size: fileSize,
+          duration: options?.duration,
+        });
+        result = { success: response.success, message: response.message };
+      } else if (target.contact) {
+        result = await chatStore.sendMessage(target.contact.contact_user.id, content, {
+          type,
+          file_path: filePath,
+          file_size: fileSize,
+          duration: options?.duration,
+        });
+      } else {
+        result = { success: false, message: '请先选择一个会话' };
+      }
+
+      if (result.success) {
+        message.success(options?.successText || (type === MESSAGE_TYPES.Image ? '图片已发送' : '文件已发送'));
+        void chatStore.loadContacts();
+      } else {
+        message.error(result.message || '发送失败');
+      }
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '文件发送失败'));
+    } finally {
+      setAttachmentUploading(false);
+    }
+  };
+
+  const handleAttachmentSelect = async (event: React.ChangeEvent<HTMLInputElement>, type: number) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    await sendAttachment(file, type);
+  };
+
+  const handleVoiceButtonClick = async () => {
+    if (isRecordingVoice) {
+      voiceRecorderRef.current?.stop();
+      return;
+    }
+
+    const target = getCurrentAttachmentTarget();
+    if (!target) {
+      message.warning('请先选择一个会话');
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      message.warning('当前浏览器不支持录音');
+      return;
+    }
+
+    try {
+      voiceCancelledRef.current = false;
+      voiceTargetRef.current = target;
+      voiceChunksRef.current = [];
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      voiceStreamRef.current = stream;
+      voiceRecorderRef.current = recorder;
+      voiceStartedAtRef.current = Date.now();
+      setVoiceRecordSeconds(0);
+      setIsRecordingVoice(true);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          voiceChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        if (voiceTimerRef.current !== null) {
+          window.clearInterval(voiceTimerRef.current);
+          voiceTimerRef.current = null;
+        }
+        voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+        voiceStreamRef.current = null;
+        voiceRecorderRef.current = null;
+        setIsRecordingVoice(false);
+
+        if (voiceCancelledRef.current) {
+          voiceChunksRef.current = [];
+          setVoiceRecordSeconds(0);
+          voiceTargetRef.current = null;
+          return;
+        }
+
+        const duration = Math.max(1, Math.round((Date.now() - voiceStartedAtRef.current) / 1000));
+        const chunks = voiceChunksRef.current;
+        voiceChunksRef.current = [];
+        setVoiceRecordSeconds(duration);
+        if (chunks.length === 0) {
+          message.warning('没有录到声音');
+          voiceTargetRef.current = null;
+          return;
+        }
+
+        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+        const file = new File([blob], formatVoiceFileName(), { type: blob.type || 'audio/webm' });
+        void sendAttachment(file, MESSAGE_TYPES.Audio, {
+          content: `语音消息 ${duration}"`,
+          duration,
+          successText: '语音已发送',
+          target: voiceTargetRef.current,
+        });
+        voiceTargetRef.current = null;
+      };
+
+      recorder.start();
+      voiceTimerRef.current = window.setInterval(() => {
+        setVoiceRecordSeconds(Math.max(1, Math.round((Date.now() - voiceStartedAtRef.current) / 1000)));
+      }, 500);
+    } catch (error: unknown) {
+      voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+      voiceStreamRef.current = null;
+      voiceRecorderRef.current = null;
+      voiceTargetRef.current = null;
+      setIsRecordingVoice(false);
+      setVoiceRecordSeconds(0);
+      message.error(getErrorMessage(error, '录音失败'));
+    }
+  };
+
+  const handleScreenshot = async () => {
+    const target = getCurrentAttachmentTarget();
+    if (!target) {
+      message.warning('请先选择一个会话');
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      message.info('当前环境不支持直接截图，请选择截图图片发送');
+      imageInputRef.current?.click();
+      return;
+    }
+
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.muted = true;
+      video.playsInline = true;
+      await new Promise<void>((resolve) => {
+        video.onloadedmetadata = () => resolve();
+      });
+      await video.play();
+
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      if (!context || canvas.width === 0 || canvas.height === 0) {
+        message.error('截图失败');
+        return;
+      }
+
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) {
+        message.error('截图失败');
+        return;
+      }
+
+      await sendAttachment(new File([blob], formatScreenshotFileName(), { type: 'image/png' }), MESSAGE_TYPES.Image, {
+        target,
+      });
+    } catch (error: unknown) {
+      if ((error as { name?: string }).name !== 'NotAllowedError') {
+        message.error('截图失败');
+      }
+    } finally {
+      stream?.getTracks().forEach((track) => track.stop());
+    }
+  };
+
+  const handleComposerPaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const imageFile = Array.from(event.clipboardData.files).find((file) => file.type.startsWith('image/'));
+    if (!imageFile) return;
+
+    event.preventDefault();
+    const fileName = imageFile.name && imageFile.name !== 'image.png'
+      ? imageFile.name
+      : formatScreenshotFileName();
+    await sendAttachment(
+      new File([imageFile], fileName, { type: imageFile.type || 'image/png' }),
+      MESSAGE_TYPES.Image,
+      {
+        content: fileName,
+        successText: '截图已发送',
+      }
+    );
+  };
+
+  const openSignatureEditor = () => {
+    setSignatureDraft(authStore.user?.signature ?? '');
+    setSignatureVisible(true);
+  };
+
+  const handleSaveSignature = async () => {
+    if (signatureDraft.length > 100) {
+      message.warning('个性签名不能超过100个字符');
+      return;
+    }
+
+    setSignatureSaving(true);
+    try {
+      const response = await apiService.updateProfile({ signature: signatureDraft });
+      if (response.success && response.data) {
+        authStore.user = response.data;
+        localStorage.setItem('user', JSON.stringify(response.data));
+        setSignatureVisible(false);
+        message.success('个性签名已更新');
+      } else {
+        message.error(response.message || '更新失败');
+      }
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '更新失败'));
+    } finally {
+      setSignatureSaving(false);
+    }
+  };
+
+  const loadFriendRequests = async () => {
+    setFriendRequestsLoading(true);
+    try {
+      const response = await apiService.getFriendRequests();
+      if (response.success && response.data) {
+        setFriendRequests(response.data);
+      } else {
+        setFriendRequests([]);
+      }
+    } catch (error: unknown) {
+      setFriendRequests([]);
+      message.error(getErrorMessage(error, '好友通知加载失败'));
+    } finally {
+      setFriendRequestsLoading(false);
+    }
+  };
+
+  const loadRecommendedUsers = async () => {
+    setRecommendationLoading(true);
+    try {
+      const response = await apiService.searchUsers('', 1, 24);
+      setRecommendedUsers(response.success && response.data ? response.data.users || [] : []);
+    } catch {
+      setRecommendedUsers([]);
+    } finally {
+      setRecommendationLoading(false);
+    }
+  };
+
+  const openAddContactDialog = () => {
+    setAddContactVisible(true);
+    setAddContactTab('all');
+    setLastUserSearchQuery('');
+    setUserResults([]);
+    void loadRecommendedUsers();
+  };
+
+  const openContactManager = () => {
+    setContactManagerVisible(true);
+    setContactManagerGroup(CONTACT_MANAGER_ALL_GROUP);
+    setContactManagerSearchText('');
+  };
+
+  const handleSearchUsers = async (value = contactUsername) => {
+    const keyword = value.trim();
+    if (!keyword) {
+      setLastUserSearchQuery('');
+      setUserResults([]);
+      void loadRecommendedUsers();
+      return;
+    }
+
+    setContactUsername(keyword);
+    setAddContactTab('user');
+    setLastUserSearchQuery(keyword);
+    setSearchUsersLoading(true);
+    try {
+      const response = await apiService.searchUsers(keyword, 1, 20);
+      if (response.success && response.data) {
+        setUserResults(response.data.users || []);
+      } else {
+        setUserResults([]);
+        message.error(response.message || '搜索失败');
+      }
+    } catch (error: unknown) {
+      setUserResults([]);
+      message.error(getErrorMessage(error, '搜索失败'));
+    } finally {
+      setSearchUsersLoading(false);
+    }
+  };
+
+  const handleAddContact = async (username = contactUsername, source = '账号搜索') => {
+    const targetUsername = username.trim();
+    if (!targetUsername) {
+      message.warning('请输入用户名');
+      return;
+    }
+
+    try {
+      const response = await apiService.createFriendRequest({
+        username: targetUsername,
+        note: contactNote.trim() || undefined,
+        source,
+      });
+
+      if (!response.success) {
+        message.error(response.message || '发送好友申请失败');
+        return;
+      }
+
+      message.success(response.message || '好友申请已发送');
+      await loadFriendRequests();
+      setContactNote('');
+      void loadRecommendedUsers();
+      if (response.data?.direction === 'incoming') {
+        setMainView('contacts');
+        setContactContent('requests');
+      }
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '发送好友申请失败'));
+    }
+  };
+
+  const handleFriendRequest = async (request: FriendRequest, status: 'accepted' | 'rejected') => {
+    try {
+      const response = await apiService.respondFriendRequest(request.id, status);
+      if (response.success) {
+        message.success(response.message || (status === 'accepted' ? '已同意好友申请' : '已拒绝好友申请'));
+        await chatStore.loadContacts();
+        await loadFriendRequests();
+      } else {
+        message.error(response.message || '处理好友申请失败');
+      }
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '处理好友申请失败'));
+    }
+  };
+
+  const handleClearHandledRequests = async () => {
+    try {
+      const response = await apiService.clearHandledFriendRequests();
+      if (response.success) {
+        message.success(response.message || '已清理处理过的好友申请');
+        await loadFriendRequests();
+      } else {
+        message.error(response.message || '清理好友申请失败');
+      }
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '清理好友申请失败'));
+    }
+  };
+
+  const handleInitiateCall = async (type: CallType, targetContact: Contact | null = chatStore.currentContact) => {
+    if (!targetContact) return;
+
+    if (!targetContact.contact_user.is_online) {
+      Modal.warning({
+        title: '对方当前离线',
+        content: '离线用户暂时无法接收通话。',
+      });
+      return;
+    }
+
+    try {
+      await callStore.initiateCall(
+        targetContact.contact_user.id,
+        type,
+        targetContact.contact_user
+      );
+    } catch {
+      message.error('发起通话失败');
+    }
+  };
+
+  const handleLogout = () => {
+    Modal.confirm({
+      title: '退出登录',
+      content: '确定要退出当前账号吗？',
+      okText: '退出',
+      cancelText: '取消',
+      onOk: async () => {
+        await authStore.logout();
+        navigate('/');
+      },
+    });
+  };
+
+  const handleRemoveContact = async () => {
+    if (!chatStore.currentContact) return;
+
+    Modal.confirm({
+      title: '删除好友',
+      content: `确定删除 ${getContactName(chatStore.currentContact)} 吗？`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          const response = await apiService.removeContact(chatStore.currentContact!.id);
+          if (response.success) {
+            message.success('好友已删除');
+            chatStore.setCurrentContact(null);
+            await chatStore.loadContacts();
+          } else {
+            message.error(response.message || '删除失败');
+          }
+        } catch (error: unknown) {
+          message.error(getErrorMessage(error, '删除失败'));
+        }
+      },
+    });
+  };
+
+  const handleUpdateDisplayName = async (values: { display_name: string }) => {
+    if (!chatStore.currentContact) return;
+
+    const result = await chatStore.updateDisplayName(chatStore.currentContact.id, values.display_name);
+    if (result.success) {
+      message.success('备注已更新');
+      setEditDisplayNameVisible(false);
+      displayNameForm.resetFields();
+    } else {
+      message.error(result.message || '更新失败');
+    }
+  };
+
+  const resetHistorySearch = () => {
+    setHistoryQuery('');
+    setHistoryFilter('all');
+  };
+
+  const mapContactHistoryMessage = (msg: ChatMessage, contact: Contact): HistoryMessageItem => {
+    const isMine = isMessageFromCurrentUser(msg, currentUserId);
+    return {
+      id: String(msg.id),
+      kind: 'contact',
+      senderId: msg.sender_id,
+      senderName: isMine ? currentUserName : getContactName(contact),
+      senderAvatarPath: isMine ? authStore.user?.avatar_path : contact.contact_user?.avatar_path,
+      content: msg.content,
+      type: msg.type,
+      filePath: msg.file_path,
+      fileSize: msg.file_size,
+      duration: msg.duration,
+      createdAt: msg.created_at || msg.timestamp,
+    };
+  };
+
+  const getGroupSender = (group: LocalChatGroup, senderId: number) => {
+    if (senderId === currentUserId) return authStore.user as UserSummary | null;
+    return (
+      group.members?.find((member) => member.id === senderId) ||
+      chatStore.contacts.find((contact) => contact.contact_user?.id === senderId)?.contact_user ||
+      null
+    );
+  };
+
+  const mapGroupHistoryMessage = (msg: LocalGroupMessage, group: LocalChatGroup): HistoryMessageItem => {
+    const sender = getGroupSender(group, msg.senderId);
+    return {
+      id: msg.id,
+      kind: 'group',
+      senderId: msg.senderId,
+      senderName: msg.senderId === currentUserId ? currentUserName : msg.senderName || getUserName(sender),
+      senderAvatarPath: sender?.avatar_path,
+      content: msg.content,
+      type: msg.type,
+      filePath: msg.filePath,
+      fileSize: msg.fileSize,
+      duration: msg.duration,
+      createdAt: msg.createdAt,
+    };
+  };
+
+  const sortHistoryMessages = (messages: HistoryMessageItem[]) =>
+    [...messages].sort((a, b) => {
+      const left = parseDate(a.createdAt)?.getTime() || 0;
+      const right = parseDate(b.createdAt)?.getTime() || 0;
+      return left - right;
+    });
+
+  const openHistory = async () => {
+    const contact = chatStore.currentContact;
+    if (!contact) return;
+
+    setHistoryVisible(true);
+    setHistoryLoading(true);
+    setHistoryMode('contact');
+    setHistoryTitle(getContactName(contact) || '聊天记录');
+    resetHistorySearch();
+    try {
+      const response = await apiService.getChatHistory(contact.id);
+      const messages = response.success && response.data ? response.data : chatStore.messages;
+      setHistoryMessages(sortHistoryMessages(messages.map((msg) => mapContactHistoryMessage(msg, contact))));
+    } catch {
+      setHistoryMessages(sortHistoryMessages(chatStore.messages.map((msg) => mapContactHistoryMessage(msg, contact))));
+    } finally {
+      setHistoryLoading(false);
+      void chatStore.loadContacts(false);
+    }
+  };
+
+  const openGroupHistory = async () => {
+    if (!activeGroup) return;
+
+    const group = activeGroup;
+    setHistoryVisible(true);
+    setHistoryLoading(true);
+    setHistoryMode('group');
+    setHistoryTitle(`群聊记录 - ${group.name}`);
+    resetHistorySearch();
+
+    let messages = localGroupMessages.filter((msg) => msg.groupId === group.id);
+
+    try {
+      if (isBackendId(group.id)) {
+        const response = await apiService.getGroupMessages(Number(group.id));
+        if (response.success && response.data) {
+          messages = response.data.map(mapApiGroupMessage);
+          setLocalGroupMessages((currentMessages) => [
+            ...currentMessages.filter((msg) => msg.groupId !== group.id),
+            ...messages,
+          ]);
+        }
+      }
+    } catch {
+      // Keep the local cache visible when the backend is unavailable.
+    } finally {
+      setHistoryMessages(sortHistoryMessages(messages.map((msg) => mapGroupHistoryMessage(msg, group))));
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleRailSelect = (view: MainView) => {
+    setMainView(view);
+    setMobileContentOpen(false);
+    if (view === 'messages') {
+      void chatStore.loadContacts(false);
+      void loadChatGroups();
+    } else if (view === 'contacts') {
+      void chatStore.loadContacts(false);
+      void loadFriendRequests();
+    } else {
+      void loadFavorites();
+    }
+  };
+
+  const updateContactGroup = (contact: Contact, groupName: string) => {
+    const nextGroupName = normalizeContactGroupName(groupName) || DEFAULT_CONTACT_GROUP_NAME;
+    setContactGroupNames((names) => mergeContactGroupNames([...names, nextGroupName], contactGroupAssignments));
+    setContactGroupAssignments((groups) => ({
+      ...groups,
+      [String(contact.id)]: nextGroupName,
+    }));
+    setExpandedGroups((groups) => ({ ...groups, [nextGroupName]: true }));
+    setContactManagerGroup((current) => (current === CONTACT_MANAGER_ALL_GROUP ? current : nextGroupName));
+  };
+
+  const handleCreateContactGroup = () => {
+    const groupName = normalizeContactGroupName(contactGroupDraft);
+    if (!groupName) {
+      message.warning('请输入分组名称');
+      return;
+    }
+    if (contactGroupNames.includes(groupName)) {
+      message.warning('分组已存在');
+      return;
+    }
+
+    setContactGroupNames((names) => [...names, groupName]);
+    setExpandedGroups((groups) => ({ ...groups, [groupName]: true }));
+    setContactManagerGroup(groupName);
+    setContactGroupDraft('');
+    setContactGroupCreateVisible(false);
+    message.success('分组已添加');
+  };
+
+  const handleDeleteContactGroup = (groupName: string) => {
+    if (groupName === DEFAULT_CONTACT_GROUP_NAME) {
+      message.info('默认分组不能删除');
+      return;
+    }
+
+    Modal.confirm({
+      title: '删除分组',
+      content: `删除“${groupName}”后，组内好友会移动到默认分组。`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: () => {
+        setContactGroupNames((names) => names.filter((name) => name !== groupName));
+        setContactGroupAssignments((assignments) => {
+          const nextAssignments = { ...assignments };
+          Object.entries(nextAssignments).forEach(([contactId, assignedGroup]) => {
+            if (assignedGroup === groupName) {
+              nextAssignments[contactId] = DEFAULT_CONTACT_GROUP_NAME;
+            }
+          });
+          return nextAssignments;
+        });
+        setExpandedGroups((groups) => {
+          const nextGroups = { ...groups };
+          delete nextGroups[groupName];
+          nextGroups[DEFAULT_CONTACT_GROUP_NAME] = true;
+          return nextGroups;
+        });
+        setContactManagerGroup((current) => (current === groupName ? DEFAULT_CONTACT_GROUP_NAME : current));
+        message.success('分组已删除');
+      },
+    });
+  };
+
+  const getGroupLatestMessage = (groupId: string) => {
+    const messages = localGroupMessages.filter((msg) => msg.groupId === groupId);
+    return messages[messages.length - 1];
+  };
+
+  const getGroupMessagePreview = (msg?: LocalGroupMessage) => {
+    if (!msg) return '';
+    const messageType = normalizeMessageType(msg.type);
+    if (messageType === 'image') return '[图片]';
+    if (messageType === 'audio') return `[语音] ${msg.duration || 1}"`;
+    if (messageType === 'file') return `[文件] ${msg.content || '附件'}`;
+    return msg.content;
+  };
+
+  const toggleCreateGroupMember = (userId?: number) => {
+    if (typeof userId !== 'number') return;
+    setSelectedGroupMemberIds((ids) =>
+      ids.includes(userId) ? ids.filter((id) => id !== userId) : [...ids, userId]
+    );
+  };
+
+  const createLocalGroup = async () => {
+    const groupName = groupNameDraft.trim() || '未命名的群聊';
+    const uniqueMemberIds = Array.from(new Set(selectedGroupMemberIds));
+
+    if (uniqueMemberIds.length === 0) {
+      message.warning('至少选择一个好友');
+      return;
+    }
+
+    let group: LocalChatGroup;
+    try {
+      const response = await apiService.createChatGroup({
+        name: groupName,
+        category: groupCategoryDraft,
+        member_ids: uniqueMemberIds,
+        pinned: groupCategoryDraft === '置顶群聊',
+      });
+
+      if (!response.success || !response.data) {
+        message.error(response.message || '创建群聊失败');
+        return;
+      }
+
+      group = mapApiGroup(response.data);
+    } catch (error: unknown) {
+      message.warning(getErrorMessage(error, '后端不可用，已创建本地群聊'));
+      group = {
+        id: createLocalId('group'),
+        name: groupName,
+        category: groupCategoryDraft,
+        memberIds: uniqueMemberIds,
+        ownerId: currentUserId,
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    setLocalGroups((groups) => [group, ...groups]);
+    setCreateGroupVisible(false);
+    setGroupNameDraft('');
+    setGroupCategoryDraft('我创建的群聊');
+    setSelectedGroupMemberIds([]);
+
+    if (shareVisible) {
+      setSelectedShareTargetIds((ids) => Array.from(new Set([...ids, `group-${group.id}`])));
+    } else {
+      selectGroupForChat(group);
+    }
+
+    message.success('群聊已创建');
+  };
+
+  const selectGroupForChat = (group: LocalChatGroup) => {
+    setMainView('messages');
+    setActiveChatKind('group');
+    setActiveGroupId(group.id);
+    setEmojiOpen(false);
+    setMobileContentOpen(true);
+    chatStore.setCurrentContact(null);
+    void loadGroupMessages(group.id);
+  };
+
+  const selectGroupProfile = (group: LocalChatGroup) => {
+    setMainView('contacts');
+    setContactPanel('groups');
+    setContactContent('groupProfile');
+    setActiveGroupId(group.id);
+    setMobileContentOpen(true);
+  };
+
+  const selectContactForChat = (contact: Contact) => {
+    setMainView('messages');
+    setActiveChatKind('contact');
+    setActiveGroupId('');
+    setEmojiOpen(false);
+    setProfileContact(contact);
+    setMobileContentOpen(true);
+    chatStore.setCurrentContact(contact);
+  };
+
+  const selectContactProfile = (contact: Contact) => {
+    setMainView('contacts');
+    setActiveChatKind('contact');
+    setActiveGroupId('');
+    setProfileContact(contact);
+    setContactContent('profile');
+    setMobileContentOpen(true);
+  };
+
+  const sendGroupMessage = async () => {
+    if (!activeGroup) return;
+    const content = groupMessageText.trim();
+    if (!content) return;
+
+    const sent = await sendGroupMessagePayload(activeGroup, {
+      content,
+      type: MESSAGE_TYPES.Text,
+    });
+    if (sent) {
+      setGroupMessageText('');
+      setEmojiOpen(false);
+    }
+  };
+
+  const addFavoriteItem = async (item: Omit<FavoriteItem, 'id' | 'createdAt'>, stableId?: string) => {
+    const id = stableId || createLocalId('favorite');
+    const exists = favoriteItems.some(
+      (favorite) =>
+        favorite.id === id ||
+        (favorite.type === item.type &&
+          favorite.content === item.content &&
+          favorite.sourceName === item.sourceName &&
+          favorite.filePath === item.filePath)
+    );
+
+    if (exists) {
+      message.info('已经收藏过了');
+      return;
+    }
+
+    try {
+      const response = await apiService.createFavorite({
+        content: item.content,
+        type: item.type,
+        source_name: item.sourceName,
+        file_path: item.filePath,
+        file_size: item.fileSize,
+      });
+
+      if (response.success && response.data) {
+        setFavoriteItems((items) => [mapApiFavorite(response.data!), ...items]);
+        message.success(response.message || '已添加到收藏');
+        return;
+      }
+
+      message.info(response.message || '已经收藏过了');
+    } catch (error: unknown) {
+      setFavoriteItems((items) => [
+        {
+          ...item,
+          id,
+          createdAt: new Date().toISOString(),
+        },
+        ...items,
+      ]);
+      message.warning(getErrorMessage(error, '后端不可用，已添加到本地收藏'));
+    }
+  };
+
+  const addFavoriteFromMessage = async (msg: ChatMessage) => {
+    const sourceName = isMessageFromCurrentUser(msg, currentUserId)
+      ? currentUserName
+      : getContactName(chatStore.currentContact);
+
+    await addFavoriteItem(
+      {
+        content: msg.content,
+        type: getFavoriteType(msg),
+        sourceName,
+        filePath: msg.file_path,
+        fileSize: msg.file_size,
+      },
+      `chat-${msg.id}`
+    );
+  };
+
+  const addFavoriteFromGroupMessage = async (msg: LocalGroupMessage) => {
+    const messageType = normalizeMessageType(msg.type);
+
+    await addFavoriteItem(
+      {
+        content: msg.content,
+        type:
+          messageType === 'image'
+            ? 'media'
+            : messageType === 'file'
+              ? 'file'
+              : getContentFavoriteType(msg.content),
+        sourceName: `${activeGroup?.name || '群聊'} · ${msg.senderName}`,
+        filePath: msg.filePath,
+        fileSize: msg.fileSize,
+      },
+      `group-chat-${msg.id}`
+    );
+  };
+
+  const addFavoriteNote = async () => {
+    const content = favoriteNoteDraft.trim();
+    if (!content) {
+      message.warning('请输入笔记内容');
+      return;
+    }
+
+    await addFavoriteItem({
+      content,
+      type: 'note',
+      sourceName: currentUserName,
+    });
+    setFavoriteNoteDraft('');
+    setFavoriteNoteVisible(false);
+  };
+
+  const removeFavoriteItem = async (favoriteId: string) => {
+    if (isBackendId(favoriteId)) {
+      try {
+        const response = await apiService.deleteFavorite(Number(favoriteId));
+        if (!response.success) {
+          message.error(response.message || '删除收藏失败');
+          return;
+        }
+      } catch (error: unknown) {
+        message.error(getErrorMessage(error, '删除收藏失败'));
+        return;
+      }
+    }
+
+    setFavoriteItems((items) => items.filter((item) => item.id !== favoriteId));
+  };
+
+  const openShare = (payload: string) => {
+    const content = payload.trim();
+    if (!content) {
+      message.warning('没有可分享的内容');
+      return;
+    }
+
+    setSharePayload(content);
+    setShareSearchText('');
+    setShareNote('');
+    setSelectedShareTargetIds([]);
+    setShareVisible(true);
+  };
+
+  const toggleShareTarget = (targetId: string) => {
+    setSelectedShareTargetIds((ids) =>
+      ids.includes(targetId) ? ids.filter((id) => id !== targetId) : [...ids, targetId]
+    );
+  };
+
+  const handleNativeShare = async () => {
+    if (!sharePayload.trim()) return;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ text: sharePayload });
+        return;
+      }
+      await navigator.clipboard?.writeText(sharePayload);
+      message.success('内容已复制，可粘贴到微信');
+    } catch {
+      message.error('分享失败');
+    }
+  };
+
+  const confirmShare = async () => {
+    if (selectedShareTargets.length === 0) {
+      message.warning('请选择分享对象');
+      return;
+    }
+
+    const note = shareNote.trim();
+    const content = note ? `${sharePayload}\n\n${note}` : sharePayload;
+
+    try {
+      for (const target of selectedShareTargets) {
+        if (target.type === 'contact') {
+          const contactId = Number(target.id.replace('contact-', ''));
+          const contact = chatStore.contacts.find((item) => item.id === contactId);
+          const receiverId = contact?.contact_user?.id;
+          if (contact && typeof receiverId === 'number') {
+            if (chatStore.currentContact?.id === contact.id) {
+              await chatStore.sendMessage(receiverId, content);
+            } else {
+              await apiService.sendMessage({ receiver_id: receiverId, content, type: MESSAGE_TYPES.Text });
+            }
+          }
+        } else {
+          const groupId = target.id.replace('group-', '');
+          let sharedMessage: LocalGroupMessage | null = null;
+
+          if (isBackendId(groupId)) {
+            const response = await apiService.sendGroupMessage(Number(groupId), {
+              content,
+              type: MESSAGE_TYPES.Text,
+            });
+
+            if (response.success && response.data) {
+              sharedMessage = mapApiGroupMessage(response.data);
+            } else {
+              message.error(response.message || '分享失败');
+              return;
+            }
+          }
+
+          if (!sharedMessage) {
+            sharedMessage = {
+              id: createLocalId('group-message'),
+              groupId,
+              senderId: currentUserId,
+              senderName: currentUserName,
+              content,
+              type: MESSAGE_TYPES.Text,
+              createdAt: new Date().toISOString(),
+            };
+          }
+
+          setLocalGroupMessages((messages) => [...messages, sharedMessage]);
+        }
+      }
+
+      await chatStore.loadContacts();
+      await loadChatGroups();
+      setShareVisible(false);
+      setSelectedShareTargetIds([]);
+      setShareNote('');
+      message.success('已分享');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '分享失败'));
+    }
+  };
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups((groups) => ({ ...groups, [key]: !groups[key] }));
+  };
+
+  const renderAvatar = (contact?: Contact | null, size: number = 44) => {
+    const name = getContactName(contact);
+    return (
+      <span className={`avatar-shell ${contact?.contact_user?.is_online ? 'online' : 'offline'}`}>
+        <Avatar size={size} src={getAvatarUrl(contact?.contact_user?.avatar_path)}>
+          {getInitial(name)}
+        </Avatar>
+        {contact && <i aria-hidden="true" />}
+      </span>
+    );
+  };
+
+  const renderUserAvatar = (user?: UserSummary | null, size: number = 38) => {
+    const name = getUserName(user);
+    return (
+      <span className={`avatar-shell ${user?.is_online ? 'online' : 'offline'}`}>
+        <Avatar size={size} src={getAvatarUrl(user?.avatar_path)}>
+          {getInitial(name)}
+        </Avatar>
+        {user && <i aria-hidden="true" />}
+      </span>
+    );
+  };
+
+  const renderAddContactUser = (user: UserSummary, source: string) => {
+    const username = user.username || '';
+    const peerRequest = username ? friendRequestUsernameMap.get(username) : undefined;
+    const requestStatus = peerRequest ? getFriendRequestStatus(peerRequest) : null;
+    const incomingPending = peerRequest?.direction === 'incoming' && peerRequest.status === 'pending';
+    const disabled = requestStatus === 'waiting' || requestStatus === 'accepted' || !username;
+    const actionLabel = incomingPending
+      ? '去处理'
+      : requestStatus === 'waiting'
+        ? '已申请'
+        : requestStatus === 'accepted'
+          ? '已添加'
+          : requestStatus === 'rejected'
+            ? '重新申请'
+            : '添加';
+
+    return (
+      <div key={user.id || username} className="add-contact-user-card">
+        <Avatar size={46} src={getAvatarUrl(user.avatar_path)} icon={<UserOutlined />}>
+          {getInitial(getUserName(user))}
+        </Avatar>
+        <div className="add-contact-user-copy">
+          <strong>{getUserName(user)}</strong>
+          <span>@{username || 'unknown'}</span>
+          <p>{user.signature?.trim() || '还没有填写个性签名'}</p>
+          <div className="add-contact-user-tags">
+            <em>{user.is_online ? '在线' : '离线'}</em>
+            {(user.province || user.region) && <em>{[user.province, user.region].filter(Boolean).join('·')}</em>}
+            {peerRequest && <em>{peerRequest.source || '账号搜索'}</em>}
+          </div>
+        </div>
+        <Button
+          className="add-contact-action"
+          type={incomingPending ? 'primary' : 'default'}
+          disabled={disabled}
+          onClick={() => {
+            if (incomingPending) {
+              setAddContactVisible(false);
+              setMainView('contacts');
+              setContactPanel('friends');
+              setContactContent('requests');
+              return;
+            }
+            void handleAddContact(username, source);
+          }}
+        >
+          {actionLabel}
+        </Button>
+      </div>
+    );
+  };
+
+  const renderMessage = (msg: ChatMessage, index: number) => {
+    const isMine = isMessageFromCurrentUser(msg, currentUserId);
+    const previous = chatStore.messages[index - 1];
+    const currentDate = formatHistoryDate(msg.created_at);
+    const previousDate = previous ? formatHistoryDate(previous.created_at) : '';
+    const showDate = index === 0 || currentDate !== previousDate;
+    const attachmentUrl = getAttachmentUrl(msg.file_path);
+    const shareContent = attachmentUrl ? `${msg.content || '附件'}\n${attachmentUrl}` : msg.content;
+
+    return (
+      <div key={`${msg.id}-${index}`} className="message-block">
+        {showDate && <div className="message-date">{formatDateLabel(msg.created_at)}</div>}
+        <div className={`qq-message ${isMine ? 'sent' : 'received'}`}>
+          {!isMine && renderAvatar(chatStore.currentContact, 36)}
+          <div className="qq-bubble">
+            {msg.duration || isAudioMessage(msg) ? (
+              <button
+                type="button"
+                className="voice-bubble voice-bubble-button"
+                disabled={!attachmentUrl}
+                onClick={() => {
+                  if (!attachmentUrl) return;
+                  void new Audio(attachmentUrl).play().catch(() => message.error('语音播放失败'));
+                }}
+              >
+                <span className="voice-play" />
+                <span className="voice-bars" />
+                <span>{msg.duration || 4}&quot;</span>
+              </button>
+            ) : isImageMessage(msg) && attachmentUrl ? (
+              <a className="message-image-link" href={attachmentUrl} target="_blank" rel="noreferrer">
+                <img className="message-image" src={attachmentUrl} alt={msg.content || '图片'} />
+              </a>
+            ) : isFileMessage(msg) && attachmentUrl ? (
+              <a className="message-file-card" href={attachmentUrl} target="_blank" rel="noreferrer" download>
+                <FileOutlined />
+                <span>
+                  <strong>{msg.content || '文件'}</strong>
+                  <small>{formatFileSize(msg.file_size)}</small>
+                </span>
+              </a>
+            ) : (
+              <div className="message-text">{msg.content}</div>
+            )}
+            <div className="message-meta">
+              <span>{formatClock(msg.created_at)}</span>
+              <button type="button" onClick={() => void addFavoriteFromMessage(msg)}>
+                收藏
+              </button>
+              <button type="button" onClick={() => openShare(shareContent)}>
+                分享
+              </button>
+            </div>
+          </div>
+          {isMine && (
+            <Avatar size={36} src={getAvatarUrl(authStore.user?.avatar_path)}>
+              {getInitial(currentUserName)}
+            </Avatar>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const emojiContent = (
+    <div className="emoji-panel">
+      <div className="emoji-scroll">
+        {emojiSections.map((section) => (
+          <div key={section.title} className="emoji-section">
+            <div className="emoji-title">{section.title}</div>
+            <div className="emoji-grid">
+              {section.emojis.map((emoji) => (
+                <button
+                  type="button"
+                  key={`${section.title}-${emoji}`}
+                  className="emoji-cell"
+                  onClick={() => {
+                    if (activeChatKind === 'group') {
+                      setGroupMessageText((value) => `${value}${emoji}`);
+                    } else {
+                      setMessageText((value) => `${value}${emoji}`);
                     }
                   }}
-                  placeholder="Type a message..."
-                  autoSize={{ minRows: 1, maxRows: 4 }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="emoji-tabs">
+        <Button type="text" icon={<SmileOutlined />} />
+        <Button type="text" icon={<HeartOutlined />} />
+        <Button type="text">GIF</Button>
+      </div>
+    </div>
+  );
+
+  const renderSidebar = () => {
+    if (mainView === 'messages') {
+      const hasConversations = filteredContacts.length > 0 || filteredLocalGroups.length > 0;
+
+      return (
+        <>
+          <div className="sidebar-tools">
+            <Input
+              prefix={<SearchOutlined />}
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder="搜索"
+              allowClear
+            />
+            <Tooltip title="添加好友">
+              <Button icon={<PlusOutlined />} onClick={openAddContactDialog} />
+            </Tooltip>
+          </div>
+
+          <div className="conversation-list">
+            {!hasConversations ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无会话" />
+            ) : (
+              <>
+                {filteredContacts.map((contact) => (
+                  <button
+                    type="button"
+                    key={`contact-${contact.id}`}
+                    className={`conversation-item ${
+                      activeChatKind === 'contact' && chatStore.currentContact?.id === contact.id ? 'active' : ''
+                    }`}
+                    onClick={() => selectContactForChat(contact)}
+                  >
+                    <Badge count={contact.unread_count || 0} offset={[-4, 6]}>
+                      {renderAvatar(contact)}
+                    </Badge>
+                    <span className="conversation-copy">
+                      <span className="conversation-title-row">
+                        <strong>{getContactName(contact)}</strong>
+                        <time>{formatListTime(contact.last_message_at || contact.added_at)}</time>
+                      </span>
+                      <span className="conversation-preview">
+                        {contact.last_message_at ? '最近有新的聊天记录' : '你们已经是好友了'}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+                {filteredLocalGroups.length > 0 && (
+                  <div className="conversation-section-title">群聊</div>
+                )}
+                {filteredLocalGroups.map((group) => {
+                  const latest = getGroupLatestMessage(group.id);
+                  return (
+                    <button
+                      type="button"
+                      key={`group-${group.id}`}
+                      className={`conversation-item ${activeChatKind === 'group' && activeGroupId === group.id ? 'active' : ''}`}
+                      onClick={() => selectGroupForChat(group)}
+                    >
+                      <Avatar size={44} icon={<TeamOutlined />} />
+                      <span className="conversation-copy">
+                        <span className="conversation-title-row">
+                          <strong>{group.name}</strong>
+                          <time>{formatListTime(latest?.createdAt || group.createdAt)}</time>
+                        </span>
+                        <span className="conversation-preview">
+                          {latest ? getGroupMessagePreview(latest) : `${group.memberIds.length + 1} 位成员`}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </>
+            )}
+          </div>
+        </>
+      );
+    }
+
+    if (mainView === 'contacts') {
+      return (
+        <>
+          <div className="sidebar-tools">
+            <Input
+              prefix={<SearchOutlined />}
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder="搜索"
+              allowClear
+            />
+            <Tooltip title="添加好友">
+              <Button icon={<PlusOutlined />} onClick={openAddContactDialog} />
+            </Tooltip>
+          </div>
+          <Button className="friend-manager-button" icon={<UserAddOutlined />} onClick={openContactManager}>
+            好友管理器
+          </Button>
+          <div className="notice-block">
+            <button
+              type="button"
+              className={`notice-link ${contactContent === 'requests' ? 'active' : ''}`}
+              onClick={() => {
+                setContactPanel('friends');
+                setContactContent('requests');
+                toggleGroup('friendNotice');
+              }}
+            >
+              <span>
+                <BellOutlined /> 好友通知
+              </span>
+              <Badge count={pendingRequestCount} size="small">
+                <span className={expandedGroups.friendNotice ? 'group-arrow expanded' : 'group-arrow'} />
+              </Badge>
+            </button>
+            {expandedGroups.friendNotice && (
+              <div className="notice-sublist">
+                {friendRequestSections.map((section) => (
+                  <button
+                    type="button"
+                    key={section.key}
+                    className={activeFriendRequestSection === section.key ? 'active' : ''}
+                    onClick={() => {
+                      setContactContent('requests');
+                      setActiveFriendRequestSection(section.key);
+                      toggleGroup(section.key);
+                    }}
+                  >
+                    <span>{section.title}</span>
+                    <em>{section.count}</em>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button type="button" className="notice-link">
+            <span>
+              <TeamOutlined /> 群通知
+            </span>
+            <DownOutlined />
+          </button>
+          <Segmented
+            block
+            className="contact-segment"
+            value={contactPanel}
+            onChange={(value) => setContactPanel(value as ContactPanel)}
+            options={[
+              { label: '好友', value: 'friends' },
+              { label: '群聊', value: 'groups' },
+            ]}
+          />
+          {contactPanel === 'friends' ? (
+            <div className="friend-groups">
+              {contactGroups.map((group) => (
+                <div key={group.key} className="friend-group">
+                  <button
+                    type="button"
+                    className={`friend-group-title ${
+                      contactContent === 'profile' && profileContactGroupName === group.name ? 'active' : ''
+                    }`}
+                    onClick={() => toggleGroup(group.key)}
+                  >
+                    <span className={expandedGroups[group.key] ? 'group-arrow expanded' : 'group-arrow'} />
+                    <strong>{group.name}</strong>
+                    <span>{group.countText}</span>
+                  </button>
+                  {expandedGroups[group.key] && (
+                    <div className="friend-group-list">
+                      {group.contacts.map((contact) => (
+                        <button
+                          type="button"
+                          key={contact.id}
+                          className={`friend-row ${profileContact?.id === contact.id ? 'active' : ''}`}
+                          onClick={() => selectContactProfile(contact)}
+                        >
+                          {renderAvatar(contact, 42)}
+                          <span>
+                            <strong>{getContactName(contact)}</strong>
+                            <small>
+                              {contact.contact_user?.is_online ? '[在线]' : '[离线]'}{' '}
+                              {contact.contact_user?.username || 'what can I say'}
+                            </small>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="group-thread-panel">
+              <Button
+                className="create-group-button"
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setCreateGroupVisible(true)}
+              >
+                创建群聊
+              </Button>
+              <div className="group-thread-list">
+                {localGroups.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无群聊" />
+                ) : (
+                  groupCategories.map(({ category, groups }) => {
+                    const groupKey = `local-group-${category}`;
+                    const expanded = expandedGroups[groupKey] ?? true;
+                    return (
+                      <div key={category} className="friend-group">
+                        <button type="button" className="friend-group-title" onClick={() => toggleGroup(groupKey)}>
+                          <span className={expanded ? 'group-arrow expanded' : 'group-arrow'} />
+                          <strong>{category}</strong>
+                          <span>{groups.length}</span>
+                        </button>
+                        {expanded && (
+                          <div className="friend-group-list">
+                            {groups.length === 0 ? (
+                              <div className="group-empty-row">暂无群聊</div>
+                            ) : (
+                              groups.map((group) => {
+                                const latest = getGroupLatestMessage(group.id);
+                                return (
+	                                  <button
+	                                    type="button"
+	                                    key={group.id}
+	                                    className={`group-thread ${activeGroupId === group.id ? 'active' : ''}`}
+	                                    onClick={() => selectGroupProfile(group)}
+	                                  >
+	                                    <Avatar size={42} icon={<TeamOutlined />} />
+	                                    <span>
+	                                      <strong>{group.name}</strong>
+	                                      <small>{latest ? getGroupMessagePreview(latest) : group.category}</small>
+	                                    </span>
+	                                    <em>{group.memberIds.length + 1}</em>
+	                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      );
+    }
+
+    if (mainView === 'favorites') {
+      const favoriteFilters: Array<{ key: FavoriteFilter; label: string }> = [
+        { key: 'all', label: '全部' },
+        { key: 'chat', label: '聊天记录' },
+        { key: 'media', label: '图片与视频' },
+        { key: 'file', label: '文件' },
+        { key: 'link', label: '链接' },
+        { key: 'note', label: '笔记' },
+      ];
+
+      return (
+        <div className="favorite-sidebar">
+          <div className="favorite-sidebar-search">
+            <Input
+              prefix={<SearchOutlined />}
+              value={favoriteSearchText}
+              onChange={(event) => setFavoriteSearchText(event.target.value)}
+              placeholder="搜索收藏"
+              allowClear
+            />
+          </div>
+          <Button
+            className="favorite-note-button"
+            icon={<EditOutlined />}
+            onClick={() => setFavoriteNoteVisible(true)}
+          >
+            创建笔记
+          </Button>
+          <div className="favorite-filter-list">
+            {favoriteFilters.map((item) => (
+              <button
+                type="button"
+                key={item.key}
+                className={favoriteFilter === item.key ? 'active' : ''}
+                onClick={() => setFavoriteFilter(item.key)}
+              >
+                <span>{item.label}</span>
+                <em>{favoriteCounts[item.key]}</em>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const renderContactMain = () => {
+    if (contactContent === 'requests') {
+      return (
+        <div className="contact-main">
+          <div className="contact-main-header">
+            <h2>好友通知</h2>
+            <Space>
+              <Tooltip title="筛选">
+                <Button type="text" icon={<FilterOutlined />} />
+              </Tooltip>
+              <Tooltip title="清理已处理">
+                <Button
+                  type="text"
+                  icon={<DeleteOutlined />}
+                  disabled={friendRequestsLoading}
+                  onClick={() => void handleClearHandledRequests()}
                 />
-                <Button type="primary" onClick={handleSendMessage}>
-                  Send
+              </Tooltip>
+            </Space>
+          </div>
+
+          {pendingRequestCount > 0 && (
+            <div className="request-summary">
+              <Badge status="processing" />
+              <span>{pendingRequestCount} 条好友申请待处理</span>
+            </div>
+          )}
+
+          <div className="request-list">
+            {friendRequestsLoading ? (
+              <div className="request-empty">加载中...</div>
+            ) : (
+              friendRequestSections.map((section) => {
+                const expanded = expandedGroups[section.key] ?? true;
+                return (
+                  <section key={section.key} className="request-section">
+                    <button
+                      type="button"
+                      className={`request-section-head ${activeFriendRequestSection === section.key ? 'active' : ''}`}
+                      onClick={() => {
+                        setActiveFriendRequestSection(section.key);
+                        toggleGroup(section.key);
+                      }}
+                    >
+                      <span className={expanded ? 'group-arrow expanded' : 'group-arrow'} />
+                      <strong>{section.title}</strong>
+                      <small>{section.description}</small>
+                      <em>{section.count}</em>
+                    </button>
+                    {expanded && (
+                      <div className="request-section-body">
+                        {section.requests.length === 0 ? (
+                          <div className="request-section-empty">{section.emptyText}</div>
+                        ) : (
+                          section.requests.map((request) => {
+                            const peer = getFriendRequestPeer(request);
+                            const peerName = getUserName(peer);
+                            const requestStatus = getFriendRequestStatus(request);
+                            return (
+                              <div key={request.id} className="request-card">
+                                <Avatar size={48} src={getAvatarUrl(peer.avatar_path)} icon={<UserOutlined />}>
+                                  {getInitial(peerName)}
+                                </Avatar>
+                                <div className="request-copy">
+                                  <div className="request-title">
+                                    <strong>{peerName}</strong>
+                                    <span>{request.direction === 'incoming' ? '请求加为好友' : '正在验证你的邀请'}</span>
+                                    <time>{formatHistoryDate(request.created_at)}</time>
+                                  </div>
+                                  <p>留言：{request.note || '请求添加为好友'}</p>
+                                  <p>来源：{request.source || '账号搜索'}</p>
+                                </div>
+                                {requestStatus === 'pending' ? (
+                                  <Space>
+                                    <Button
+                                      icon={<CheckOutlined />}
+                                      type="primary"
+                                      onClick={() => void handleFriendRequest(request, 'accepted')}
+                                    >
+                                      同意
+                                    </Button>
+                                    <Button icon={<StopOutlined />} onClick={() => void handleFriendRequest(request, 'rejected')}>
+                                      拒绝
+                                    </Button>
+                                  </Space>
+                                ) : (
+                                  <span className={`request-status ${requestStatus}`}>
+                                    {requestStatus === 'accepted' && '已同意'}
+                                    {requestStatus === 'rejected' && '已拒绝'}
+                                    {requestStatus === 'waiting' && '等待验证'}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </section>
+                );
+              })
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (contactContent === 'groupProfile' && activeGroup) {
+      const memberTotal = Math.max(allGroupMembers.length, 1);
+      const onlineMembers = allGroupMembers.filter((member) => member.is_online).length;
+      const maleMembers = allGroupMembers.filter((member) => member.gender === '男').length;
+      const bornIn90s = allGroupMembers.filter((member) => {
+        const birthday = parseBirthday(member.birthday);
+        const year = birthday?.getFullYear();
+        return year !== undefined && year >= 1990 && year < 2000;
+      }).length;
+      const locationCounts = allGroupMembers.reduce<Record<string, number>>((counts, member) => {
+        const location = member.region || member.province || member.country || '未填写';
+        counts[location] = (counts[location] || 0) + 1;
+        return counts;
+      }, {});
+      const topLocation = Object.entries(locationCounts).sort((a, b) => b[1] - a[1])[0] || ['未填写', 0];
+      const groupDistribution = [
+        { percent: formatPercent(onlineMembers, memberTotal), label: `活跃-${onlineMembers}人` },
+        { percent: formatPercent(maleMembers, memberTotal), label: `男-${maleMembers}人` },
+        { percent: formatPercent(topLocation[1], memberTotal), label: `${topLocation[0]}-${topLocation[1]}人` },
+        { percent: formatPercent(bornIn90s, memberTotal), label: `90后-${bornIn90s}人` },
+      ];
+
+      return (
+        <div className="contact-main contact-profile-main">
+          <div className="profile-panel group-profile-panel">
+            <div className="profile-identity">
+              <Avatar size={96} icon={<TeamOutlined />} />
+              <div>
+                <h2>{activeGroup.name}</h2>
+                <p>群 ID {activeGroup.id}</p>
+                <span className="online-state online">
+                  <i /> {activeGroup.memberIds.length + 1} 位成员
+                </span>
+              </div>
+              <div className="profile-like">
+                <ClockCircleOutlined />
+                <span>{formatHistoryDate(activeGroup.createdAt)}</span>
+              </div>
+            </div>
+            <div className="profile-fields">
+              <span>{activeGroup.category}</span>
+              <span>{activeGroup.ownerId === currentUserId ? '我创建的群聊' : '我加入的群聊'}</span>
+              <span>{activeGroup.pinned ? '已置顶' : '未置顶'}</span>
+            </div>
+            <div className="group-profile-cards">
+              <section className="group-profile-card">
+                <div>
+                  <EditOutlined />
+                  <strong>群介绍</strong>
+                </div>
+                <p>{activeGroup.note || '群主暂未填写群介绍'}</p>
+              </section>
+              <section className="group-profile-card">
+                <div>
+                  <BellOutlined />
+                  <strong>群公告</strong>
+                </div>
+                <p>{activeGroup.announcement || '暂无公告'}</p>
+              </section>
+            </div>
+            <div className="group-distribution">
+              <div className="group-distribution-title">
+                <TeamOutlined />
+                <strong>成员分布</strong>
+              </div>
+              <div className="group-distribution-grid">
+                {groupDistribution.map((item) => (
+                  <div key={item.label} className="group-distribution-item">
+                    <span>{item.percent}</span>
+                    <small>{item.label}</small>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="group-member-grid">
+              {allGroupMembers.map((member) => (
+                <div key={member.id || member.username} className="group-member-card">
+                  {renderUserAvatar(member, 42)}
+                  <span>{getUserName(member)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="profile-actions">
+              <Button onClick={() => openShare(`群聊名片：${activeGroup.name}（${activeGroup.memberIds.length + 1}人）`)}>
+                分享
+              </Button>
+              <Button type="primary" onClick={() => selectGroupForChat(activeGroup)}>
+                发消息
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (!profileContact) {
+      return (
+        <div className="empty-chat">
+          <UserOutlined />
+          <p>选择一个好友查看资料</p>
+        </div>
+      );
+    }
+
+    const profileUser = profileContact.contact_user as UserSummary;
+    const profileFields = [
+      profileUser?.gender || '性别未填',
+      formatAge(profileUser?.birthday),
+      formatBirthdayLabel(profileUser?.birthday),
+      formatLocation(profileUser),
+    ];
+
+    return (
+      <div className="contact-main contact-profile-main">
+        <div className="profile-panel">
+          <div className="profile-identity">
+            {renderAvatar(profileContact, 96)}
+            <div>
+              <h2>{getContactName(profileContact)}</h2>
+              <p>@{profileUser?.username || 'unknown'} · ID {profileUser?.id || profileContact.id}</p>
+              <span className={`online-state ${profileUser?.is_online ? 'online' : 'offline'}`}>
+                <i /> {profileUser?.is_online ? '在线' : '离线'}
+              </span>
+            </div>
+            <div className="profile-like">
+              <ClockCircleOutlined />
+              <span>{formatHistoryDate(profileContact.added_at)}</span>
+            </div>
+          </div>
+          <div className="profile-fields">
+            {profileFields.map((field) => (
+              <span key={field}>{field}</span>
+            ))}
+          </div>
+          <div className="profile-row">
+            <span>
+              <EditOutlined /> 备注
+            </span>
+            <strong>{profileContact.display_name || '未设置'}</strong>
+          </div>
+          <div className="profile-row">
+            <span>
+              <TeamOutlined /> 好友分组
+            </span>
+            <select
+              className="profile-group-select"
+              value={profileContactGroupName}
+              onChange={(event) => updateContactGroup(profileContact, event.target.value)}
+            >
+              {contactGroupNames.map((groupName) => (
+                <option key={groupName} value={groupName}>
+                  {groupName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="profile-row">
+            <span>
+              <EditOutlined /> 签名
+            </span>
+            <strong>{getContactSignature(profileContact)}</strong>
+          </div>
+          <div className="profile-actions">
+            <Button
+              onClick={() =>
+                openShare(`联系人名片：${getContactName(profileContact)}（@${profileUser?.username || 'unknown'}）`)
+              }
+            >
+              分享
+            </Button>
+            <Button
+              icon={<PhoneOutlined />}
+              onClick={() => {
+                selectContactForChat(profileContact);
+                void handleInitiateCall(CallType.Voice, profileContact);
+              }}
+            >
+              语音
+            </Button>
+            <Button
+              icon={<VideoCameraOutlined />}
+              onClick={() => {
+                selectContactForChat(profileContact);
+                void handleInitiateCall(CallType.Video, profileContact);
+              }}
+            >
+              视频
+            </Button>
+            <Button type="primary" onClick={() => selectContactForChat(profileContact)}>
+              发消息
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderFavoriteMain = () => {
+    const favoriteTypeText: Record<FavoriteItem['type'], string> = {
+      chat: '聊天记录',
+      media: '图片与视频',
+      file: '文件',
+      link: '链接',
+      note: '笔记',
+    };
+
+    return (
+      <div className="favorites-main">
+        <div className="favorites-header">
+          <div>
+            <h2>我的收藏</h2>
+            <p>{favoriteCounts.all} 条内容</p>
+          </div>
+          <Button type="primary" icon={<EditOutlined />} onClick={() => setFavoriteNoteVisible(true)}>
+            创建笔记
+          </Button>
+        </div>
+
+        <div className="favorites-list">
+          {filteredFavoriteItems.length === 0 ? (
+            <div className="favorites-empty">
+              <HeartOutlined />
+              <span>暂无收藏内容</span>
+            </div>
+          ) : (
+            filteredFavoriteItems.map((item) => {
+              const attachmentUrl = getAttachmentUrl(item.filePath);
+              const shareContent = attachmentUrl ? `${item.content}\n${attachmentUrl}` : item.content;
+
+              return (
+                <article key={item.id} className="favorite-card">
+                  <div className="favorite-card-head">
+                    <span>{favoriteTypeText[item.type]}</span>
+                    <time>{formatHistoryDate(item.createdAt)} {formatClock(item.createdAt)}</time>
+                  </div>
+                  <div className="favorite-card-body">
+                    {item.type === 'media' && attachmentUrl ? (
+                      <a href={attachmentUrl} target="_blank" rel="noreferrer">
+                        <img src={attachmentUrl} alt={item.content || '收藏图片'} />
+                      </a>
+                    ) : item.type === 'file' && attachmentUrl ? (
+                      <a className="favorite-file" href={attachmentUrl} target="_blank" rel="noreferrer" download>
+                        <FileOutlined />
+                        <span>
+                          <strong>{item.content || '文件'}</strong>
+                          <small>{formatFileSize(item.fileSize)}</small>
+                        </span>
+                      </a>
+                    ) : (
+                      <p>{item.content}</p>
+                    )}
+                  </div>
+                  <div className="favorite-card-foot">
+                    <span>来自 {item.sourceName}</span>
+                    <Space size={6}>
+                      <Button size="small" icon={<ShareAltOutlined />} onClick={() => openShare(shareContent)}>
+                        分享
+                      </Button>
+                      <Button size="small" icon={<DeleteOutlined />} onClick={() => void removeFavoriteItem(item.id)}>
+                        删除
+                      </Button>
+                    </Space>
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderGroupMessage = (msg: LocalGroupMessage, index: number) => {
+    const isMine = msg.senderId === currentUserId;
+    const previous = activeGroupMessages[index - 1];
+    const currentDate = formatHistoryDate(msg.createdAt);
+    const previousDate = previous ? formatHistoryDate(previous.createdAt) : '';
+    const showDate = index === 0 || currentDate !== previousDate;
+    const messageType = normalizeMessageType(msg.type);
+    const attachmentUrl = getAttachmentUrl(msg.filePath);
+    const shareContent = attachmentUrl ? `${msg.content || '附件'}\n${attachmentUrl}` : msg.content;
+    const sender = isMine
+      ? (authStore.user as UserSummary | null)
+      : (chatStore.contacts.find((contact) => contact.contact_user?.id === msg.senderId)?.contact_user as UserSummary | undefined);
+
+    return (
+      <div key={msg.id} className="message-block">
+        {showDate && <div className="message-date">{formatDateLabel(msg.createdAt)}</div>}
+        <div className={`qq-message ${isMine ? 'sent' : 'received'}`}>
+          {!isMine && renderUserAvatar(sender, 36)}
+          <div className="qq-bubble">
+            {!isMine && <div className="group-message-sender">{msg.senderName}</div>}
+            {msg.duration || messageType === 'audio' ? (
+              <button
+                type="button"
+                className="voice-bubble voice-bubble-button"
+                disabled={!attachmentUrl}
+                onClick={() => {
+                  if (!attachmentUrl) return;
+                  void new Audio(attachmentUrl).play().catch(() => message.error('语音播放失败'));
+                }}
+              >
+                <span className="voice-play" />
+                <span className="voice-bars" />
+                <span>{msg.duration || 4}&quot;</span>
+              </button>
+            ) : messageType === 'image' && attachmentUrl ? (
+              <a className="message-image-link" href={attachmentUrl} target="_blank" rel="noreferrer">
+                <img className="message-image" src={attachmentUrl} alt={msg.content || '图片'} />
+              </a>
+            ) : messageType === 'file' && attachmentUrl ? (
+              <a className="message-file-card" href={attachmentUrl} target="_blank" rel="noreferrer" download>
+                <FileOutlined />
+                <span>
+                  <strong>{msg.content || '文件'}</strong>
+                  <small>{formatFileSize(msg.fileSize)}</small>
+                </span>
+              </a>
+            ) : (
+              <div className="message-text">{msg.content}</div>
+            )}
+            <div className="message-meta">
+              <span>{formatClock(msg.createdAt)}</span>
+              <button type="button" onClick={() => void addFavoriteFromGroupMessage(msg)}>
+                收藏
+              </button>
+              <button type="button" onClick={() => openShare(shareContent)}>
+                分享
+              </button>
+            </div>
+          </div>
+          {isMine && renderUserAvatar(authStore.user as UserSummary, 36)}
+        </div>
+      </div>
+    );
+  };
+
+  const renderGroupChatMain = () => {
+    if (!activeGroup) {
+      return (
+        <div className="empty-chat">
+          <TeamOutlined />
+          <p>选择一个群聊开始聊天</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="group-chat-panel">
+        <div className="chat-header">
+          <Button
+            type="text"
+            className="mobile-back-button"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => setMobileContentOpen(false)}
+          />
+          <div className="chat-title">
+            <strong>{activeGroup.name}</strong>
+            <small>{activeGroup.memberIds.length + 1}人</small>
+          </div>
+          <Space size={8}>
+            <Tooltip title="群聊记录">
+              <Button type="text" icon={<ClockCircleOutlined />} onClick={() => void openGroupHistory()} />
+            </Tooltip>
+            <Tooltip title="群资料">
+              <Button type="text" icon={<TeamOutlined />} onClick={() => selectGroupProfile(activeGroup)} />
+            </Tooltip>
+            <Tooltip title="分享群聊">
+              <Button
+                type="text"
+                icon={<ShareAltOutlined />}
+                onClick={() => openShare(`群聊名片：${activeGroup.name}（${activeGroup.memberIds.length + 1}人）`)}
+              />
+            </Tooltip>
+            <Tooltip title="添加成员">
+              <Button type="text" icon={<PlusOutlined />} onClick={() => setCreateGroupVisible(true)} />
+            </Tooltip>
+          </Space>
+        </div>
+        <div className="group-chat-content">
+          <section className="group-message-column">
+            <div className="messages-container">
+              {activeGroupMessages.length === 0 ? (
+                <div className="empty-messages">
+                  <div className="qq-watermark" />
+                  <span>暂无群聊记录</span>
+                </div>
+              ) : (
+                activeGroupMessages.map(renderGroupMessage)
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+            <div className="composer">
+              <div className="composer-toolbar">
+	                <Popover
+	                  trigger="click"
+	                  placement="topLeft"
+	                  open={emojiOpen}
+	                  onOpenChange={setEmojiOpen}
+	                  content={emojiContent}
+	                  classNames={{ root: 'emoji-popover' }}
+	                >
+                  <Button type="text" icon={<SmileOutlined />} />
+                </Popover>
+                <Tooltip title="截图">
+                  <Button type="text" icon={<ScissorOutlined />} loading={attachmentUploading} onClick={() => void handleScreenshot()} />
+                </Tooltip>
+                <Tooltip title="发送文件">
+                  <Button
+                    type="text"
+                    icon={<FolderOpenOutlined />}
+                    loading={attachmentUploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  />
+                </Tooltip>
+                <Tooltip title="图片">
+                  <Button
+                    type="text"
+                    icon={<PictureOutlined />}
+                    loading={attachmentUploading}
+                    onClick={() => imageInputRef.current?.click()}
+                  />
+                </Tooltip>
+                <Tooltip title="语音">
+                  <Button
+                    type="text"
+                    icon={<AudioOutlined />}
+                    danger={isRecordingVoice}
+                    loading={attachmentUploading && !isRecordingVoice}
+                    onClick={() => void handleVoiceButtonClick()}
+                  />
+                </Tooltip>
+                <Tooltip title="收藏笔记">
+                  <Button type="text" icon={<HeartOutlined />} onClick={() => setFavoriteNoteVisible(true)} />
+                </Tooltip>
+                <Tooltip title="分享">
+                  <Button type="text" icon={<ShareAltOutlined />} onClick={() => openShare(groupMessageText || activeGroup.name)} />
+                </Tooltip>
+                <input
+                  ref={fileInputRef}
+                  className="composer-file-input"
+                  type="file"
+                  onChange={(event) => void handleAttachmentSelect(event, MESSAGE_TYPES.File)}
+                />
+                <input
+                  ref={imageInputRef}
+                  className="composer-file-input"
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => void handleAttachmentSelect(event, MESSAGE_TYPES.Image)}
+                />
+              </div>
+              {isRecordingVoice && (
+                <div className="voice-recording-strip">
+                  <span className="voice-recording-pulse" />
+                  <span>正在录音 {voiceRecordSeconds || 1}&quot;</span>
+                  <Button size="small" type="primary" onClick={() => void handleVoiceButtonClick()}>
+                    停止并发送
+                  </Button>
+                </div>
+              )}
+              <div className="composer-input">
+                <TextArea
+                  value={groupMessageText}
+                  onChange={(event) => setGroupMessageText(event.target.value)}
+                  onPaste={(event) => void handleComposerPaste(event)}
+                  onPressEnter={(event) => {
+                    if (!event.shiftKey) {
+                      event.preventDefault();
+                      void sendGroupMessage();
+                    }
+                  }}
+                  autoSize={{ minRows: 2, maxRows: 5 }}
+                />
+                <Button type="primary" icon={<SendOutlined />} onClick={() => void sendGroupMessage()} disabled={!groupMessageText.trim()}>
+                  发送
                 </Button>
               </div>
-            </Content>
-          </>
-        ) : (
-          <div className="empty-chat">
-            <MessageOutlined style={{ fontSize: 64, color: '#d9d9d9' }} />
-            <p>Select a contact to start chatting</p>
-          </div>
-        )}
-      </Layout>
+            </div>
+          </section>
+          <aside className="group-member-panel">
+            <div className="group-member-title">
+              <strong>群成员</strong>
+              <span>{allGroupMembers.length}</span>
+            </div>
+            <div className="group-member-list">
+              {allGroupMembers.map((member) => (
+                <div key={member.id || member.username} className="group-member-row">
+                  {renderUserAvatar(member, 34)}
+                  <span>{getUserName(member)}</span>
+                </div>
+              ))}
+            </div>
+          </aside>
+        </div>
+      </div>
+    );
+  };
 
-      <Drawer
-        title="Add Contact"
-        open={addContactVisible}
-        onClose={() => setAddContactVisible(false)}
-      >
-        <Input
-          placeholder="Enter username"
-          value={contactUsername}
-          onChange={(e) => setContactUsername(e.target.value)}
-          onPressEnter={handleAddContact}
-        />
-        <Button type="primary" block style={{ marginTop: 16 }} onClick={handleAddContact}>
-          Add
-        </Button>
-      </Drawer>
+  const renderChatMain = () => {
+    if (activeChatKind === 'group') {
+      return renderGroupChatMain();
+    }
+
+    const contact = chatStore.currentContact;
+    if (!contact) {
+      return (
+        <div className="empty-chat">
+          <MessageOutlined />
+          <p>选择一个会话开始聊天</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="chat-panel">
+        <div className="chat-header">
+          <Button
+            type="text"
+            className="mobile-back-button"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => setMobileContentOpen(false)}
+          />
+          <div className="chat-title">
+            <strong>{getContactName(contact)}</strong>
+            {contact.contact_user?.is_online && <span />}
+          </div>
+          <Space size={8}>
+            <Tooltip title="语音通话">
+              <Button type="text" icon={<PhoneOutlined />} onClick={() => void handleInitiateCall(CallType.Voice)} />
+            </Tooltip>
+            <Tooltip title="视频通话">
+              <Button type="text" icon={<VideoCameraOutlined />} onClick={() => void handleInitiateCall(CallType.Video)} />
+            </Tooltip>
+            <Tooltip title="聊天记录">
+              <Button type="text" icon={<FolderOpenOutlined />} onClick={() => void openHistory()} />
+            </Tooltip>
+            <Tooltip title="添加">
+              <Button type="text" icon={<PlusOutlined />} onClick={openAddContactDialog} />
+            </Tooltip>
+            <Dropdown menu={{ items: contactMenuItems }} trigger={['click']}>
+              <Button type="text" icon={<MoreOutlined />} />
+            </Dropdown>
+          </Space>
+        </div>
+        <div className="messages-container">
+          {chatStore.messages.length === 0 ? (
+            <div className="empty-messages">
+              <div className="qq-watermark" />
+              <span>暂无聊天记录</span>
+            </div>
+          ) : (
+            chatStore.messages.map(renderMessage)
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+        <div className="composer">
+          <div className="composer-toolbar">
+            <Popover
+              trigger="click"
+              placement="topLeft"
+              open={emojiOpen}
+              onOpenChange={setEmojiOpen}
+              content={emojiContent}
+              classNames={{ root: 'emoji-popover' }}
+            >
+              <Button type="text" icon={<SmileOutlined />} />
+            </Popover>
+            <Tooltip title="截图">
+              <Button type="text" icon={<ScissorOutlined />} loading={attachmentUploading} onClick={() => void handleScreenshot()} />
+            </Tooltip>
+            <Tooltip title="发送文件">
+              <Button
+                type="text"
+                icon={<FolderOpenOutlined />}
+                loading={attachmentUploading}
+                onClick={() => fileInputRef.current?.click()}
+              />
+            </Tooltip>
+            <Tooltip title="图片">
+              <Button
+                type="text"
+                icon={<PictureOutlined />}
+                loading={attachmentUploading}
+                onClick={() => imageInputRef.current?.click()}
+              />
+            </Tooltip>
+            <Tooltip title="语音">
+              <Button
+                type="text"
+                icon={<AudioOutlined />}
+                danger={isRecordingVoice}
+                loading={attachmentUploading && !isRecordingVoice}
+                onClick={() => void handleVoiceButtonClick()}
+              />
+            </Tooltip>
+            <Tooltip title="历史记录">
+              <Button type="text" icon={<ClockCircleOutlined />} className="history-shortcut" onClick={() => void openHistory()} />
+            </Tooltip>
+            <input
+              ref={fileInputRef}
+              className="composer-file-input"
+              type="file"
+              onChange={(event) => void handleAttachmentSelect(event, MESSAGE_TYPES.File)}
+            />
+            <input
+              ref={imageInputRef}
+              className="composer-file-input"
+              type="file"
+              accept="image/*"
+              onChange={(event) => void handleAttachmentSelect(event, MESSAGE_TYPES.Image)}
+            />
+          </div>
+          {isRecordingVoice && (
+            <div className="voice-recording-strip">
+              <span className="voice-recording-pulse" />
+              <span>正在录音 {voiceRecordSeconds || 1}&quot;</span>
+              <Button size="small" type="primary" onClick={() => void handleVoiceButtonClick()}>
+                停止并发送
+              </Button>
+            </div>
+          )}
+          <div className="composer-input">
+            <TextArea
+              value={messageText}
+              onChange={(event) => setMessageText(event.target.value)}
+              onPaste={(event) => void handleComposerPaste(event)}
+              onPressEnter={(event) => {
+                if (!event.shiftKey) {
+                  event.preventDefault();
+                  void handleSendMessage();
+                }
+              }}
+              placeholder=""
+              autoSize={{ minRows: 2, maxRows: 5 }}
+            />
+            <Button type="primary" icon={<SendOutlined />} onClick={() => void handleSendMessage()} disabled={!messageText.trim()}>
+              发送
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className={`qq-app ${mobileContentOpen ? 'mobile-content-open' : ''}`}>
+      <div className="qq-window">
+        <div className="qq-titlebar">
+          <button
+            type="button"
+            className="profile-avatar-button"
+            onClick={openProfileSettings}
+            title="编辑资料"
+            aria-label="编辑资料"
+          >
+            <Avatar size={28} src={getAvatarUrl(authStore.user?.avatar_path)}>
+              {getInitial(currentUserName)}
+            </Avatar>
+          </button>
+          <div className="account-copy">
+            <button
+              type="button"
+              className="profile-name-button"
+              onClick={openProfileSettings}
+              title="编辑资料"
+            >
+              {currentUserName}
+            </button>
+            <button type="button" className="signature-button" onClick={openSignatureEditor} title="编辑个性签名">
+              {currentSignature}
+            </button>
+          </div>
+          <div className="title-actions">
+            <Tooltip
+              title={`${weather.location}${weather.updatedAt ? ` · ${weather.updatedAt}` : ''}`}
+            >
+              <span className="weather-pill">
+                <CloudOutlined />
+                <span>
+                  {weather.label}
+                  {typeof weather.temperature === 'number' ? ` ${weather.temperature}°` : ''}
+                </span>
+              </span>
+            </Tooltip>
+            <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout} />
+          </div>
+        </div>
+
+        <div className="qq-body">
+          <nav className="qq-rail">
+            <div className="rail-top">
+              {railItems.map((item) => (
+                <Tooltip title={item.label} placement="right" key={item.key}>
+                  <button
+                    type="button"
+                    className={`rail-button ${mainView === item.key ? 'active' : ''}`}
+                    onClick={() => handleRailSelect(item.key)}
+                    aria-label={item.label}
+                  >
+                    <Badge count={item.badge || 0} size="small" offset={[-2, 4]}>
+                      {item.icon}
+                    </Badge>
+                  </button>
+                </Tooltip>
+              ))}
+            </div>
+          </nav>
+
+          <aside className="qq-sidebar">{renderSidebar()}</aside>
+          <main className="qq-main">
+            {mainView === 'contacts'
+              ? renderContactMain()
+              : mainView === 'favorites'
+                ? renderFavoriteMain()
+                : renderChatMain()}
+          </main>
+        </div>
+      </div>
 
       <Modal
-        title="Edit Display Name"
+        title={null}
+        footer={null}
+        width={960}
+        centered
+        open={contactManagerVisible}
+        closable={false}
+        className="contact-manager-modal"
+        onCancel={() => setContactManagerVisible(false)}
+      >
+        <div className="contact-manager-window">
+          <aside className="contact-manager-side">
+            <div className="contact-manager-lights">
+              <button
+                type="button"
+                className="mac-dot red"
+                aria-label="关闭好友管理器"
+                onClick={() => setContactManagerVisible(false)}
+              />
+              <span className="mac-dot yellow" />
+              <span className="mac-dot green" />
+            </div>
+            <button
+              type="button"
+              className={`contact-manager-all ${contactManagerGroup === CONTACT_MANAGER_ALL_GROUP ? 'active' : ''}`}
+              onClick={() => setContactManagerGroup(CONTACT_MANAGER_ALL_GROUP)}
+            >
+              <strong>全部好友</strong>
+              <span>{chatStore.contacts.length}</span>
+            </button>
+            <div className="contact-manager-side-label">分组</div>
+            <div className="contact-manager-group-list">
+              {contactManagerGroups.map((group) => (
+                <div
+                  key={group.name}
+                  className={`contact-manager-group-item ${contactManagerGroup === group.name ? 'active' : ''}`}
+                >
+                  <button type="button" onClick={() => setContactManagerGroup(group.name)}>
+                    <span>{group.name}</span>
+                    <em>{group.count}</em>
+                  </button>
+                  {group.name !== DEFAULT_CONTACT_GROUP_NAME && (
+                    <Tooltip title="删除分组">
+                      <Button
+                        type="text"
+                        icon={<DeleteOutlined />}
+                        onClick={() => handleDeleteContactGroup(group.name)}
+                      />
+                    </Tooltip>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="contact-manager-add-group"
+              onClick={() => {
+                setContactGroupDraft('');
+                setContactGroupCreateVisible(true);
+              }}
+            >
+              <PlusOutlined /> 添加分组
+            </button>
+          </aside>
+          <section className="contact-manager-main">
+            <div className="contact-manager-header">
+              <h2>好友管理器</h2>
+              <Input
+                prefix={<SearchOutlined />}
+                value={contactManagerSearchText}
+                onChange={(event) => setContactManagerSearchText(event.target.value)}
+                placeholder="搜索"
+                allowClear
+              />
+            </div>
+            <div className="contact-manager-table">
+              <div className="contact-manager-table-head">
+                <span />
+                <span>昵称</span>
+                <span>备注</span>
+                <span>分组</span>
+                <span>好友权限</span>
+              </div>
+              <div className="contact-manager-rows">
+                {contactManagerContacts.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前分组暂无好友" />
+                ) : (
+                  contactManagerContacts.map((contact) => {
+                    const groupName = getContactGroupName(contact);
+                    return (
+                      <div key={contact.id} className="contact-manager-row">
+                        <span className="manager-select-dot" />
+                        <span className="manager-name-cell">
+                          <Avatar size={28} src={getAvatarUrl(contact.contact_user?.avatar_path)}>
+                            {getInitial(getContactName(contact))}
+                          </Avatar>
+                          <strong>{getContactName(contact)}</strong>
+                        </span>
+                        <span className="manager-note-cell">{contact.display_name || contact.contact_user?.username || '-'}</span>
+                        <select value={groupName} onChange={(event) => updateContactGroup(contact, event.target.value)}>
+                          {contactGroupNames.map((name) => (
+                            <option value={name} key={name}>
+                              {name}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="manager-permission-cell">聊天、资料</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </section>
+        </div>
+      </Modal>
+
+      <Modal
+        title="添加分组"
+        open={contactGroupCreateVisible}
+        onCancel={() => setContactGroupCreateVisible(false)}
+        onOk={handleCreateContactGroup}
+        okText="确定"
+        cancelText="取消"
+        className="contact-group-create-modal"
+      >
+        <Input
+          size="large"
+          value={contactGroupDraft}
+          onChange={(event) => setContactGroupDraft(event.target.value)}
+          onPressEnter={handleCreateContactGroup}
+          placeholder="填写分组"
+          maxLength={24}
+          autoFocus
+        />
+      </Modal>
+
+      <Modal
+        title={null}
+        footer={null}
+        width={820}
+        centered
+        open={addContactVisible}
+        className="qq-search-modal"
+        onCancel={() => setAddContactVisible(false)}
+      >
+        <div className="qq-search-window">
+          <div className="qq-search-titlebar">
+            <span className="mac-dot red" />
+            <span className="mac-dot yellow" />
+            <span className="mac-dot green" />
+            <strong>综合搜索</strong>
+          </div>
+          <div className="qq-search-topline">
+            <Input
+              size="large"
+              prefix={<SearchOutlined />}
+              value={contactUsername}
+              onChange={(event) => setContactUsername(event.target.value)}
+              onPressEnter={() => void handleSearchUsers()}
+              placeholder="输入搜索关键词"
+              allowClear
+            />
+            <Button type="primary" size="large" loading={searchUsersLoading} onClick={() => void handleSearchUsers()}>
+              搜索
+            </Button>
+          </div>
+          <div className="qq-search-tabs" role="tablist" aria-label="添加好友搜索分类">
+            {addContactTabs.map((tab) => (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={addContactTab === tab.key}
+                key={tab.key}
+                className={addContactTab === tab.key ? 'active' : ''}
+                onClick={() => setAddContactTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div className="qq-search-body">
+            {addContactTab === 'all' || addContactTab === 'user' ? (
+              <>
+                <div className="qq-search-note-row">
+                  <Input
+                    value={contactNote}
+                    onChange={(event) => setContactNote(event.target.value)}
+                    placeholder="验证消息：我是..."
+                    maxLength={50}
+                    showCount
+                  />
+                  <Button icon={<UserAddOutlined />} onClick={() => void handleAddContact(contactUsername, '账号搜索')}>
+                    直接申请
+                  </Button>
+                </div>
+                <div className="qq-recommend-tabs">
+                  {addContactRecommendTags.map((tag, index) => (
+                    <button type="button" className={index === 0 ? 'active' : ''} key={tag}>
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+
+                {lastUserSearchQuery ? (
+                  <section className="add-contact-section">
+                    <div className="add-contact-section-head">
+                      <strong>用户搜索结果</strong>
+                      <span>{visibleUserResults.length} 个匹配</span>
+                    </div>
+                    <div className="add-contact-user-list">
+                      {searchUsersLoading ? (
+                        <div className="request-empty">搜索中...</div>
+                      ) : visibleUserResults.length === 0 ? (
+                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有找到可添加的用户" />
+                      ) : (
+                        visibleUserResults.map((user) => renderAddContactUser(user, '账号搜索'))
+                      )}
+                    </div>
+                  </section>
+                ) : (
+                  <section className="add-contact-section">
+                    <div className="add-contact-section-head">
+                      <strong>推荐好友</strong>
+                      <span>根据当前可添加账号推荐</span>
+                    </div>
+                    <div className="add-contact-user-list">
+                      {recommendationLoading ? (
+                        <div className="request-empty">推荐加载中...</div>
+                      ) : visibleRecommendedUsers.length === 0 ? (
+                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可推荐用户" />
+                      ) : (
+                        visibleRecommendedUsers.map((user) => renderAddContactUser(user, '好友推荐'))
+                      )}
+                    </div>
+                  </section>
+                )}
+              </>
+            ) : (
+              <div className="qq-search-placeholder">
+                <SearchOutlined />
+                <strong>{addContactTabs.find((tab) => tab.key === addContactTab)?.label}</strong>
+                <span>当前版本先支持用户搜索和好友推荐。</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        title="修改备注"
         open={editDisplayNameVisible}
         onCancel={() => {
           setEditDisplayNameVisible(false);
           displayNameForm.resetFields();
         }}
         onOk={() => displayNameForm.submit()}
+        okText="保存"
+        cancelText="取消"
       >
         <Form form={displayNameForm} onFinish={handleUpdateDisplayName} layout="vertical">
-          <Form.Item
-            name="display_name"
-            label="Display Name"
-            rules={[{ max: 50, message: 'Display name cannot exceed 50 characters' }]}
-          >
-            <Input placeholder="Enter display name" />
+          <Form.Item name="display_name" label="备注" rules={[{ max: 50, message: '备注不能超过 50 个字符' }]}>
+            <Input placeholder="输入备注" />
           </Form.Item>
         </Form>
       </Modal>
 
+      <Modal
+        open={profileVisible}
+        footer={null}
+        closable={false}
+        centered
+        width={544}
+        className="profile-edit-modal"
+        wrapClassName="profile-edit-modal-wrap"
+        onCancel={() => setProfileVisible(false)}
+      >
+        <div className="profile-pop-window">
+          <div className="profile-pop-titlebar">
+            <button
+              type="button"
+              className="profile-pop-close"
+              onClick={() => setProfileVisible(false)}
+              aria-label="关闭资料编辑"
+            />
+            <strong>编辑资料</strong>
+          </div>
+
+          <div className="profile-pop-body">
+            <button
+              type="button"
+              className="profile-avatar-edit"
+              onClick={() => profileAvatarInputRef.current?.click()}
+              disabled={profileAvatarUploading}
+              title="更换头像"
+            >
+              <Avatar size={94} src={getAvatarUrl(authStore.user?.avatar_path)}>
+                {getInitial(currentUserName)}
+              </Avatar>
+              <span className="profile-avatar-hint">{profileAvatarUploading ? '上传中' : '更换头像'}</span>
+            </button>
+            <input
+              ref={profileAvatarInputRef}
+              className="profile-avatar-input"
+              type="file"
+              accept="image/*"
+              onChange={(event) => void handleProfileAvatarChange(event)}
+            />
+
+            <div className="profile-edit-fields">
+              <label className="profile-edit-row">
+                <span>昵称</span>
+                <input
+                  value={profileDraft.display_name}
+                  onChange={(event) => updateProfileDraft('display_name', event.target.value)}
+                  maxLength={PROFILE_NAME_MAX_LENGTH}
+                />
+                <em>{profileDraft.display_name.length}/{PROFILE_NAME_MAX_LENGTH}</em>
+              </label>
+
+              <label className="profile-edit-row">
+                <span>个签</span>
+                <input
+                  value={profileDraft.signature}
+                  onChange={(event) => updateProfileDraft('signature', event.target.value)}
+                  maxLength={PROFILE_SIGNATURE_MAX_LENGTH}
+                />
+                <em>{profileDraft.signature.length}/{PROFILE_SIGNATURE_MAX_LENGTH}</em>
+              </label>
+
+              <label className="profile-edit-row">
+                <span>性别</span>
+                <select
+                  value={profileDraft.gender}
+                  onChange={(event) => updateProfileDraft('gender', event.target.value)}
+                >
+                  {getProfileOptions(genderOptions, profileDraft.gender).map((item) => (
+                    <option value={item} key={item}>{item}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="profile-edit-row">
+                <span>生日</span>
+                <input
+                  type="date"
+                  value={profileDraft.birthday}
+                  onChange={(event) => updateProfileDraft('birthday', event.target.value)}
+                />
+              </label>
+
+              <label className="profile-edit-row">
+                <span>国家</span>
+                <select
+                  value={profileDraft.country}
+                  onChange={(event) => updateProfileDraft('country', event.target.value)}
+                >
+                  {getProfileOptions(countryOptions, profileDraft.country).map((item) => (
+                    <option value={item} key={item}>{item}</option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="profile-edit-location">
+                <label className="profile-edit-row">
+                  <span>省份</span>
+                  <select
+                    value={profileDraft.province}
+                    onChange={(event) => updateProfileDraft('province', event.target.value)}
+                  >
+                    <option value="">请选择</option>
+                    {getProfileOptions(provinceOptions, profileDraft.province).map((item) => (
+                      <option value={item} key={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="profile-edit-row">
+                  <span>地区</span>
+                  <select
+                    value={profileDraft.region}
+                    onChange={(event) => updateProfileDraft('region', event.target.value)}
+                  >
+                    <option value="">请选择</option>
+                    {getProfileOptions(regionOptions, profileDraft.region).map((item) => (
+                      <option value={item} key={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div className="profile-edit-actions">
+              <Button onClick={() => setProfileVisible(false)}>
+                取消
+              </Button>
+              <Button type="primary" loading={profileSaving} onClick={() => void handleSaveProfile()}>
+                保存
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        title="编辑个性签名"
+        open={signatureVisible}
+        onCancel={() => setSignatureVisible(false)}
+        onOk={() => void handleSaveSignature()}
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={signatureSaving}
+      >
+        <TextArea
+          value={signatureDraft}
+          onChange={(event) => setSignatureDraft(event.target.value.slice(0, 100))}
+          maxLength={100}
+          showCount
+          autoSize={{ minRows: 3, maxRows: 5 }}
+          placeholder="写一句个性签名，别人可以在你的资料卡看到"
+        />
+      </Modal>
+
+      <Modal
+        title={historyTitle || (historyMode === 'group' ? '群聊记录' : '聊天记录')}
+        open={historyVisible}
+        footer={null}
+        width={860}
+        className="history-modal"
+        onCancel={() => setHistoryVisible(false)}
+      >
+        <div className="history-shell">
+          <Input
+            size="large"
+            prefix={<SearchOutlined />}
+            value={historyQuery}
+            onChange={(event) => setHistoryQuery(event.target.value)}
+            placeholder="搜索"
+            suffix={<AudioOutlined />}
+          />
+          <div className="history-tabs">
+            {[
+              ['all', '全部'],
+              ['image', '图片/视频'],
+              ['emoji', '表情'],
+              ['file', '文件'],
+              ['link', '链接'],
+            ].map(([key, label]) => (
+              <button
+                type="button"
+                key={key}
+                className={historyFilter === key ? 'active' : ''}
+                onClick={() => setHistoryFilter(key as HistoryFilter)}
+              >
+                {label}
+              </button>
+            ))}
+            <Button type="text" icon={<FilterOutlined />}>
+              筛选
+            </Button>
+          </div>
+          <div className="history-list">
+            {historyLoading ? (
+              <div className="history-empty">加载中...</div>
+            ) : filteredHistoryMessages.length === 0 ? (
+              <div className="history-empty">暂无记录</div>
+            ) : (
+              filteredHistoryMessages.map((msg, index) => {
+                const previous = filteredHistoryMessages[index - 1];
+                const messageType = normalizeMessageType(msg.type);
+                const showDate = index === 0 || formatHistoryDate(previous?.createdAt) !== formatHistoryDate(msg.createdAt);
+                return (
+                  <div key={`history-${msg.id}-${index}`}>
+                    {showDate && <h3>{formatHistoryDate(msg.createdAt)}</h3>}
+                    <div className="history-row">
+                      <Avatar size={38} src={getAvatarUrl(msg.senderAvatarPath)}>
+                        {getInitial(msg.senderName)}
+                      </Avatar>
+                      <div>
+                        <p>
+                          {msg.senderName} <span>{formatClock(msg.createdAt)}</span>
+                        </p>
+                        <strong>
+                          {messageType === 'image' && '图片：'}
+                          {messageType === 'video' && '视频：'}
+                          {messageType === 'audio' && '语音：'}
+                          {messageType === 'file' && '文件：'}
+                          {msg.content || (messageType === 'image' ? '图片' : '消息')}
+                          {messageType === 'file' && msg.fileSize ? ` · ${formatFileSize(msg.fileSize)}` : ''}
+                          {messageType === 'audio' && msg.duration ? ` · ${msg.duration}"` : ''}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        title="创建群聊"
+        open={createGroupVisible}
+        onCancel={() => setCreateGroupVisible(false)}
+        onOk={() => void createLocalGroup()}
+        okText="创建"
+        cancelText="取消"
+        width={560}
+        className="create-group-modal"
+      >
+        <div className="create-group-shell">
+          <Input
+            value={groupNameDraft}
+            onChange={(event) => setGroupNameDraft(event.target.value)}
+            placeholder="群聊名称"
+            maxLength={40}
+          />
+          <label className="create-group-select">
+            <span>群分类</span>
+            <select value={groupCategoryDraft} onChange={(event) => setGroupCategoryDraft(event.target.value)}>
+              {['我创建的群聊', '我加入的群聊', '置顶群聊'].map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="create-group-member-title">
+            <strong>选择好友</strong>
+            <span>{selectedGroupMemberIds.length} 人</span>
+          </div>
+          <div className="create-group-members">
+            {chatStore.contacts.length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无好友" />
+            ) : (
+              chatStore.contacts.map((contact) => {
+                const memberId = contact.contact_user?.id;
+                const selected = typeof memberId === 'number' && selectedGroupMemberIds.includes(memberId);
+
+                return (
+                  <button
+                    type="button"
+                    key={contact.id}
+                    className={selected ? 'selected' : ''}
+                    onClick={() => toggleCreateGroupMember(memberId)}
+                  >
+                    {renderAvatar(contact, 36)}
+                    <span>{getContactName(contact)}</span>
+                    <CheckOutlined />
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        title="创建笔记"
+        open={favoriteNoteVisible}
+        onCancel={() => setFavoriteNoteVisible(false)}
+        onOk={() => void addFavoriteNote()}
+        okText="收藏"
+        cancelText="取消"
+        width={520}
+      >
+        <TextArea
+          value={favoriteNoteDraft}
+          onChange={(event) => setFavoriteNoteDraft(event.target.value)}
+          autoSize={{ minRows: 5, maxRows: 9 }}
+          maxLength={1000}
+          showCount
+          placeholder="记录一条收藏笔记"
+        />
+      </Modal>
+
+      <Modal
+        title="分享"
+        open={shareVisible}
+        onCancel={() => setShareVisible(false)}
+        width={760}
+        className="share-modal"
+        footer={[
+          <Button key="cancel" onClick={() => setShareVisible(false)}>
+            取消
+          </Button>,
+          <Button key="submit" type="primary" onClick={() => void confirmShare()}>
+            分享
+          </Button>,
+        ]}
+      >
+        <div className="share-shell">
+          <section className="share-targets">
+            <Input
+              prefix={<SearchOutlined />}
+              value={shareSearchText}
+              onChange={(event) => setShareSearchText(event.target.value)}
+              placeholder="搜索好友或群聊"
+              allowClear
+            />
+            <div className="share-quick-actions">
+              <Button icon={<TeamOutlined />} onClick={() => setCreateGroupVisible(true)}>
+                创建群聊
+              </Button>
+              <Button icon={<ShareAltOutlined />} onClick={() => void handleNativeShare()}>
+                分享到微信
+              </Button>
+            </div>
+            <div className="share-target-list">
+              {recentShareTargets.length === 0 ? (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有匹配对象" />
+              ) : (
+                recentShareTargets.map((target) => (
+                  <button
+                    type="button"
+                    key={target.id}
+                    className={selectedShareTargetIds.includes(target.id) ? 'selected' : ''}
+                    onClick={() => toggleShareTarget(target.id)}
+                  >
+                    {target.type === 'group' ? (
+                      <Avatar size={38} icon={<TeamOutlined />} />
+                    ) : (
+                      <Avatar size={38} src={getAvatarUrl(target.avatarPath)}>
+                        {getInitial(target.name)}
+                      </Avatar>
+                    )}
+                    <span>{target.name}</span>
+                    <CheckOutlined />
+                  </button>
+                ))
+              )}
+            </div>
+          </section>
+          <section className="share-selection">
+            <h3>分享到</h3>
+            <div className="share-selected-list">
+              {selectedShareTargets.length === 0 ? (
+                <span className="share-selected-empty">请选择联系人或群聊</span>
+              ) : (
+                selectedShareTargets.map((target) => (
+                  <button type="button" key={target.id} onClick={() => toggleShareTarget(target.id)}>
+                    {target.type === 'group' ? <TeamOutlined /> : <UserOutlined />}
+                    {target.name}
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="share-preview">
+              <strong>分享内容</strong>
+              <p>{sharePayload}</p>
+            </div>
+            <TextArea
+              value={shareNote}
+              onChange={(event) => setShareNote(event.target.value)}
+              autoSize={{ minRows: 3, maxRows: 5 }}
+              maxLength={300}
+              placeholder="给好友留言"
+            />
+          </section>
+        </div>
+      </Modal>
 
       <CallModal />
       <CallPage />
-
-      {/* Version */}
-      <div className="version-badge">
-        SimpleChat v{APP_CONFIG.VERSION}
-      </div>
-    </Layout>
+    </div>
   );
 });
 

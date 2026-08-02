@@ -1,31 +1,41 @@
 import { makeAutoObservable } from 'mobx';
-import { apiService } from '../services/api.service';
+import { apiService, type UserSummaryResponse } from '../services/api.service';
 import { signalRService } from '../services/signalr.service';
+import { authStore } from './auth.store';
+
+type ChatUserSummary = UserSummaryResponse & { id: number };
 
 export interface ChatMessage {
   id: number;
   sender_id: number;
   receiver_id: number;
   content: string;
-  type: number;
+  type: number | string;
   timestamp: string;
   is_read: boolean;
   file_path?: string;
   file_size?: number;
   duration?: number;
   created_at: string;
-  sender: any;
-  receiver: any;
+  sender: ChatUserSummary;
+  receiver: ChatUserSummary;
 }
 
 export interface Contact {
   id: number;
-  contact_user: any;
+  contact_user: ChatUserSummary;
   display_name?: string;
   added_at: string;
   is_blocked: boolean;
   last_message_at?: string;
   unread_count: number;
+}
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  const maybeError = error as { response?: { data?: { message?: unknown } } };
+  return typeof maybeError.response?.data?.message === 'string'
+    ? maybeError.response.data.message
+    : fallback;
 }
 
 class ChatStore {
@@ -39,61 +49,139 @@ class ChatStore {
     this.setupSignalRHandlers();
   }
 
+  get totalUnreadCount() {
+    return this.contacts.reduce((sum, contact) => sum + (contact.unread_count || 0), 0);
+  }
+
   setupSignalRHandlers() {
     signalRService.onNewMessage = (message: ChatMessage) => {
-      // Check whether message belongs to current contact
-      const isCurrentContactMessage = 
-        this.currentContact &&
-        (message.sender_id === this.currentContact.contact_user.id ||
-          message.receiver_id === this.currentContact.contact_user.id);
+      const currentUserId = authStore.user?.id;
+      const peerUserId = this.getPeerUserId(message, currentUserId);
+      const contact = this.findContactByPeerId(peerUserId);
+      const isIncomingMessage = currentUserId !== undefined && message.receiver_id === currentUserId;
+      const isCurrentContactMessage = Boolean(contact && this.currentContact?.id === contact.id);
+      const visibleMessage = isIncomingMessage && isCurrentContactMessage
+        ? { ...message, is_read: true }
+        : message;
 
       if (isCurrentContactMessage) {
         // Avoid adding duplicate messages
         if (!this.messages.find(m => m.id === message.id)) {
-          this.messages.push(message);
+          this.messages.push(visibleMessage);
           // Keep only the most recent 100 messages
           if (this.messages.length > 100) {
             this.messages = this.messages.slice(-100);
           }
         }
       }
-      
-      // Update contact unread count and last message time
-      this.updateContactUnreadCount(message);
-      
-      // Reload contacts when a new message arrives to refresh unread count
-      this.loadContacts();
+
+      if (contact) {
+        this.updateContactForMessage(contact.id, visibleMessage, isIncomingMessage && !isCurrentContactMessage);
+        if (isIncomingMessage && isCurrentContactMessage) {
+          this.markContactAsRead(contact.id);
+          void this.markMessagesAsRead([message.id], contact.id);
+        }
+      }
+
+      if (!contact || (isIncomingMessage && !isCurrentContactMessage)) {
+        void this.loadContacts(false);
+      }
     };
   }
 
-  updateContactUnreadCount(message: ChatMessage) {
-    const contact = this.contacts.find(
-      (c) =>
-        c.contact_user.id === message.sender_id ||
-        c.contact_user.id === message.receiver_id
-    );
-    if (contact) {
-      contact.unread_count += 1;
-      contact.last_message_at = message.created_at;
+  private getPeerUserId(message: ChatMessage, currentUserId?: number) {
+    if (currentUserId !== undefined) {
+      if (message.sender_id === currentUserId) return message.receiver_id;
+      if (message.receiver_id === currentUserId) return message.sender_id;
+    }
+    return message.sender_id;
+  }
+
+  private findContactByPeerId(peerUserId?: number) {
+    if (peerUserId === undefined) return undefined;
+    return this.contacts.find((contact) => contact.contact_user?.id === peerUserId);
+  }
+
+  private updateContactForMessage(contactId: number, message: ChatMessage, incrementUnread: boolean) {
+    const nextContacts = this.contacts.map((contact) => {
+      if (contact.id !== contactId) return contact;
+      return {
+        ...contact,
+        unread_count: incrementUnread ? (contact.unread_count || 0) + 1 : contact.unread_count,
+        last_message_at: message.created_at || message.timestamp || contact.last_message_at,
+      };
+    });
+
+    this.contacts = nextContacts;
+    if (this.currentContact?.id === contactId) {
+      const nextCurrentContact = nextContacts.find((contact) => contact.id === contactId);
+      if (nextCurrentContact) {
+        this.currentContact = nextCurrentContact;
+      }
     }
   }
 
-  async loadContacts() {
-    this.isLoading = true;
+  markContactAsRead(contactId: number) {
+    const nextContacts = this.contacts.map((contact) =>
+      contact.id === contactId ? { ...contact, unread_count: 0 } : contact
+    );
+
+    this.contacts = nextContacts;
+    if (this.currentContact?.id === contactId) {
+      const nextCurrentContact = nextContacts.find((contact) => contact.id === contactId);
+      if (nextCurrentContact) {
+        this.currentContact = nextCurrentContact;
+      }
+    }
+  }
+
+  private async markMessagesAsRead(messageIds: number[], contactId?: number) {
+    const uniqueMessageIds = Array.from(new Set(messageIds));
+    if (uniqueMessageIds.length === 0) return;
+
+    this.messages = this.messages.map((message) =>
+      uniqueMessageIds.includes(message.id) ? { ...message, is_read: true } : message
+    );
+    if (contactId !== undefined) {
+      this.markContactAsRead(contactId);
+    }
+
+    try {
+      await Promise.all(uniqueMessageIds.map((messageId) => apiService.markMessageAsRead(messageId)));
+    } catch (error) {
+      console.error('Failed to mark messages as read:', error);
+    } finally {
+      void this.loadContacts(false);
+    }
+  }
+
+  async loadContacts(showLoading = true) {
+    if (showLoading) {
+      this.isLoading = true;
+    }
     try {
       const response = await apiService.getContacts();
       if (response.success && response.data) {
         this.contacts = response.data;
+        if (this.currentContact) {
+          const nextCurrentContact = response.data.find((contact) => contact.id === this.currentContact?.id);
+          if (nextCurrentContact) {
+            this.currentContact = nextCurrentContact;
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to load contacts:', error);
     } finally {
-      this.isLoading = false;
+      if (showLoading) {
+        this.isLoading = false;
+      }
     }
   }
 
   async loadMessages(contactId: number) {
     this.isLoading = true;
+    this.markContactAsRead(contactId);
     try {
       const response = await apiService.getChatHistory(contactId);
       if (response.success && response.data) {
@@ -106,25 +194,36 @@ class ChatStore {
           return acc;
         }, []);
         this.messages = uniqueMessages;
+        this.markContactAsRead(contactId);
+        void this.loadContacts(false);
       }
     } catch (error) {
       console.error('Failed to load messages:', error);
+      void this.loadContacts(false);
     } finally {
       this.isLoading = false;
     }
   }
 
-  async sendMessage(receiverId: number, content: string) {
+  async sendMessage(
+    receiverId: number,
+    content: string,
+    options?: { type?: number; file_path?: string; file_size?: number; duration?: number }
+  ) {
     try {
       const response = await apiService.sendMessage({
         receiver_id: receiverId,
         content,
-        type: 0, // Text
+        type: options?.type ?? 1,
+        file_path: options?.file_path,
+        file_size: options?.file_size,
+        duration: options?.duration,
       });
       if (response.success && response.data) {
+        const sentMessage = response.data;
         // Avoid adding duplicate messages (also received from SignalR)
-        if (!this.messages.find(m => m.id === response.data.id)) {
-          this.messages.push(response.data);
+        if (!this.messages.find(m => m.id === sentMessage.id)) {
+          this.messages.push(sentMessage);
           // Keep only the most recent 100 messages
           if (this.messages.length > 100) {
             this.messages = this.messages.slice(-100);
@@ -134,15 +233,16 @@ class ChatStore {
       } else {
         return { success: false, message: response.message || 'Failed to send message' };
       }
-    } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || 'Failed to send message' };
+    } catch (error: unknown) {
+      return { success: false, message: getApiErrorMessage(error, 'Failed to send message') };
     }
   }
 
   setCurrentContact(contact: Contact | null) {
     this.currentContact = contact;
     if (contact) {
-      this.loadMessages(contact.id);
+      this.markContactAsRead(contact.id);
+      void this.loadMessages(contact.id);
     } else {
       this.messages = [];
     }
@@ -157,8 +257,8 @@ class ChatStore {
       } else {
         return { success: false, message: response.message || 'Failed to add contact' };
       }
-    } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || 'Failed to add contact' };
+    } catch (error: unknown) {
+      return { success: false, message: getApiErrorMessage(error, 'Failed to add contact') };
     }
   }
 
@@ -174,8 +274,8 @@ class ChatStore {
       } else {
         return { success: false, message: response.message || 'Update failed' };
       }
-    } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || 'Update failed' };
+    } catch (error: unknown) {
+      return { success: false, message: getApiErrorMessage(error, 'Update failed') };
     }
   }
 
@@ -212,4 +312,3 @@ class ChatStore {
 }
 
 export const chatStore = new ChatStore();
-

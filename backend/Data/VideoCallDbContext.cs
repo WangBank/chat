@@ -15,6 +15,11 @@ namespace VideoCallAPI.Data
         public DbSet<Room> Rooms { get; set; }
         public DbSet<RoomParticipant> RoomParticipants { get; set; }
         public DbSet<ChatMessage> ChatMessages { get; set; }
+        public DbSet<FriendRequest> FriendRequests { get; set; }
+        public DbSet<ChatGroup> ChatGroups { get; set; }
+        public DbSet<ChatGroupMember> ChatGroupMembers { get; set; }
+        public DbSet<GroupChatMessage> GroupChatMessages { get; set; }
+        public DbSet<FavoriteItem> FavoriteItems { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -25,6 +30,12 @@ namespace VideoCallAPI.Data
             {
                 entity.HasIndex(e => e.username).IsUnique();
                 entity.HasIndex(e => e.email).IsUnique();
+                entity.HasIndex(e => e.qq_open_id)
+                    .IsUnique()
+                    .HasFilter("\"qq_open_id\" IS NOT NULL");
+                entity.HasIndex(e => e.qq_union_id)
+                    .IsUnique()
+                    .HasFilter("\"qq_union_id\" IS NOT NULL");
             });
 
             // Contact 表配置
@@ -42,6 +53,27 @@ namespace VideoCallAPI.Data
 
                 // 确保同一用户不能重复添加同一联系人
                 entity.HasIndex(e => new { e.user_id, e.contact_user_id }).IsUnique();
+            });
+
+            // FriendRequest 表配置
+            modelBuilder.Entity<FriendRequest>(entity =>
+            {
+                entity.HasOne(d => d.requester)
+                    .WithMany(p => p.SentFriendRequests)
+                    .HasForeignKey(d => d.requester_id)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(d => d.receiver)
+                    .WithMany(p => p.ReceivedFriendRequests)
+                    .HasForeignKey(d => d.receiver_id)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.Property(e => e.status)
+                    .HasConversion<int>();
+
+                entity.HasIndex(e => new { e.requester_id, e.receiver_id }).IsUnique();
+                entity.HasIndex(e => new { e.receiver_id, e.status, e.created_at });
+                entity.HasIndex(e => new { e.requester_id, e.status, e.created_at });
             });
 
             // CallHistory 表配置
@@ -117,6 +149,66 @@ namespace VideoCallAPI.Data
             modelBuilder.Entity<ChatMessage>()
                 .Property(e => e.type)
                 .HasConversion<int>();
+
+            // ChatGroup 表配置
+            modelBuilder.Entity<ChatGroup>(entity =>
+            {
+                entity.HasOne(d => d.owner)
+                    .WithMany(p => p.OwnedChatGroups)
+                    .HasForeignKey(d => d.owner_id)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(e => new { e.owner_id, e.created_at });
+            });
+
+            // ChatGroupMember 表配置
+            modelBuilder.Entity<ChatGroupMember>(entity =>
+            {
+                entity.HasOne(d => d.group)
+                    .WithMany(p => p.members)
+                    .HasForeignKey(d => d.group_id)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.user)
+                    .WithMany(p => p.ChatGroupMembers)
+                    .HasForeignKey(d => d.user_id)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(e => new { e.group_id, e.user_id }).IsUnique();
+                entity.HasIndex(e => new { e.user_id, e.is_active });
+            });
+
+            // GroupChatMessage 表配置
+            modelBuilder.Entity<GroupChatMessage>(entity =>
+            {
+                entity.HasOne(d => d.group)
+                    .WithMany(p => p.messages)
+                    .HasForeignKey(d => d.group_id)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.sender)
+                    .WithMany(p => p.SentGroupMessages)
+                    .HasForeignKey(d => d.sender_id)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(e => new { e.group_id, e.created_at });
+            });
+
+            modelBuilder.Entity<GroupChatMessage>()
+                .Property(e => e.type)
+                .HasConversion<int>();
+
+            // FavoriteItem 表配置
+            modelBuilder.Entity<FavoriteItem>(entity =>
+            {
+                entity.HasOne(d => d.user)
+                    .WithMany(p => p.FavoriteItems)
+                    .HasForeignKey(d => d.user_id)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => new { e.user_id, e.created_at });
+                entity.HasIndex(e => new { e.user_id, e.type });
+            });
         }
     }
 }

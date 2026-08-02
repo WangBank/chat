@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, Form, Input, Button, Upload, Avatar, message, Space, Divider } from 'antd';
-import { UserOutlined, LockOutlined, CameraOutlined, SaveOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined, CameraOutlined, SaveOutlined, ArrowLeftOutlined, QqOutlined } from '@ant-design/icons';
 import { observer } from 'mobx-react-lite';
 import { useNavigate } from 'react-router-dom';
 import { authStore } from '../stores/auth.store';
@@ -16,32 +16,45 @@ const SettingsPage = observer(() => {
   const [loading, setLoading] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [avatarLoading, setAvatarLoading] = useState(false);
+  const [qqBindingLoading, setQqBindingLoading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string>('');
+  const currentUser = authStore.user;
 
   useEffect(() => {
-    if (authStore.user) {
+    if (currentUser) {
       form.setFieldsValue({
-        display_name: authStore.user.display_name || '',
+        display_name: currentUser.display_name || '',
+        signature: currentUser.signature || '',
       });
-      if (authStore.user.avatar_path) {
-        setAvatarUrl(`${APP_CONFIG.API_BASE_URL}${authStore.user.avatar_path}?t=${Date.now()}`);
+      if (currentUser.avatar_path) {
+        setAvatarUrl(resolveAvatarUrl(currentUser.avatar_path));
       }
     }
-  }, [authStore.user, form]);
+  }, [currentUser, form]);
 
-  const handleUpdateProfile = async (values: { display_name: string }) => {
+  const getErrorMessage = (error: unknown, fallback: string) => {
+    const maybeError = error as { response?: { data?: { message?: unknown } } };
+    return typeof maybeError.response?.data?.message === 'string'
+      ? maybeError.response.data.message
+      : fallback;
+  };
+
+  const handleUpdateProfile = async (values: { display_name: string; signature: string }) => {
     setLoading(true);
     try {
-      const response = await apiService.updateProfile({ display_name: values.display_name });
+      const response = await apiService.updateProfile({
+        display_name: values.display_name,
+        signature: values.signature,
+      });
       if (response.success && response.data) {
         authStore.user = response.data;
         localStorage.setItem('user', JSON.stringify(response.data));
-        message.success('Nickname updated successfully');
+        message.success('Profile updated successfully');
       } else {
         message.error(response.message || 'Update failed');
       }
-    } catch (error: any) {
-      message.error(error.response?.data?.message || 'Update failed');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, 'Update failed'));
     } finally {
       setLoading(false);
     }
@@ -65,8 +78,8 @@ const SettingsPage = observer(() => {
       } else {
         message.error(response.message || 'Failed to change password');
       }
-    } catch (error: any) {
-      message.error(error.response?.data?.message || 'Failed to change password');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, 'Failed to change password'));
     } finally {
       setPasswordLoading(false);
     }
@@ -96,7 +109,7 @@ const SettingsPage = observer(() => {
         
         // Force-refresh avatar URL
         const newAvatarUrl = result.data.avatar_path 
-          ? `${APP_CONFIG.API_BASE_URL}${result.data.avatar_path}?t=${Date.now()}`
+          ? resolveAvatarUrl(result.data.avatar_path)
           : '';
         setAvatarUrl(newAvatarUrl);
         
@@ -119,9 +132,51 @@ const SettingsPage = observer(() => {
     if (avatarUrl) return avatarUrl;
     // Fallback to avatar path from store
     if (authStore.user?.avatar_path) {
-      return `${APP_CONFIG.API_BASE_URL}${authStore.user.avatar_path}?t=${Date.now()}`;
+      return resolveAvatarUrl(authStore.user.avatar_path);
     }
     return undefined;
+  };
+
+  const resolveAvatarUrl = (avatarPath: string) => {
+    if (/^https?:\/\//i.test(avatarPath)) {
+      return avatarPath;
+    }
+    return `${APP_CONFIG.API_BASE_URL}${avatarPath}?t=${Date.now()}`;
+  };
+
+  const handleQQBind = async () => {
+    setQqBindingLoading(true);
+    try {
+      const response = await apiService.getQQLoginUrl('bind');
+      const loginUrl = response.data;
+
+      if (response.success && loginUrl?.configured && loginUrl.auth_url) {
+        window.location.assign(loginUrl.auth_url);
+        return;
+      }
+
+      if (response.success && loginUrl?.mock_available) {
+        const bindResponse = await apiService.qqDevBind({
+          open_id: `dev_qq_bind_${authStore.user?.id || 'web'}`,
+          nickname: authStore.user?.display_name || authStore.user?.username || 'QQ测试用户',
+        });
+
+        if (bindResponse.success && bindResponse.data) {
+          authStore.user = bindResponse.data;
+          localStorage.setItem('user', JSON.stringify(bindResponse.data));
+          message.success('QQ测试绑定成功');
+        } else {
+          message.error(bindResponse.message || 'QQ绑定失败');
+        }
+        return;
+      }
+
+      message.warning(response.message || 'QQ登录尚未配置');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, 'QQ绑定失败'));
+    } finally {
+      setQqBindingLoading(false);
+    }
   };
 
   return (
@@ -198,12 +253,51 @@ const SettingsPage = observer(() => {
             >
               <Input placeholder="Enter nickname" />
             </Form.Item>
+            <Form.Item
+              label="个性签名"
+              name="signature"
+              rules={[{ max: 100, message: '个性签名不能超过 100 个字符' }]}
+            >
+              <Input.TextArea
+                placeholder="写一句个性签名，别人可以在你的资料卡看到"
+                maxLength={100}
+                showCount
+                autoSize={{ minRows: 3, maxRows: 5 }}
+              />
+            </Form.Item>
             <Form.Item>
               <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={loading}>
-                Save Nickname
+                Save Profile
               </Button>
             </Form.Item>
           </Form>
+        </Space>
+      </Card>
+
+      <Card title="QQ 绑定" style={{ marginBottom: 24 }}>
+        <Space align="center" size="middle" wrap>
+          <Avatar
+            size={48}
+            src={authStore.user?.qq_avatar_url || (authStore.user?.avatar_path ? resolveAvatarUrl(authStore.user.avatar_path) : undefined)}
+            icon={<QqOutlined />}
+            style={{ background: '#12A8F4' }}
+          />
+          <div>
+            <div style={{ fontWeight: 700 }}>
+              {authStore.user?.qq_bound ? authStore.user.qq_nickname || '已绑定 QQ' : '未绑定 QQ'}
+            </div>
+            <div style={{ color: '#8c96a3', fontSize: 13 }}>
+              {authStore.user?.qq_bound ? '可使用 QQ 登录当前账号' : '绑定后可用 QQ 快速登录'}
+            </div>
+          </div>
+          <Button
+            type={authStore.user?.qq_bound ? 'default' : 'primary'}
+            icon={<QqOutlined />}
+            loading={qqBindingLoading}
+            onClick={() => void handleQQBind()}
+          >
+            {authStore.user?.qq_bound ? '重新绑定' : '绑定 QQ'}
+          </Button>
         </Space>
       </Card>
 

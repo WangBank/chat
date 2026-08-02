@@ -5,7 +5,7 @@ using VideoCallAPI.Models.DTOs;
 using VideoCallAPI.Services;
 using System.Security.Claims;
 using VideoCallAPI.Models;
-using Newtonsoft.Json;
+using System.Text.Json;
 using VideoCallAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using VideoCallAPI.Hubs;
@@ -17,14 +17,27 @@ namespace VideoCallAPI.Controllers
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {
+        private static readonly HashSet<string> AllowedAvatarContentTypes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "image/jpeg",
+            "image/png",
+            "image/gif"
+        };
+
         private readonly IUserService _userService;
         private readonly IJwtService _jwtService;
+        private readonly IQQAuthService _qqAuthService;
         private readonly ILogger<AuthController> _logger;
 
-        public AuthController(IUserService userService, IJwtService jwtService, ILogger<AuthController> logger)
+        public AuthController(
+            IUserService userService,
+            IJwtService jwtService,
+            IQQAuthService qqAuthService,
+            ILogger<AuthController> logger)
         {
             _userService = userService;
             _jwtService = jwtService;
+            _qqAuthService = qqAuthService;
             _logger = logger;
         }
 
@@ -101,6 +114,141 @@ namespace VideoCallAPI.Controllers
             }
         }
 
+        [HttpGet("qq/login-url")]
+        public ActionResult<ApiResponse<QQLoginUrlResponseDto>> GetQQLoginUrl([FromQuery] string mode = "login")
+        {
+            try
+            {
+                var loginUrl = _qqAuthService.CreateLoginUrl(mode);
+                return Ok(new ApiResponse<QQLoginUrlResponseDto>
+                {
+                    Success = true,
+                    Message = loginUrl.configured ? "QQ授权地址已生成" : "QQ登录尚未配置",
+                    Data = loginUrl
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "生成QQ授权地址失败: Mode={Mode}", mode);
+                return BadRequest(new ApiResponse<QQLoginUrlResponseDto>
+                {
+                    Success = false,
+                    Message = "生成QQ授权地址失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("qq/login")]
+        public async Task<ActionResult<ApiResponse<object>>> QQLogin(QQLoginRequestDto loginDto)
+        {
+            try
+            {
+                var result = await _qqAuthService.CompleteLoginAsync(loginDto);
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = "QQ登录成功",
+                    Data = new
+                    {
+                        Token = result.Token,
+                        User = result.User
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "QQ登录失败");
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "QQ登录失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("qq/bind")]
+        [Authorize]
+        public async Task<ActionResult<ApiResponse<UserResponseDto>>> BindQQ(QQLoginRequestDto loginDto)
+        {
+            try
+            {
+                var user = await _qqAuthService.BindAsync(GetUserId(), loginDto);
+                return Ok(new ApiResponse<UserResponseDto>
+                {
+                    Success = true,
+                    Message = "QQ绑定成功",
+                    Data = user
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "QQ绑定失败: UserId={UserId}", GetUserId());
+                return BadRequest(new ApiResponse<UserResponseDto>
+                {
+                    Success = false,
+                    Message = "QQ绑定失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("qq/dev-login")]
+        public async Task<ActionResult<ApiResponse<object>>> QQDevLogin(QQDevLoginDto loginDto)
+        {
+            try
+            {
+                var result = await _qqAuthService.DevLoginAsync(loginDto);
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = "QQ测试登录成功",
+                    Data = new
+                    {
+                        Token = result.Token,
+                        User = result.User
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "QQ测试登录失败");
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "QQ测试登录失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("qq/dev-bind")]
+        [Authorize]
+        public async Task<ActionResult<ApiResponse<UserResponseDto>>> QQDevBind(QQDevLoginDto loginDto)
+        {
+            try
+            {
+                var user = await _qqAuthService.DevBindAsync(GetUserId(), loginDto);
+                return Ok(new ApiResponse<UserResponseDto>
+                {
+                    Success = true,
+                    Message = "QQ测试绑定成功",
+                    Data = user
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "QQ测试绑定失败: UserId={UserId}", GetUserId());
+                return BadRequest(new ApiResponse<UserResponseDto>
+                {
+                    Success = false,
+                    Message = "QQ测试绑定失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
         [HttpPost("change-password")]
         [Authorize]
         public async Task<ActionResult<ApiResponse>> ChangePassword(ChangePasswordDto changePasswordDto)
@@ -168,6 +316,7 @@ namespace VideoCallAPI.Controllers
         }
 
         [HttpPut("profile")]
+        [Authorize]
         public async Task<ActionResult<ApiResponse<UserResponseDto>>> UpdateProfile([FromBody] UpdateProfileDto updateProfileDto)
         {
             try
@@ -196,6 +345,7 @@ namespace VideoCallAPI.Controllers
         }
 
         [HttpPost("upload-avatar")]
+        [Authorize]
         public async Task<ActionResult<ApiResponse<UserResponseDto>>> UploadAvatar(IFormFile avatar)
         {
             try
@@ -222,6 +372,20 @@ namespace VideoCallAPI.Controllers
                         Success = false,
                         Message = "不支持的文件格式",
                         Errors = new List<string> { "只支持 JPG, JPEG, PNG, GIF 格式的图片" }
+                    });
+                }
+
+                var avatarContentType = NormalizeContentType(avatar.ContentType);
+                if (!string.IsNullOrWhiteSpace(avatarContentType) &&
+                    !string.Equals(avatarContentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase) &&
+                    !AllowedAvatarContentTypes.Contains(avatarContentType))
+                {
+                    _logger.LogWarning("头像上传失败: 不支持的内容类型 {ContentType}", avatar.ContentType);
+                    return BadRequest(new ApiResponse<UserResponseDto>
+                    {
+                        Success = false,
+                        Message = "不支持的文件格式",
+                        Errors = new List<string> { "头像文件内容类型不正确" }
                     });
                 }
 
@@ -261,6 +425,7 @@ namespace VideoCallAPI.Controllers
         }
 
         [HttpGet("search-users")]
+        [Authorize]
         public async Task<ActionResult<ApiResponse<UserSearchResultDto>>> SearchUsers([FromQuery] string query = "", [FromQuery] int page = 1, [FromQuery] int page_size = 20)
         {
             try
@@ -302,6 +467,15 @@ namespace VideoCallAPI.Controllers
             }
             throw new UnauthorizedAccessException("用户未登录");
         }
+
+        private static string NormalizeContentType(string? contentType)
+        {
+            if (string.IsNullOrWhiteSpace(contentType))
+                return string.Empty;
+
+            return contentType.Split(';', 2)[0].Trim();
+        }
+
     }
 
     [ApiController]
@@ -325,7 +499,7 @@ namespace VideoCallAPI.Controllers
             {
                 var userId = GetUserId();
                 var contacts = await _contactService.GetContactsAsync(userId);
-                System.Console.WriteLine(JsonConvert.SerializeObject(contacts));
+                System.Console.WriteLine(JsonSerializer.Serialize(contacts));
                 return Ok(new ApiResponse<List<ContactResponseDto>>
                 {
                     Success = true,
@@ -394,6 +568,127 @@ namespace VideoCallAPI.Controllers
                 {
                     Success = false,
                     Message = "添加联系人失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpGet("friend-requests")]
+        public async Task<ActionResult<ApiResponse<List<FriendRequestResponseDto>>>> GetFriendRequests()
+        {
+            try
+            {
+                var userId = GetUserId();
+                var requests = await _contactService.GetFriendRequestsAsync(userId);
+
+                return Ok(new ApiResponse<List<FriendRequestResponseDto>>
+                {
+                    Success = true,
+                    Data = requests
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "获取好友申请失败: UserId={UserId}", GetUserId());
+                return BadRequest(new ApiResponse<List<FriendRequestResponseDto>>
+                {
+                    Success = false,
+                    Message = "获取好友申请失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("friend-requests")]
+        public async Task<ActionResult<ApiResponse<FriendRequestResponseDto>>> CreateFriendRequest(CreateFriendRequestDto requestDto)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+
+                return BadRequest(new ApiResponse<FriendRequestResponseDto>
+                {
+                    Success = false,
+                    Message = "请求参数验证失败",
+                    Errors = errors
+                });
+            }
+
+            try
+            {
+                var userId = GetUserId();
+                var request = await _contactService.CreateFriendRequestAsync(userId, requestDto);
+
+                return Ok(new ApiResponse<FriendRequestResponseDto>
+                {
+                    Success = true,
+                    Message = request.direction == "incoming" ? "对方已向你发送好友申请，请在好友通知中处理" : "好友申请已发送",
+                    Data = request
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "发送好友申请失败: UserId={UserId}, ContactUsername={ContactUsername}", GetUserId(), requestDto.username);
+                return BadRequest(new ApiResponse<FriendRequestResponseDto>
+                {
+                    Success = false,
+                    Message = "发送好友申请失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPatch("friend-requests/{requestId}")]
+        public async Task<ActionResult<ApiResponse<FriendRequestResponseDto>>> RespondFriendRequest(int requestId, FriendRequestDecisionDto decisionDto)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var request = await _contactService.RespondFriendRequestAsync(userId, requestId, decisionDto);
+
+                return Ok(new ApiResponse<FriendRequestResponseDto>
+                {
+                    Success = true,
+                    Message = request.status == "accepted" ? "已同意好友申请" : "已拒绝好友申请",
+                    Data = request
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "处理好友申请失败: UserId={UserId}, RequestId={RequestId}", GetUserId(), requestId);
+                return BadRequest(new ApiResponse<FriendRequestResponseDto>
+                {
+                    Success = false,
+                    Message = "处理好友申请失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpDelete("friend-requests/handled")]
+        public async Task<ActionResult<ApiResponse>> ClearHandledFriendRequests()
+        {
+            try
+            {
+                var userId = GetUserId();
+                await _contactService.ClearHandledFriendRequestsAsync(userId);
+
+                return Ok(new ApiResponse
+                {
+                    Success = true,
+                    Message = "已清理处理过的好友申请"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "清理好友申请失败: UserId={UserId}", GetUserId());
+                return BadRequest(new ApiResponse
+                {
+                    Success = false,
+                    Message = "清理好友申请失败",
                     Errors = new List<string> { ex.Message }
                 });
             }
@@ -493,15 +788,135 @@ namespace VideoCallAPI.Controllers
     [Authorize]
     public class ChatController : ControllerBase
     {
+        private static readonly HashSet<string> BlockedUploadExtensions = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ".html", ".htm", ".xhtml", ".svg", ".js", ".mjs", ".css",
+            ".php", ".asp", ".aspx", ".jsp", ".jspx",
+            ".exe", ".dll", ".bat", ".cmd", ".com", ".scr", ".ps1", ".sh",
+            ".jar", ".msi", ".apk", ".ipa", ".deb", ".rpm"
+        };
+
+        private static readonly HashSet<string> BlockedUploadContentTypes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "text/html",
+            "application/xhtml+xml",
+            "image/svg+xml",
+            "application/javascript",
+            "text/javascript",
+            "application/x-javascript",
+            "application/x-msdownload",
+            "application/x-sh",
+            "application/x-msdos-program",
+            "application/x-msi",
+            "application/vnd.android.package-archive"
+        };
+
         private readonly IChatService _chatService;
         private readonly IHubContext<VideoCallHub> _hubContext;
         private readonly ILogger<ChatController> _logger;
+        private readonly IContentSecurityService _contentSecurity;
 
-        public ChatController(IChatService chatService, IHubContext<VideoCallHub> hubContext, ILogger<ChatController> logger)
+        public ChatController(
+            IChatService chatService,
+            IHubContext<VideoCallHub> hubContext,
+            ILogger<ChatController> logger,
+            IContentSecurityService contentSecurity)
         {
             _chatService = chatService;
             _hubContext = hubContext;
             _logger = logger;
+            _contentSecurity = contentSecurity;
+        }
+
+        [HttpPost("upload")]
+        [RequestSizeLimit(20 * 1024 * 1024)]
+        public async Task<ActionResult<ApiResponse<ChatUploadResponseDto>>> UploadChatFile([FromForm] ChatUploadRequestDto uploadDto)
+        {
+            var file = uploadDto.file;
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(new ApiResponse<ChatUploadResponseDto>
+                {
+                    Success = false,
+                    Message = "请选择要发送的文件"
+                });
+            }
+
+            if (file.Length > 20 * 1024 * 1024)
+            {
+                return BadRequest(new ApiResponse<ChatUploadResponseDto>
+                {
+                    Success = false,
+                    Message = "文件大小不能超过 20MB"
+                });
+            }
+
+            try
+            {
+                var userId = GetUserId();
+                var originalFileName = _contentSecurity.NormalizeRequiredText(
+                    Path.GetFileName(file.FileName),
+                    "文件名",
+                    150,
+                    filterSensitiveWords: false);
+                var fileExtension = Path.GetExtension(originalFileName);
+                if (BlockedUploadExtensions.Contains(fileExtension) ||
+                    BlockedUploadContentTypes.Contains(NormalizeContentType(file.ContentType)))
+                {
+                    return BadRequest(new ApiResponse<ChatUploadResponseDto>
+                    {
+                        Success = false,
+                        Message = "不支持上传该类型文件",
+                        Errors = new List<string> { "该文件类型存在安全风险" }
+                    });
+                }
+
+                var safeFileName = string.Join("_", originalFileName.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+                if (string.IsNullOrWhiteSpace(safeFileName))
+                    safeFileName = "attachment";
+                if (safeFileName.Length > 100)
+                {
+                    var extension = Path.GetExtension(safeFileName);
+                    var nameWithoutExtension = Path.GetFileNameWithoutExtension(safeFileName);
+                    safeFileName = $"{nameWithoutExtension[..Math.Min(nameWithoutExtension.Length, 90)]}{extension}";
+                }
+
+                var dateFolder = DateTime.UtcNow.ToString("yyyyMMdd");
+                var uploadRoot = Path.Combine(Directory.GetCurrentDirectory(), "chat-files", dateFolder);
+                Directory.CreateDirectory(uploadRoot);
+
+                var storedFileName = $"{Guid.NewGuid():N}_{safeFileName}";
+                var storedPath = Path.Combine(uploadRoot, storedFileName);
+                await using (var stream = System.IO.File.Create(storedPath))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                _logger.LogInformation("聊天文件上传成功: UserId={UserId}, FileName={FileName}, Size={Size}", userId, originalFileName, file.Length);
+
+                return Ok(new ApiResponse<ChatUploadResponseDto>
+                {
+                    Success = true,
+                    Message = "文件上传成功",
+                    Data = new ChatUploadResponseDto
+                    {
+                        file_name = originalFileName,
+                        file_path = $"/chat-files/{dateFolder}/{storedFileName}",
+                        file_size = file.Length,
+                        content_type = file.ContentType
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "聊天文件上传失败: UserId={UserId}", GetUserId());
+                return BadRequest(new ApiResponse<ChatUploadResponseDto>
+                {
+                    Success = false,
+                    Message = "文件上传失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
         }
 
         [HttpPost("send")]
@@ -686,6 +1101,576 @@ namespace VideoCallAPI.Controllers
                 throw new UnauthorizedAccessException("无效的用户ID");
             return userId;
         }
+
+        private static string NormalizeContentType(string? contentType)
+        {
+            if (string.IsNullOrWhiteSpace(contentType))
+                return string.Empty;
+
+            return contentType.Split(';', 2)[0].Trim();
+        }
+    }
+
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class GroupsController : ControllerBase
+    {
+        private readonly VideoCallDbContext _context;
+        private readonly ILogger<GroupsController> _logger;
+        private readonly IContentSecurityService _contentSecurity;
+
+        public GroupsController(
+            VideoCallDbContext context,
+            ILogger<GroupsController> logger,
+            IContentSecurityService contentSecurity)
+        {
+            _context = context;
+            _logger = logger;
+            _contentSecurity = contentSecurity;
+        }
+
+        [HttpGet]
+        public async Task<ActionResult<ApiResponse<List<ChatGroupResponseDto>>>> GetGroups()
+        {
+            try
+            {
+                var userId = GetUserId();
+                var groups = await _context.ChatGroups
+                    .Include(g => g.members)
+                        .ThenInclude(m => m.user)
+                    .Where(g => g.members.Any(m => m.user_id == userId && m.is_active))
+                    .OrderByDescending(g => g.pinned)
+                    .ThenByDescending(g => g.updated_at)
+                    .ToListAsync();
+
+                return Ok(new ApiResponse<List<ChatGroupResponseDto>>
+                {
+                    Success = true,
+                    Data = groups.Select(MapToChatGroupDto).ToList()
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "获取群聊列表失败: UserId={UserId}", GetUserId());
+                return BadRequest(new ApiResponse<List<ChatGroupResponseDto>>
+                {
+                    Success = false,
+                    Message = "获取群聊列表失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost]
+        public async Task<ActionResult<ApiResponse<ChatGroupResponseDto>>> CreateGroup(CreateChatGroupDto createDto)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var memberIds = createDto.member_ids
+                    .Where(id => id != userId)
+                    .Distinct()
+                    .ToList();
+
+                if (memberIds.Count == 0)
+                {
+                    return BadRequest(new ApiResponse<ChatGroupResponseDto>
+                    {
+                        Success = false,
+                        Message = "至少选择一个好友"
+                    });
+                }
+
+                var contactIds = await _context.Contacts
+                    .Where(c => c.user_id == userId && memberIds.Contains(c.contact_user_id))
+                    .Select(c => c.contact_user_id)
+                    .ToListAsync();
+
+                var missingIds = memberIds.Except(contactIds).ToList();
+                if (missingIds.Count > 0)
+                {
+                    return BadRequest(new ApiResponse<ChatGroupResponseDto>
+                    {
+                        Success = false,
+                        Message = "群成员必须先添加为好友"
+                    });
+                }
+
+                var now = DateTime.UtcNow;
+                var group = new ChatGroup
+                {
+                    name = _contentSecurity.NormalizeOptionalText(createDto.name, "群聊名称", 80) ?? "未命名的群聊",
+                    category = _contentSecurity.NormalizeOptionalText(createDto.category, "群聊分类", 50) ?? "我创建的群聊",
+                    owner_id = userId,
+                    pinned = createDto.pinned,
+                    created_at = now,
+                    updated_at = now
+                };
+
+                group.members.Add(new ChatGroupMember
+                {
+                    user_id = userId,
+                    role = "owner",
+                    joined_at = now,
+                    is_active = true
+                });
+
+                foreach (var memberId in memberIds)
+                {
+                    group.members.Add(new ChatGroupMember
+                    {
+                        user_id = memberId,
+                        role = "member",
+                        joined_at = now,
+                        is_active = true
+                    });
+                }
+
+                _context.ChatGroups.Add(group);
+                await _context.SaveChangesAsync();
+
+                var created = await _context.ChatGroups
+                    .Include(g => g.members)
+                        .ThenInclude(m => m.user)
+                    .FirstAsync(g => g.id == group.id);
+
+                return Ok(new ApiResponse<ChatGroupResponseDto>
+                {
+                    Success = true,
+                    Message = "群聊已创建",
+                    Data = MapToChatGroupDto(created)
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "创建群聊失败: UserId={UserId}", GetUserId());
+                return BadRequest(new ApiResponse<ChatGroupResponseDto>
+                {
+                    Success = false,
+                    Message = "创建群聊失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpGet("{groupId}/messages")]
+        public async Task<ActionResult<ApiResponse<List<GroupChatMessageDto>>>> GetMessages(int groupId)
+        {
+            try
+            {
+                var userId = GetUserId();
+                if (!await IsGroupMember(groupId, userId))
+                {
+                    return Forbid();
+                }
+
+                var messages = await _context.GroupChatMessages
+                    .Include(m => m.sender)
+                    .Where(m => m.group_id == groupId)
+                    .OrderBy(m => m.created_at)
+                    .Take(200)
+                    .ToListAsync();
+
+                return Ok(new ApiResponse<List<GroupChatMessageDto>>
+                {
+                    Success = true,
+                    Data = messages.Select(MapToGroupMessageDto).ToList()
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "获取群聊消息失败: UserId={UserId}, GroupId={GroupId}", GetUserId(), groupId);
+                return BadRequest(new ApiResponse<List<GroupChatMessageDto>>
+                {
+                    Success = false,
+                    Message = "获取群聊消息失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("{groupId}/messages")]
+        public async Task<ActionResult<ApiResponse<GroupChatMessageDto>>> SendMessage(int groupId, SendGroupMessageDto messageDto)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+
+                return BadRequest(new ApiResponse<GroupChatMessageDto>
+                {
+                    Success = false,
+                    Message = "请求参数验证失败",
+                    Errors = errors
+                });
+            }
+
+            try
+            {
+                var userId = GetUserId();
+                if (!await IsGroupMember(groupId, userId))
+                {
+                    return Forbid();
+                }
+
+                var now = DateTime.UtcNow;
+                var content = _contentSecurity.NormalizeRequiredText(messageDto.content, "消息内容", 1000);
+                var filePath = _contentSecurity.NormalizeStoredFilePath(messageDto.file_path, "文件路径", "/chat-files/");
+                var duration = messageDto.duration;
+                if (duration.HasValue && (duration.Value < 0 || duration.Value > 3600))
+                    throw new ArgumentException("消息时长不合法");
+                var message = new GroupChatMessage
+                {
+                    group_id = groupId,
+                    sender_id = userId,
+                    content = content,
+                    type = messageDto.type,
+                    file_path = filePath,
+                    file_size = messageDto.file_size,
+                    duration = duration,
+                    timestamp = now,
+                    created_at = now
+                };
+
+                _context.GroupChatMessages.Add(message);
+
+                var group = await _context.ChatGroups.FindAsync(groupId);
+                if (group != null)
+                {
+                    group.updated_at = now;
+                }
+
+                await _context.SaveChangesAsync();
+
+                var saved = await _context.GroupChatMessages
+                    .Include(m => m.sender)
+                    .FirstAsync(m => m.id == message.id);
+
+                return Ok(new ApiResponse<GroupChatMessageDto>
+                {
+                    Success = true,
+                    Message = "群消息发送成功",
+                    Data = MapToGroupMessageDto(saved)
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "发送群聊消息失败: UserId={UserId}, GroupId={GroupId}", GetUserId(), groupId);
+                return BadRequest(new ApiResponse<GroupChatMessageDto>
+                {
+                    Success = false,
+                    Message = "发送群聊消息失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        private async Task<bool> IsGroupMember(int groupId, int userId)
+        {
+            return await _context.ChatGroupMembers
+                .AnyAsync(m => m.group_id == groupId && m.user_id == userId && m.is_active);
+        }
+
+        private static ChatGroupResponseDto MapToChatGroupDto(ChatGroup group)
+        {
+            var activeMembers = group.members
+                .Where(m => m.is_active)
+                .OrderByDescending(m => m.role == "owner")
+                .ThenBy(m => m.joined_at)
+                .ToList();
+
+            return new ChatGroupResponseDto
+            {
+                id = group.id,
+                name = group.name,
+                category = group.category,
+                member_ids = activeMembers.Select(m => m.user_id).Where(id => id != group.owner_id).ToList(),
+                members = activeMembers.Select(m => MapToUserResponse(m.user)).ToList(),
+                pinned = group.pinned,
+                owner_id = group.owner_id,
+                announcement = group.announcement,
+                note = group.note,
+                created_at = group.created_at,
+                updated_at = group.updated_at
+            };
+        }
+
+        private static GroupChatMessageDto MapToGroupMessageDto(GroupChatMessage message)
+        {
+            return new GroupChatMessageDto
+            {
+                id = message.id,
+                group_id = message.group_id,
+                sender_id = message.sender_id,
+                sender_name = GetDisplayName(message.sender),
+                content = message.content,
+                type = message.type,
+                timestamp = message.timestamp,
+                file_path = message.file_path,
+                file_size = message.file_size,
+                duration = message.duration,
+                created_at = message.created_at,
+                sender = MapToUserResponse(message.sender)
+            };
+        }
+
+        private static UserResponseDto MapToUserResponse(User user)
+        {
+            return new UserResponseDto
+            {
+                id = user.id,
+                username = user.username,
+                email = user.email,
+                display_name = user.display_name,
+                signature = user.signature,
+                gender = user.gender,
+                birthday = user.birthday,
+                country = user.country,
+                province = user.province,
+                region = user.region,
+                avatar_path = user.avatar_path,
+                qq_bound = !string.IsNullOrWhiteSpace(user.qq_open_id),
+                qq_nickname = user.qq_nickname,
+                qq_avatar_url = user.qq_avatar_url,
+                qq_bound_at = user.qq_bound_at,
+                is_online = OnlineStatusPolicy.IsOnline(user),
+                last_login_at = user.last_login_at,
+                created_at = user.created_at,
+                updated_at = user.updated_at
+            };
+        }
+
+        private static string GetDisplayName(User user)
+        {
+            return string.IsNullOrWhiteSpace(user.display_name) ? user.username : user.display_name;
+        }
+
+        private int GetUserId()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+                throw new UnauthorizedAccessException("无效的用户ID");
+            return userId;
+        }
+    }
+
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class FavoritesController : ControllerBase
+    {
+        private static readonly HashSet<string> AllowedFavoriteTypes = new() { "chat", "media", "file", "link", "note" };
+        private readonly VideoCallDbContext _context;
+        private readonly ILogger<FavoritesController> _logger;
+        private readonly IContentSecurityService _contentSecurity;
+
+        public FavoritesController(
+            VideoCallDbContext context,
+            ILogger<FavoritesController> logger,
+            IContentSecurityService contentSecurity)
+        {
+            _context = context;
+            _logger = logger;
+            _contentSecurity = contentSecurity;
+        }
+
+        [HttpGet]
+        public async Task<ActionResult<ApiResponse<List<FavoriteItemResponseDto>>>> GetFavorites([FromQuery] string? type = null, [FromQuery] string? query = null)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var favoritesQuery = _context.FavoriteItems
+                    .Where(item => item.user_id == userId);
+
+                var normalizedType = _contentSecurity.NormalizeOptionalText(type, "收藏类型", 20, filterSensitiveWords: false)?.ToLower();
+                if (!string.IsNullOrWhiteSpace(normalizedType) && normalizedType != "all")
+                {
+                    favoritesQuery = favoritesQuery.Where(item => item.type == normalizedType);
+                }
+
+                if (!string.IsNullOrWhiteSpace(query))
+                {
+                    var keyword = _contentSecurity
+                        .NormalizeRequiredText(query, "搜索内容", 100, filterSensitiveWords: false)
+                        .ToLower();
+                    favoritesQuery = favoritesQuery.Where(item =>
+                        item.content.ToLower().Contains(keyword) ||
+                        item.source_name.ToLower().Contains(keyword));
+                }
+
+                var favorites = await favoritesQuery
+                    .OrderByDescending(item => item.created_at)
+                    .Take(500)
+                    .ToListAsync();
+
+                return Ok(new ApiResponse<List<FavoriteItemResponseDto>>
+                {
+                    Success = true,
+                    Data = favorites.Select(MapToFavoriteDto).ToList()
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "获取收藏失败: UserId={UserId}", GetUserId());
+                return BadRequest(new ApiResponse<List<FavoriteItemResponseDto>>
+                {
+                    Success = false,
+                    Message = "获取收藏失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost]
+        public async Task<ActionResult<ApiResponse<FavoriteItemResponseDto>>> CreateFavorite(CreateFavoriteItemDto createDto)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+
+                return BadRequest(new ApiResponse<FavoriteItemResponseDto>
+                {
+                    Success = false,
+                    Message = "请求参数验证失败",
+                    Errors = errors
+                });
+            }
+
+            try
+            {
+                var userId = GetUserId();
+                var favoriteType = _contentSecurity
+                    .NormalizeRequiredText(createDto.type, "收藏类型", 20, filterSensitiveWords: false)
+                    .ToLower();
+                if (!AllowedFavoriteTypes.Contains(favoriteType))
+                {
+                    return BadRequest(new ApiResponse<FavoriteItemResponseDto>
+                    {
+                        Success = false,
+                        Message = "不支持的收藏类型"
+                    });
+                }
+
+                var content = _contentSecurity.NormalizeRequiredText(createDto.content, "收藏内容", 1000);
+                var sourceName = _contentSecurity.NormalizeOptionalText(createDto.source_name, "来源名称", 100) ?? "我的账号";
+                var filePath = _contentSecurity.NormalizeStoredFilePath(createDto.file_path, "文件路径", "/chat-files/");
+
+                var exists = await _context.FavoriteItems.AnyAsync(item =>
+                    item.user_id == userId &&
+                    item.type == favoriteType &&
+                    item.content == content &&
+                    item.source_name == sourceName &&
+                    item.file_path == filePath);
+
+                if (exists)
+                {
+                    return BadRequest(new ApiResponse<FavoriteItemResponseDto>
+                    {
+                        Success = false,
+                        Message = "已经收藏过了"
+                    });
+                }
+
+                var favorite = new FavoriteItem
+                {
+                    user_id = userId,
+                    content = content,
+                    type = favoriteType,
+                    source_name = sourceName,
+                    file_path = filePath,
+                    file_size = createDto.file_size,
+                    created_at = DateTime.UtcNow
+                };
+
+                _context.FavoriteItems.Add(favorite);
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<FavoriteItemResponseDto>
+                {
+                    Success = true,
+                    Message = "已添加到收藏",
+                    Data = MapToFavoriteDto(favorite)
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "创建收藏失败: UserId={UserId}", GetUserId());
+                return BadRequest(new ApiResponse<FavoriteItemResponseDto>
+                {
+                    Success = false,
+                    Message = "创建收藏失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpDelete("{favoriteId}")]
+        public async Task<ActionResult<ApiResponse>> DeleteFavorite(int favoriteId)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var favorite = await _context.FavoriteItems
+                    .FirstOrDefaultAsync(item => item.id == favoriteId && item.user_id == userId);
+
+                if (favorite == null)
+                {
+                    return NotFound(new ApiResponse
+                    {
+                        Success = false,
+                        Message = "收藏不存在"
+                    });
+                }
+
+                _context.FavoriteItems.Remove(favorite);
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse
+                {
+                    Success = true,
+                    Message = "收藏已删除"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "删除收藏失败: UserId={UserId}, FavoriteId={FavoriteId}", GetUserId(), favoriteId);
+                return BadRequest(new ApiResponse
+                {
+                    Success = false,
+                    Message = "删除收藏失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        private static FavoriteItemResponseDto MapToFavoriteDto(FavoriteItem favorite)
+        {
+            return new FavoriteItemResponseDto
+            {
+                id = favorite.id,
+                content = favorite.content,
+                type = favorite.type,
+                source_name = favorite.source_name,
+                file_path = favorite.file_path,
+                file_size = favorite.file_size,
+                created_at = favorite.created_at
+            };
+        }
+
+        private int GetUserId()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+                throw new UnauthorizedAccessException("无效的用户ID");
+            return userId;
+        }
     }
 
     [ApiController]
@@ -802,16 +1787,30 @@ namespace VideoCallAPI.Controllers
                     });
                 }
 
+                var onlineCutoff = OnlineStatusPolicy.GetOnlineCutoffUtc(DateTime.UtcNow);
+
                 var onlineUsers = await _context.users
-                    .Where(u => u.is_online)
+                    .Where(u => u.is_online
+                        && u.last_heartbeat_at.HasValue
+                        && u.last_heartbeat_at.Value >= onlineCutoff)
                     .Select(u => new UserResponseDto
                     {
                         id = u.id,
                         username = u.username,
                         email = u.email,
                         display_name = u.display_name,
+                        signature = u.signature,
+                        gender = u.gender,
+                        birthday = u.birthday,
+                        country = u.country,
+                        province = u.province,
+                        region = u.region,
                         avatar_path = u.avatar_path,
-                        is_online = u.is_online,
+                        qq_bound = !string.IsNullOrWhiteSpace(u.qq_open_id),
+                        qq_nickname = u.qq_nickname,
+                        qq_avatar_url = u.qq_avatar_url,
+                        qq_bound_at = u.qq_bound_at,
+                        is_online = true,
                         last_login_at = u.last_login_at,
                         created_at = u.created_at,
                         updated_at = u.updated_at
@@ -855,6 +1854,7 @@ namespace VideoCallAPI.Controllers
 
                 var query = _context.users.AsQueryable();
                 var totalCount = await query.CountAsync();
+                var onlineCutoff = OnlineStatusPolicy.GetOnlineCutoffUtc(DateTime.UtcNow);
 
                 var users = await query
                     .OrderBy(u => u.id)
@@ -866,8 +1866,20 @@ namespace VideoCallAPI.Controllers
                         username = u.username,
                         email = u.email,
                         display_name = u.display_name,
+                        signature = u.signature,
+                        gender = u.gender,
+                        birthday = u.birthday,
+                        country = u.country,
+                        province = u.province,
+                        region = u.region,
                         avatar_path = u.avatar_path,
-                        is_online = u.is_online,
+                        qq_bound = !string.IsNullOrWhiteSpace(u.qq_open_id),
+                        qq_nickname = u.qq_nickname,
+                        qq_avatar_url = u.qq_avatar_url,
+                        qq_bound_at = u.qq_bound_at,
+                        is_online = u.is_online
+                            && u.last_heartbeat_at.HasValue
+                            && u.last_heartbeat_at.Value >= onlineCutoff,
                         last_login_at = u.last_login_at,
                         created_at = u.created_at,
                         updated_at = u.updated_at

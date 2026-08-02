@@ -10,14 +10,19 @@ namespace VideoCallAPI.Services
     {
         private readonly VideoCallDbContext _context;
         private readonly ILogger<CallService> _logger;
+        private readonly IContentSecurityService _contentSecurity;
         
         // 内存中的活跃通话管理
         private static readonly ConcurrentDictionary<string, CallSession> _activeCalls = new();
 
-        public CallService(VideoCallDbContext context, ILogger<CallService> logger)
+        public CallService(
+            VideoCallDbContext context,
+            ILogger<CallService> logger,
+            IContentSecurityService contentSecurity)
         {
             _context = context;
             _logger = logger;
+            _contentSecurity = contentSecurity;
         }
 
         public async Task<CallResponseDto> InitiateCallAsync(int callerId, int receiverId, CallType callType)
@@ -32,7 +37,7 @@ namespace VideoCallAPI.Services
                 throw new ArgumentException("用户不存在");
             }
 
-            if (!receiver.is_online)
+            if (!OnlineStatusPolicy.IsOnline(receiver))
             {
                 _logger.LogWarning("发起通话失败，用户不在线: CallerId={CallerId}, ReceiverId={ReceiverId}", callerId, receiverId);
                 throw new InvalidOperationException("用户不在线");
@@ -157,10 +162,12 @@ namespace VideoCallAPI.Services
             var user = await _context.users.FindAsync(userId);
             if (user != null)
             {
+                var now = DateTime.UtcNow;
                 user.is_online = isOnline;
                 if (isOnline)
                 {
-                    user.last_login_at = DateTime.UtcNow;
+                    user.last_login_at = now;
+                    user.last_heartbeat_at = now;
                 }
                 await _context.SaveChangesAsync();
             }
@@ -168,9 +175,11 @@ namespace VideoCallAPI.Services
 
         public async Task<RoomResponseDto> CreateRoomAsync(int userId, CreateRoomDto createRoomDto)
         {
+            var roomName = _contentSecurity.NormalizeRequiredText(createRoomDto.room_name, "房间名称", 100);
+
             var room = new Room
             {
-                room_name = createRoomDto.room_name,
+                room_name = roomName,
                 room_code = GenerateRoomCode(),
                 created_by = userId,
                 max_participants = createRoomDto.max_participants
@@ -295,9 +304,22 @@ namespace VideoCallAPI.Services
                 id = user.id,
                 username = user.username,
                 email = user.email,
+                display_name = user.display_name,
+                signature = user.signature,
+                gender = user.gender,
+                birthday = user.birthday,
+                country = user.country,
+                province = user.province,
+                region = user.region,
                 avatar_path = user.avatar_path,
-                is_online = user.is_online,
-                last_login_at = user.last_login_at
+                qq_bound = !string.IsNullOrWhiteSpace(user.qq_open_id),
+                qq_nickname = user.qq_nickname,
+                qq_avatar_url = user.qq_avatar_url,
+                qq_bound_at = user.qq_bound_at,
+                is_online = OnlineStatusPolicy.IsOnline(user),
+                last_login_at = user.last_login_at,
+                created_at = user.created_at,
+                updated_at = user.updated_at
             };
         }
 
