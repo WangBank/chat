@@ -10,9 +10,14 @@ LAN devices and externally routed traffic can reach them.
 .\scripts\deploy-local.ps1
 ```
 
-The first run creates an ignored `.env` file with generated local secrets. The
-script builds both images, starts Docker Compose, waits for health checks, and
-prints the URLs to use from the website and Flutter.
+The first run creates a shared local env file at
+`%USERPROFILE%\.foreverlove-chat\foreverlove-chat.env` with generated secrets.
+All checkouts and the self-hosted runner reuse that file, so the Docker database
+password stays stable across deployments. Override the location with
+`FOREVERLOVE_CHAT_ENV_FILE` when needed.
+
+The script builds both images, starts Docker Compose, waits for health checks,
+and prints the URLs to use from the website and Flutter.
 
 Default endpoints:
 
@@ -70,8 +75,8 @@ Recommended GitHub repository settings:
 - Optional variables: `API_PORT`, `WEB_PORT`, `EXTRA_CORS_ORIGIN`,
   `SWAGGER_ENABLED`, `USE_HTTPS_REDIRECTION`
 
-If secrets are not configured, `scripts/deploy-local.ps1` creates local ignored
-values in `.env` on the self-hosted runner machine.
+If secrets are not configured, `scripts/deploy-local.ps1` uses the shared local
+env file on the self-hosted runner machine.
 
 ## Register the local runner
 

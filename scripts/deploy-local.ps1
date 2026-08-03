@@ -14,7 +14,15 @@ Set-StrictMode -Version Latest
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RootDir = Split-Path -Parent $ScriptDir
-$EnvFile = Join-Path $RootDir ".env"
+$LocalEnvFile = Join-Path $RootDir ".env"
+$DefaultEnvDir = Join-Path $env:USERPROFILE ".foreverlove-chat"
+$DefaultEnvFile = Join-Path $DefaultEnvDir "foreverlove-chat.env"
+$EnvFile = if (-not [string]::IsNullOrWhiteSpace($env:FOREVERLOVE_CHAT_ENV_FILE)) {
+    $env:FOREVERLOVE_CHAT_ENV_FILE
+}
+else {
+    $DefaultEnvFile
+}
 $VersionFile = Join-Path $RootDir "VERSION"
 $IsWindowsPlatform = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
     [System.Runtime.InteropServices.OSPlatform]::Windows)
@@ -73,6 +81,11 @@ function Add-DotEnvValue {
 
 function Ensure-EnvFile {
     param([string]$Path)
+
+    $parent = Split-Path -Parent $Path
+    if (-not [string]::IsNullOrWhiteSpace($parent)) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
 
     if (-not (Test-Path -LiteralPath $Path)) {
         $initialSecret = New-RandomSecret
@@ -230,13 +243,26 @@ function Set-Env {
 }
 
 Set-Location -LiteralPath $RootDir
+
+if (-not (Test-Path -LiteralPath $EnvFile) -and
+    (Test-Path -LiteralPath $LocalEnvFile) -and
+    -not [string]::Equals((Resolve-Path -LiteralPath $EnvFile -ErrorAction SilentlyContinue), (Resolve-Path -LiteralPath $LocalEnvFile), [System.StringComparison]::OrdinalIgnoreCase)) {
+    $parent = Split-Path -Parent $EnvFile
+    if (-not [string]::IsNullOrWhiteSpace($parent)) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+
+    Copy-Item -LiteralPath $LocalEnvFile -Destination $EnvFile
+    Write-DeployLog "Migrated local .env to shared env file: $EnvFile"
+}
+
 Ensure-EnvFile -Path $EnvFile
 $DotEnv = Read-DotEnv -Path $EnvFile
 
-foreach ($secretName in @("JWT_SECRET", "POSTGRES_PASSWORD", "POSTGRES_DB", "POSTGRES_USER")) {
-    $currentValue = [Environment]::GetEnvironmentVariable($secretName)
-    if ([string]::IsNullOrWhiteSpace($currentValue) -and $DotEnv.ContainsKey($secretName)) {
-        Set-Env -Name $secretName -Value ([string]$DotEnv[$secretName])
+foreach ($entry in $DotEnv.GetEnumerator()) {
+    $currentValue = [Environment]::GetEnvironmentVariable([string]$entry.Key)
+    if ([string]::IsNullOrWhiteSpace($currentValue)) {
+        Set-Env -Name ([string]$entry.Key) -Value ([string]$entry.Value)
     }
 }
 
