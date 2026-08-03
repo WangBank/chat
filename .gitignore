@@ -240,5 +240,4 @@ web/
 .fake
 
 # Local repository/tooling folders
-.github/
 .codegraph/

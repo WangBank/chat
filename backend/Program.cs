@@ -185,6 +185,9 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+var appVersion = app.Configuration["App:Version"]
+    ?? System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString()
+    ?? "0.0.0";
 
 // 初始化数据库和admin账号
 using (var scope = app.Services.CreateScope())
@@ -238,7 +241,8 @@ app.Use(async (context, next) =>
 });
 
 // 仅在开发环境启用Swagger，Release模式禁用
-if (app.Environment.IsDevelopment())
+var swaggerEnabled = app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Swagger:Enabled");
+if (swaggerEnabled)
 {
     app.UseSwagger();
     app.UseSwaggerUI(c =>
@@ -249,7 +253,10 @@ if (app.Environment.IsDevelopment())
 }
 
 // 仅在生产环境使用 HTTPS 重定向
-if (!app.Environment.IsDevelopment())
+var useHttpsRedirection = app.Configuration.GetValue(
+    "Security:UseHttpsRedirection",
+    !app.Environment.IsDevelopment());
+if (useHttpsRedirection)
 {
     app.UseHsts();
     app.UseHttpsRedirection();
@@ -307,6 +314,19 @@ app.UseStaticFiles(new StaticFileOptions
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "ok",
+    version = appVersion,
+    environment = app.Environment.EnvironmentName,
+    utc_time = DateTimeOffset.UtcNow
+}));
+
+app.MapGet("/api/system/version", () => Results.Ok(new
+{
+    version = appVersion
+}));
 
 app.MapControllers();
 

@@ -1,0 +1,78 @@
+name: Deploy Local Docker
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: local-docker-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and deploy on local Docker
+    runs-on: [self-hosted, Windows, X64, local-docker]
+    timeout-minutes: 45
+
+    env:
+      API_PORT: ${{ vars.API_PORT || '7001' }}
+      WEB_PORT: ${{ vars.WEB_PORT || '7002' }}
+      API_PUBLIC_URL: ${{ vars.API_PUBLIC_URL }}
+      WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
+      SIGNALR_PUBLIC_URL: ${{ vars.SIGNALR_PUBLIC_URL }}
+      EXTRA_CORS_ORIGIN: ${{ vars.EXTRA_CORS_ORIGIN || 'http://common.wangbank.top' }}
+      SWAGGER_ENABLED: ${{ vars.SWAGGER_ENABLED || 'false' }}
+      USE_HTTPS_REDIRECTION: ${{ vars.USE_HTTPS_REDIRECTION || 'false' }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v6
+
+      - name: Resolve version
+        shell: pwsh
+        run: |
+          $baseVersion = (Get-Content -LiteralPath VERSION -Raw).Trim()
+          $shortSha = $env:GITHUB_SHA.Substring(0, 7)
+          $appVersion = "$baseVersion+$env:GITHUB_RUN_NUMBER.$shortSha"
+          $imageTag = ($appVersion -replace '[^A-Za-z0-9_.-]', '-').Trim('.', '-', '_')
+          "APP_VERSION=$appVersion" >> $env:GITHUB_ENV
+          "IMAGE_TAG=$imageTag" >> $env:GITHUB_ENV
+          "VCS_REF=$env:GITHUB_SHA" >> $env:GITHUB_ENV
+          "Resolved version $appVersion"
+
+      - name: Show Docker environment
+        shell: pwsh
+        run: |
+          docker --version
+          docker compose version
+          docker info
+
+      - name: Deploy to local Docker
+        shell: pwsh
+        run: |
+          ./scripts/deploy-local.ps1 `
+            -AppVersion "$env:APP_VERSION" `
+            -ImageTag "$env:IMAGE_TAG"
+
+      - name: Deployment summary
+        shell: pwsh
+        run: |
+          $api = if ($env:API_PUBLIC_URL) { $env:API_PUBLIC_URL } else { "http://localhost:$env:API_PORT" }
+          $web = if ($env:WEB_PUBLIC_URL) { $env:WEB_PUBLIC_URL } else { "http://localhost:$env:WEB_PORT" }
+          @(
+            "### Forever Love Chat deployment",
+            "",
+            "- Version: ``$env:APP_VERSION``",
+            "- Image tag: ``$env:IMAGE_TAG``",
+            "- Website: $web",
+            "- API: $api",
+            "- Flutter API: ``$api/api``",
+            "- Flutter SignalR: ``$api/videocallhub``"
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY

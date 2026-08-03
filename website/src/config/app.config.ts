@@ -12,7 +12,7 @@ export const APP_CONFIG = {
   APP_NAME: 'SimpleChat',
   
   // Version
-  VERSION: '1.0.0',
+  VERSION: import.meta.env.VITE_APP_VERSION || '1.0.0',
   
   // APK download URL
   APK_DOWNLOAD_URL: '/archives/andriod/app-release.apk',
