@@ -242,6 +242,17 @@ function Set-Env {
     [Environment]::SetEnvironmentVariable($Name, $Value, "Process")
 }
 
+function Export-GitHubEnv {
+    param(
+        [string]$Name,
+        [string]$Value
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_ENV)) {
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "$Name=$Value"
+    }
+}
+
 Set-Location -LiteralPath $RootDir
 
 if (-not (Test-Path -LiteralPath $EnvFile) -and
@@ -319,6 +330,19 @@ Set-Env -Name "WEB_PORT" -Value $WebPort
 Set-Env -Name "API_PUBLIC_URL" -Value $ApiPublicUrl
 Set-Env -Name "WEB_PUBLIC_URL" -Value $WebPublicUrl
 Set-Env -Name "SIGNALR_PUBLIC_URL" -Value $SignalRPublicUrl
+
+foreach ($publicValue in @(
+    @{ Name = "APP_VERSION"; Value = $AppVersion },
+    @{ Name = "IMAGE_TAG"; Value = $ImageTag },
+    @{ Name = "VCS_REF"; Value = $vcsRef },
+    @{ Name = "API_PORT"; Value = $ApiPort },
+    @{ Name = "WEB_PORT"; Value = $WebPort },
+    @{ Name = "API_PUBLIC_URL"; Value = $ApiPublicUrl },
+    @{ Name = "WEB_PUBLIC_URL"; Value = $WebPublicUrl },
+    @{ Name = "SIGNALR_PUBLIC_URL"; Value = $SignalRPublicUrl }
+)) {
+    Export-GitHubEnv -Name $publicValue.Name -Value $publicValue.Value
+}
 
 Write-DeployLog "Version: $AppVersion"
 Write-DeployLog "Image tag: $ImageTag"
