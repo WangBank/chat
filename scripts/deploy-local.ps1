@@ -164,24 +164,23 @@ function Get-ShortGitSha {
 
 function Get-LanAddress {
     if ($IsWindowsPlatform) {
-        $ip = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        $addresses = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
             Where-Object {
-                $_.IPAddress -notmatch "^(127\.|169\.254\.)" -and
-                $_.IPAddress -notmatch "^172\.(1[6-9]|2[0-9]|3[0-1])\." -and
-                $_.IPAddress -notmatch "^10\." -and
-                $_.IPAddress -notmatch "^192\.0\.0\."
+                $_.AddressState -eq "Preferred" -and
+                $_.IPAddress -notmatch "^(127\.|169\.254\.)"
+            }
+
+        $ip = $addresses |
+            Where-Object {
+                $_.InterfaceAlias -notmatch "vEthernet|Docker|WSL|Hyper-V|Default Switch|Loopback|蓝牙|Bluetooth"
             } |
-            Sort-Object InterfaceMetric |
             Select-Object -First 1 -ExpandProperty IPAddress
 
         if (-not [string]::IsNullOrWhiteSpace($ip)) {
             return $ip
         }
 
-        $fallback = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-            Where-Object { $_.IPAddress -notmatch "^(127\.|169\.254\.)" } |
-            Sort-Object InterfaceMetric |
-            Select-Object -First 1 -ExpandProperty IPAddress
+        $fallback = $addresses | Select-Object -First 1 -ExpandProperty IPAddress
 
         if (-not [string]::IsNullOrWhiteSpace($fallback)) {
             return $fallback
