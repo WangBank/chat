@@ -72,6 +72,12 @@ class WebRTCVideoService extends ChangeNotifier {
 
   SignalRService get signalRService => _signalRService;
 
+  int? _peerUserIdFor(Call call) {
+    final currentUserId = _currentUser?.id;
+    if (currentUserId == null) return null;
+    return currentUserId == call.caller.id ? call.receiver.id : call.caller.id;
+  }
+
   // 初始化视频渲染器
   Future<void> _initializeRenderers() async {
     try {
@@ -231,7 +237,7 @@ class WebRTCVideoService extends ChangeNotifier {
               _peerConnection!.setLocalDescription(offer).then((_) {
                 _signalRService.sendOffer(
                   WebRTCOffer(callId: callId, offer: jsonEncode(offer.toMap())),
-                  _currentCall!.receiver.id,
+                  _peerUserIdFor(_currentCall!) ?? _currentCall!.receiver.id,
                 );
                 print('📤 主叫方已发送Offer');
               });
@@ -466,12 +472,18 @@ class WebRTCVideoService extends ChangeNotifier {
     pc.onIceCandidate = (RTCIceCandidate candidate) {
       print('📤 发送ICE候选');
       if (_currentCall != null) {
+        final peerUserId = _peerUserIdFor(_currentCall!);
+        if (peerUserId == null) {
+          print('⚠️ 当前用户为空，无法发送ICE候选');
+          return;
+        }
+
         _signalRService.sendIceCandidate(
           WebRTCCandidate(
             callId: _currentCall!.callId,
             candidate: jsonEncode(candidate.toMap()),
           ),
-          _currentCall!.receiver.id,
+          peerUserId,
         );
       }
     };
@@ -785,33 +797,20 @@ class WebRTCVideoService extends ChangeNotifier {
               '🛑 [_endVideoCall] 已停止本地轨道[$i]: ${track.kind}, enabled=${track.enabled}',
             );
 
-            // 尝试从 MediaStream 中移除轨道（如果支持）
-            try {
-              _localStream!.removeTrack(track);
-              print('🔍 [_endVideoCall] 已从 MediaStream 移除轨道[$i]');
-            } catch (e) {
-              print('⚠️ [_endVideoCall] 从 MediaStream 移除轨道[$i]失败（可能不支持）: $e');
-            }
+            // 不调用 removeTrack：flutter_webrtc 在轨道 stop 后可能异步抛出
+            // mediaStreamRemoveTrack 异常；停止轨道并清空流引用即可释放资源。
           } catch (e, stackTrace) {
             print('❌ [_endVideoCall] 停止本地轨道[$i]失败: $e');
             print('❌ [_endVideoCall] 错误堆栈: $stackTrace');
           }
         }
 
-        // 确保所有轨道都被移除
+        // 记录仍挂在 MediaStream 上的轨道；轨道已停止，后续会清空流引用。
         final remainingTracks = _localStream!.getTracks();
         if (remainingTracks.isNotEmpty) {
           print(
-            '⚠️ [_endVideoCall] MediaStream 中仍有 ${remainingTracks.length} 个轨道未移除',
+            '🔍 [_endVideoCall] MediaStream 中仍有 ${remainingTracks.length} 个已停止轨道',
           );
-          for (var track in remainingTracks) {
-            try {
-              track.stop();
-              print('🛑 [_endVideoCall] 强制停止剩余轨道: ${track.kind}');
-            } catch (e) {
-              print('❌ [_endVideoCall] 强制停止剩余轨道失败: $e');
-            }
-          }
         }
 
         // 清空本地流引用
@@ -819,25 +818,8 @@ class WebRTCVideoService extends ChangeNotifier {
         _localStream = null;
         print('✅ [_endVideoCall] 本地流已释放，_localStream 已设为 null');
 
-        // 尝试释放 MediaStream（如果支持 dispose 方法）
-        try {
-          // 注意：MediaStream 可能没有 dispose 方法，这里只是尝试
-          if (streamToDispose != null) {
-            // 确保所有轨道都被停止
-            for (var track in streamToDispose.getTracks()) {
-              try {
-                if (track.enabled) {
-                  track.enabled = false;
-                }
-                track.stop();
-              } catch (e) {
-                // 忽略错误
-              }
-            }
-            print('✅ [_endVideoCall] MediaStream 已彻底清理');
-          }
-        } catch (e) {
-          print('⚠️ [_endVideoCall] 清理 MediaStream 时出错: $e');
+        if (streamToDispose != null) {
+          print('✅ [_endVideoCall] MediaStream 已彻底清理');
         }
       } else {
         print('⚠️ [_endVideoCall] _localStream 为 null，无需释放');

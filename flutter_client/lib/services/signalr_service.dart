@@ -88,7 +88,7 @@ class SignalRService {
 
       _connection = connection;
 
-      // 新增：重连相关事件，确保重认证并恢复组关系
+      // 重连后重新登记当前连接，服务端身份来自 JWT。
       connection.onreconnecting(({Exception? error}) {
         print('🔄 SignalR正在重连: $error');
       });
@@ -144,7 +144,7 @@ class SignalRService {
     if (!isConnected) throw Exception('SignalR未连接');
 
     try {
-      await _connection!.invoke('Authenticate', args: [userId]);
+      await _connection!.invoke('Authenticate');
       _currentUserId = userId;
       _startHeartbeat();
       print('User authenticated: $userId');

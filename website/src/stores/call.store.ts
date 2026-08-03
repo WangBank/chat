@@ -120,6 +120,8 @@ class CallStore {
             display_name: authStore.user.display_name,
             avatar_path: authStore.user.avatar_path,
             is_online: authStore.user.is_online,
+            created_at: authStore.user.created_at,
+            updated_at: authStore.user.updated_at,
           },
           receiver: receiverInfo,
           call_type: callType,
@@ -186,4 +188,3 @@ class CallStore {
 }
 
 export const callStore = new CallStore();
-

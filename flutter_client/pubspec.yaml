@@ -15,7 +15,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   
   # WebRTC - 使用最新兼容版本
-  flutter_webrtc: ^1.3.0
+  flutter_webrtc: ^1.5.2
   
   # 信令服务
   signalr_netcore: ^1.4.3
@@ -35,7 +35,7 @@ dependencies:
   
   # 聊天附件选择
   image_picker: ^1.0.7
-  file_picker: ^11.0.2
+  file_picker: ^11.0.3
   
   # 状态管理
   provider: ^6.1.2

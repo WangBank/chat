@@ -40,6 +40,9 @@ class _ChatPageState extends State<ChatPage> {
   static const Color _qqOnline = Color(0xFF20D67A);
   static const Color _qqOffline = Color(0xFFB8C0CB);
   static const Color _qqSentBubble = Color(0xFF95EC69);
+  static const Duration _emojiTapDebounce = Duration(milliseconds: 250);
+  static const Duration _sendDebounce = Duration(milliseconds: 800);
+  static const Duration _messageMergeWindow = Duration(milliseconds: 1200);
 
   List<ChatMessage> _messages = [];
   bool _isLoading = false;
@@ -48,6 +51,10 @@ class _ChatPageState extends State<ChatPage> {
   bool _showEmojiPanel = false;
   late Contact _contact;
   OnUserOnlineStatusChangedCallback? _onlineStatusListener;
+  String? _lastInsertedEmoji;
+  DateTime? _lastEmojiInsertedAt;
+  String? _lastSendSignature;
+  DateTime? _lastSendStartedAt;
   static const List<String> _emojiOptions = [
     '😀',
     '😃',
@@ -207,8 +214,9 @@ class _ChatPageState extends State<ChatPage> {
         // 检查消息是否属于当前聊天
         if (message.senderId == _contact.contactUser.id ||
             message.receiverId == _contact.contactUser.id) {
+          var added = false;
           setState(() {
-            _messages.add(message);
+            added = _upsertMessage(message);
             if (message.receiverId == widget.apiService.currentUser?.id) {
               _contact = _contact.copyWith(unreadCount: 0);
             }
@@ -218,24 +226,13 @@ class _ChatPageState extends State<ChatPage> {
             unawaited(_markIncomingMessagesAsRead([message]));
           }
 
-          // 滚动到底部
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (_scrollController.hasClients) {
-              _scrollController.animateTo(
-                _scrollController.position.maxScrollExtent,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-              );
-            }
-          });
+          if (added) {
+            _scrollToBottom();
+          }
         }
       };
 
-      // 监听通话相关事件
-      widget.callManager!.webRTCService.signalRService.onIncomingCall = (call) {
-        print('📞 在聊天页面收到来电: ${call.caller.username}');
-        // 这里不需要做任何处理，主应用会自动处理来电显示
-      };
+      // 通话事件由 WebRTCVideoService/CallManager 统一处理，聊天页不覆盖来电回调。
     }
   }
 
@@ -341,7 +338,70 @@ class _ChatPageState extends State<ChatPage> {
     });
   }
 
+  bool _upsertMessage(ChatMessage message) {
+    final existingIndex = _messages.indexWhere((item) => item.id == message.id);
+    if (existingIndex >= 0) {
+      _messages[existingIndex] = message;
+      return false;
+    }
+
+    final duplicateIndex =
+        _messages.indexWhere((item) => _isSameMessageDelivery(item, message));
+    if (duplicateIndex >= 0) {
+      _messages[duplicateIndex] = _preferMessageForDisplay(
+        _messages[duplicateIndex],
+        message,
+      );
+      return false;
+    }
+
+    _messages.add(message);
+    return true;
+  }
+
+  bool _isSameMessageDelivery(ChatMessage existing, ChatMessage incoming) {
+    final currentUserId = widget.apiService.currentUser?.id;
+    if (currentUserId == null ||
+        existing.senderId != currentUserId ||
+        incoming.senderId != currentUserId) {
+      return false;
+    }
+
+    if (existing.senderId != incoming.senderId ||
+        existing.receiverId != incoming.receiverId ||
+        existing.type != incoming.type ||
+        existing.content != incoming.content ||
+        existing.filePath != incoming.filePath ||
+        existing.fileSize != incoming.fileSize ||
+        existing.duration != incoming.duration) {
+      return false;
+    }
+
+    final deltaMs =
+        existing.timestamp.difference(incoming.timestamp).inMilliseconds.abs();
+    return deltaMs <= _messageMergeWindow.inMilliseconds;
+  }
+
+  ChatMessage _preferMessageForDisplay(
+    ChatMessage existing,
+    ChatMessage incoming,
+  ) {
+    if (incoming.isRead && !existing.isRead) return incoming;
+    if (incoming.timestamp.isAfter(existing.timestamp)) return incoming;
+    return existing;
+  }
+
   void _insertEmoji(String emoji) {
+    final now = DateTime.now();
+    final lastInsertedAt = _lastEmojiInsertedAt;
+    if (_lastInsertedEmoji == emoji &&
+        lastInsertedAt != null &&
+        now.difference(lastInsertedAt) < _emojiTapDebounce) {
+      return;
+    }
+    _lastInsertedEmoji = emoji;
+    _lastEmojiInsertedAt = now;
+
     final text = _messageController.text;
     final selection = _messageController.selection;
     final start = selection.isValid ? selection.start : text.length;
@@ -420,7 +480,7 @@ class _ChatPageState extends State<ChatPage> {
 
       if (!mounted) return;
       setState(() {
-        _messages.add(newMessage);
+        _upsertMessage(newMessage);
         _isUploading = false;
       });
       _scrollToBottom();
@@ -446,8 +506,21 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _sendMessage() async {
+    if (_isSending || _isUploading) return;
+
     final message = _messageController.text.trim();
     if (message.isEmpty) return;
+
+    final sendSignature = '${_contact.contactUser.id}|text|$message';
+    final now = DateTime.now();
+    final lastSendStartedAt = _lastSendStartedAt;
+    if (_lastSendSignature == sendSignature &&
+        lastSendStartedAt != null &&
+        now.difference(lastSendStartedAt) < _sendDebounce) {
+      return;
+    }
+    _lastSendSignature = sendSignature;
+    _lastSendStartedAt = now;
 
     setState(() {
       _isSending = true;
@@ -466,8 +539,9 @@ class _ChatPageState extends State<ChatPage> {
         '✅ 消息发送成功: senderId=${newMessage.senderId}, currentUserId=${widget.apiService.currentUser?.id}',
       );
 
+      if (!mounted) return;
       setState(() {
-        _messages.add(newMessage);
+        _upsertMessage(newMessage);
         _isSending = false;
       });
 
@@ -476,6 +550,11 @@ class _ChatPageState extends State<ChatPage> {
       // 滚动到底部
       _scrollToBottom();
     } catch (e) {
+      if (_lastSendSignature == sendSignature) {
+        _lastSendSignature = null;
+        _lastSendStartedAt = null;
+      }
+      if (!mounted) return;
       setState(() {
         _isSending = false;
       });

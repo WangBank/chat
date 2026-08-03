@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/call.dart';
+import '../models/user.dart';
 import '../services/call_manager.dart';
 import '../config/app_config.dart';
 
@@ -58,9 +59,25 @@ class _CallPageState extends State<CallPage> {
     }
   }
 
+  User get _peerUser {
+    final currentUserId = widget.callManager.currentUser?.id;
+    if (currentUserId != null && currentUserId == widget.call.caller.id) {
+      return widget.call.receiver;
+    }
+    return widget.call.caller;
+  }
+
+  String _peerDisplayName() {
+    final peer = _peerUser;
+    return peer.display_name?.isNotEmpty == true
+        ? peer.display_name!
+        : peer.username;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final avatarUrl = AppConfig.resolveMediaUrl(widget.call.caller.avatarPath);
+    final peer = _peerUser;
+    final avatarUrl = AppConfig.resolveMediaUrl(peer.avatarPath);
 
     return Scaffold(
       backgroundColor: _callBackground,
@@ -102,14 +119,20 @@ class _CallPageState extends State<CallPage> {
             ),
             const SizedBox(height: 32),
             // 通话信息
-            Text(
-              widget.call.caller.display_name?.isNotEmpty == true
-                  ? widget.call.caller.display_name!
-                  : widget.call.caller.username,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  _peerDisplayName(),
+                  maxLines: 1,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -152,10 +175,8 @@ class _CallPageState extends State<CallPage> {
   }
 
   Widget _buildInitial() {
-    final initial = (widget.call.caller.display_name?.isNotEmpty == true
-            ? widget.call.caller.display_name![0]
-            : widget.call.caller.username[0])
-        .toUpperCase();
+    final name = _peerDisplayName();
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
 
     return Text(
       initial,

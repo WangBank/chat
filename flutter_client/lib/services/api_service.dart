@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/call.dart';
 import '../models/contact.dart';
+import '../models/friend_request.dart';
 import '../models/chat_message.dart';
 import '../config/app_config.dart';
 
@@ -358,41 +359,126 @@ class ApiService {
     }
   }
 
-  // 添加联系人
-  Future<Contact> addContact({
+  // 发送好友申请。旧的添加联系人入口也必须走申请流程，不能直接成为联系人。
+  Future<FriendRequest> addContact({
     required String username,
     String? displayName,
   }) async {
+    return createFriendRequest(
+      username: username,
+      note: displayName,
+      source: '联系人添加',
+    );
+  }
+
+  Future<FriendRequest> createFriendRequest({
+    required String username,
+    String? note,
+    String? source,
+  }) async {
     try {
-      print('➕ 添加联系人: $username');
+      print('➕ 发送好友申请: $username');
       final response = await http.post(
-        Uri.parse('$baseUrl/contacts'),
+        Uri.parse('$baseUrl/contacts/friend-requests'),
         headers: _headers,
         body: jsonEncode({
           'username': username,
-          'display_name': displayName, // 修正为后端的字段命名
+          'note': note,
+          'source': source ?? '账号搜索',
         }),
       );
 
-      print('📡 添加联系人响应状态码: ${response.statusCode}');
-      print('📄 添加联系人响应内容: ${response.body}');
+      print('📡 好友申请响应状态码: ${response.statusCode}');
+      print('📄 好友申请响应内容: ${response.body}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
         if (responseData['success'] == true && responseData['data'] != null) {
-          final contact = Contact.fromJson(responseData['data']);
-          print('✅ 成功添加联系人: ${contact.contactUser.username}');
-          return contact;
+          final request = FriendRequest.fromJson(responseData['data']);
+          print('✅ 好友申请已发送: ${request.peer.username}');
+          return request;
         } else {
-          throw Exception('添加联系人失败: 响应格式错误');
+          throw Exception('发送好友申请失败: 响应格式错误');
         }
       } else {
         final errorData = jsonDecode(response.body);
-        throw Exception('添加联系人失败: ${errorData['message'] ?? response.body}');
+        throw Exception('发送好友申请失败: ${errorData['message'] ?? response.body}');
       }
     } catch (e) {
-      print('❌ 添加联系人错误: $e');
-      throw Exception('添加联系人错误: $e');
+      print('❌ 发送好友申请错误: $e');
+      throw Exception('发送好友申请错误: $e');
+    }
+  }
+
+  Future<List<FriendRequest>> getFriendRequests() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/contacts/friend-requests'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['success'] == true && responseData['data'] != null) {
+          final List<dynamic> requestsData = responseData['data'];
+          return requestsData
+              .map((json) => FriendRequest.fromJson(json))
+              .toList();
+        }
+
+        throw Exception('获取好友申请失败: 响应格式错误');
+      }
+
+      final errorData = jsonDecode(response.body);
+      throw Exception('获取好友申请失败: ${errorData['message'] ?? response.body}');
+    } catch (e) {
+      print('❌ 获取好友申请错误: $e');
+      throw Exception('获取好友申请错误: $e');
+    }
+  }
+
+  Future<FriendRequest> respondFriendRequest(
+    int requestId,
+    String status,
+  ) async {
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/contacts/friend-requests/$requestId'),
+        headers: _headers,
+        body: jsonEncode({'status': status}),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['success'] == true && responseData['data'] != null) {
+          return FriendRequest.fromJson(responseData['data']);
+        }
+
+        throw Exception('处理好友申请失败: 响应格式错误');
+      }
+
+      final errorData = jsonDecode(response.body);
+      throw Exception('处理好友申请失败: ${errorData['message'] ?? response.body}');
+    } catch (e) {
+      print('❌ 处理好友申请错误: $e');
+      throw Exception('处理好友申请错误: $e');
+    }
+  }
+
+  Future<void> clearHandledFriendRequests() async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/contacts/friend-requests/handled'),
+        headers: _headers,
+      );
+
+      if (response.statusCode != 200) {
+        final errorData = jsonDecode(response.body);
+        throw Exception('清理好友申请失败: ${errorData['message'] ?? response.body}');
+      }
+    } catch (e) {
+      print('❌ 清理好友申请错误: $e');
+      throw Exception('清理好友申请错误: $e');
     }
   }
 

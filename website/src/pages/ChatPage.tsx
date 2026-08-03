@@ -17,6 +17,7 @@ import {
 } from 'antd';
 import {
   AudioOutlined,
+  AppstoreOutlined,
   ArrowLeftOutlined,
   BellOutlined,
   CheckOutlined,
@@ -24,10 +25,12 @@ import {
   CloudOutlined,
   DeleteOutlined,
   DownOutlined,
+  DesktopOutlined,
   EditOutlined,
   FileOutlined,
   FilterOutlined,
   FolderOpenOutlined,
+  GiftOutlined,
   HeartOutlined,
   LogoutOutlined,
   MessageOutlined,
@@ -38,6 +41,7 @@ import {
   ScissorOutlined,
   SearchOutlined,
   SendOutlined,
+  SettingOutlined,
   ShareAltOutlined,
   SmileOutlined,
   StopOutlined,
@@ -817,11 +821,6 @@ function formatLocation(user?: UserSummary | null) {
   return parts.length > 0 ? `现居 ${parts.join('·')}` : '现居 未填写';
 }
 
-function formatPercent(value: number, total: number) {
-  if (total <= 0) return '0%';
-  return `${Math.round((value / total) * 100)}%`;
-}
-
 function getFriendRequestPeer(request: FriendRequest) {
   return request.direction === 'incoming' ? request.requester : request.receiver;
 }
@@ -1087,6 +1086,9 @@ const ChatPage = observer(() => {
   const [localGroupMessages, setLocalGroupMessages] = useState<LocalGroupMessage[]>(() =>
     readLocalJson(getLocalKey(authStore.user?.id, 'group-messages'), [])
   );
+  const [mutedGroupIds, setMutedGroupIds] = useState<string[]>(() =>
+    readLocalJson(getLocalKey(authStore.user?.id, 'muted-groups'), [])
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const didPickInitialContact = useRef(false);
   const profileAvatarInputRef = useRef<HTMLInputElement>(null);
@@ -1242,6 +1244,7 @@ const ChatPage = observer(() => {
     setFavoriteItems(readLocalJson(getLocalKey(currentUserId, 'favorites'), []));
     setLocalGroups(readLocalJson(getLocalKey(currentUserId, 'groups'), []));
     setLocalGroupMessages(readLocalJson(getLocalKey(currentUserId, 'group-messages'), []));
+    setMutedGroupIds(readLocalJson(getLocalKey(currentUserId, 'muted-groups'), []));
     void loadFavorites();
     void loadChatGroups();
   }, [currentUserId]);
@@ -1272,6 +1275,10 @@ const ChatPage = observer(() => {
     writeLocalJson(getLocalKey(currentUserId, 'group-messages'), localGroupMessages);
   }, [localGroupMessages, currentUserId]);
 
+  useEffect(() => {
+    writeLocalJson(getLocalKey(currentUserId, 'muted-groups'), mutedGroupIds);
+  }, [mutedGroupIds, currentUserId]);
+
   const openProfileSettings = () => {
     setProfileDraft(createProfileDraft(authStore.user));
     setProfileVisible(true);
@@ -1291,16 +1298,31 @@ const ChatPage = observer(() => {
     }));
   };
 
+  const getApiAssetUrl = (path: string | undefined, allowedPrefix: '/avatar/' | '/chat-files/', cacheBust = false) => {
+    if (!path || !path.startsWith(allowedPrefix)) return undefined;
+
+    try {
+      const apiBase = new URL(APP_CONFIG.API_BASE_URL);
+      const assetUrl = new URL(path, apiBase);
+      if (assetUrl.origin !== apiBase.origin || !assetUrl.pathname.startsWith(allowedPrefix)) {
+        return undefined;
+      }
+      if (cacheBust) {
+        assetUrl.searchParams.set('t', Date.now().toString());
+      }
+      return assetUrl.toString();
+    } catch {
+      return undefined;
+    }
+  };
+
   const getAvatarUrl = (avatarPath?: string) => {
-    if (!avatarPath) return undefined;
-    if (/^https?:\/\//i.test(avatarPath)) return avatarPath;
-    return `${APP_CONFIG.API_BASE_URL}${avatarPath}?t=${Date.now()}`;
+    if (avatarPath && /^https:\/\//i.test(avatarPath)) return avatarPath;
+    return getApiAssetUrl(avatarPath, '/avatar/', true);
   };
 
   const getAttachmentUrl = (filePath?: string) => {
-    if (!filePath) return undefined;
-    if (/^https?:\/\//i.test(filePath)) return filePath;
-    return `${APP_CONFIG.API_BASE_URL}${filePath}`;
+    return getApiAssetUrl(filePath, '/chat-files/');
   };
 
   const loadFavorites = async () => {
@@ -1590,6 +1612,60 @@ const ChatPage = observer(() => {
     });
     return { category, groups };
   });
+  const activeGroupMuted = activeGroup ? mutedGroupIds.includes(activeGroup.id) : false;
+  const activeGroupOwner = activeGroup
+    ? allGroupMembers.find((member) => member.id === activeGroup.ownerId)
+    : null;
+  const activeGroupOwnerName = activeGroup?.ownerId === currentUserId
+    ? currentUserName
+    : getUserName(activeGroupOwner);
+  const activeGroupMemberPreview = allGroupMembers.slice(0, 10);
+  const conversationRows = [
+    ...filteredContacts.map((contact) => {
+      const sortDate = parseDate(contact.last_message_at || contact.added_at);
+      return {
+        id: `contact-${contact.id}`,
+        kind: 'contact' as const,
+        active: activeChatKind === 'contact' && chatStore.currentContact?.id === contact.id,
+        title: getContactName(contact),
+        time: formatListTime(contact.last_message_at || contact.added_at),
+        preview: contact.last_message_at ? '最近有新的聊天记录' : '你们已经是好友了',
+        sortTime: sortDate?.getTime() || 0,
+        unread: contact.unread_count || 0,
+        pinned: false,
+        muted: false,
+        contact,
+      };
+    }),
+    ...filteredLocalGroups.map((group) => {
+      const groupMessages = localGroupMessages.filter((msg) => msg.groupId === group.id);
+      const latest = groupMessages[groupMessages.length - 1];
+      const sortDate = parseDate(latest?.createdAt || group.updatedAt || group.createdAt);
+      const latestType = normalizeMessageType(latest?.type);
+      const latestPreview = latest
+        ? latestType === 'image'
+          ? '[图片]'
+          : latestType === 'audio'
+            ? `[语音] ${latest.duration || 1}"`
+            : latestType === 'file'
+              ? `[文件] ${latest.content || '附件'}`
+              : latest.content
+        : `${group.memberIds.length + 1} 位成员`;
+      return {
+        id: `group-${group.id}`,
+        kind: 'group' as const,
+        active: activeChatKind === 'group' && activeGroupId === group.id,
+        title: group.name,
+        time: formatListTime(latest?.createdAt || group.updatedAt || group.createdAt),
+        preview: latestPreview,
+        sortTime: sortDate?.getTime() || 0,
+        unread: 0,
+        pinned: Boolean(group.pinned),
+        muted: mutedGroupIds.includes(group.id),
+        group,
+      };
+    }),
+  ].sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.sortTime - left.sortTime);
 
   const filteredHistoryMessages = historyMessages.filter((msg) => {
     const keyword = historyQuery.trim().toLowerCase();
@@ -2786,6 +2862,42 @@ const ChatPage = observer(() => {
     return msg.content;
   };
 
+  const toggleActiveGroupPinned = () => {
+    if (!activeGroup) return;
+    const nextPinned = !activeGroup.pinned;
+    setLocalGroups((groups) =>
+      groups.map((group) =>
+        group.id === activeGroup.id
+          ? {
+            ...group,
+            pinned: nextPinned,
+            category: nextPinned
+              ? '置顶群聊'
+              : group.ownerId === currentUserId
+                ? '我创建的群聊'
+                : '我加入的群聊',
+          }
+          : group
+      )
+    );
+    message.success(nextPinned ? '已设为置顶' : '已取消置顶');
+  };
+
+  const toggleActiveGroupMuted = () => {
+    if (!activeGroup) return;
+    const nextMuted = !mutedGroupIds.includes(activeGroup.id);
+    setMutedGroupIds((groupIds) =>
+      nextMuted
+        ? [...groupIds, activeGroup.id]
+        : groupIds.filter((groupId) => groupId !== activeGroup.id)
+    );
+    message.success(nextMuted ? '已开启消息免打扰' : '已关闭消息免打扰');
+  };
+
+  const showComingSoon = (label: string) => {
+    message.info(`${label} 正在接入中`);
+  };
+
   const toggleCreateGroupMember = (userId?: number) => {
     if (typeof userId !== 'number') return;
     setSelectedGroupMemberIds((ids) =>
@@ -3202,13 +3314,14 @@ const ChatPage = observer(() => {
     const showDate = index === 0 || currentDate !== previousDate;
     const attachmentUrl = getAttachmentUrl(msg.file_path);
     const shareContent = attachmentUrl ? `${msg.content || '附件'}\n${attachmentUrl}` : msg.content;
+    const isMediaBubble = isImageMessage(msg) && Boolean(attachmentUrl);
 
     return (
       <div key={`${msg.id}-${index}`} className="message-block">
         {showDate && <div className="message-date">{formatDateLabel(msg.created_at)}</div>}
         <div className={`qq-message ${isMine ? 'sent' : 'received'}`}>
           {!isMine && renderAvatar(chatStore.currentContact, 36)}
-          <div className="qq-bubble">
+          <div className={`qq-bubble ${isMediaBubble ? 'media-bubble' : ''}`}>
             {isAudioMessage(msg) ? (
               <button
                 type="button"
@@ -3433,7 +3546,7 @@ const ChatPage = observer(() => {
 
   const renderSidebar = () => {
     if (mainView === 'messages') {
-      const hasConversations = filteredContacts.length > 0 || filteredLocalGroups.length > 0;
+      const hasConversations = conversationRows.length > 0;
 
       return (
         <>
@@ -3454,56 +3567,37 @@ const ChatPage = observer(() => {
             {!hasConversations ? (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无会话" />
             ) : (
-              <>
-                {filteredContacts.map((contact) => (
+              conversationRows.map((row) => {
+                const content = (
                   <button
                     type="button"
-                    key={`contact-${contact.id}`}
-                    className={`conversation-item ${
-                      activeChatKind === 'contact' && chatStore.currentContact?.id === contact.id ? 'active' : ''
-                    }`}
-                    onClick={() => selectContactForChat(contact)}
+                    key={row.id}
+                    className={`conversation-item ${row.active ? 'active' : ''} ${row.pinned ? 'pinned' : ''}`}
+                    onClick={() => (row.kind === 'contact' ? selectContactForChat(row.contact) : selectGroupForChat(row.group))}
                   >
-                    <Badge count={contact.unread_count || 0} offset={[-4, 6]}>
-                      {renderAvatar(contact)}
+                    <Badge count={row.muted ? 0 : row.unread} offset={[-4, 6]}>
+                      {row.kind === 'contact' ? renderAvatar(row.contact) : <Avatar size={44} icon={<TeamOutlined />} />}
                     </Badge>
                     <span className="conversation-copy">
                       <span className="conversation-title-row">
-                        <strong>{getContactName(contact)}</strong>
-                        <time>{formatListTime(contact.last_message_at || contact.added_at)}</time>
+                        <strong>{row.title}</strong>
+                        <time>{row.time}</time>
                       </span>
-                      <span className="conversation-preview">
-                        {contact.last_message_at ? '最近有新的聊天记录' : '你们已经是好友了'}
+                      <span className="conversation-preview-row">
+                        <span className="conversation-preview">{row.preview}</span>
+                        {(row.pinned || row.muted) && (
+                          <span className="conversation-tags">
+                            {row.pinned && <em>置顶</em>}
+                            {row.muted && <em>免打扰</em>}
+                          </span>
+                        )}
                       </span>
                     </span>
                   </button>
-                ))}
-                {filteredLocalGroups.length > 0 && (
-                  <div className="conversation-section-title">群聊</div>
-                )}
-                {filteredLocalGroups.map((group) => {
-                  const latest = getGroupLatestMessage(group.id);
-                  return (
-                    <button
-                      type="button"
-                      key={`group-${group.id}`}
-                      className={`conversation-item ${activeChatKind === 'group' && activeGroupId === group.id ? 'active' : ''}`}
-                      onClick={() => selectGroupForChat(group)}
-                    >
-                      <Avatar size={44} icon={<TeamOutlined />} />
-                      <span className="conversation-copy">
-                        <span className="conversation-title-row">
-                          <strong>{group.name}</strong>
-                          <time>{formatListTime(latest?.createdAt || group.createdAt)}</time>
-                        </span>
-                        <span className="conversation-preview">
-                          {latest ? getGroupMessagePreview(latest) : `${group.memberIds.length + 1} 位成员`}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </>
+                );
+
+                return content;
+              })
             )}
           </div>
         </>
@@ -3841,95 +3935,100 @@ const ChatPage = observer(() => {
     }
 
     if (contactContent === 'groupProfile' && activeGroup) {
-      const memberTotal = Math.max(allGroupMembers.length, 1);
-      const onlineMembers = allGroupMembers.filter((member) => member.is_online).length;
-      const maleMembers = allGroupMembers.filter((member) => member.gender === '男').length;
-      const bornIn90s = allGroupMembers.filter((member) => {
-        const birthday = parseBirthday(member.birthday);
-        const year = birthday?.getFullYear();
-        return year !== undefined && year >= 1990 && year < 2000;
-      }).length;
-      const locationCounts = allGroupMembers.reduce<Record<string, number>>((counts, member) => {
-        const location = member.region || member.province || member.country || '未填写';
-        counts[location] = (counts[location] || 0) + 1;
-        return counts;
-      }, {});
-      const topLocation = Object.entries(locationCounts).sort((a, b) => b[1] - a[1])[0] || ['未填写', 0];
-      const groupDistribution = [
-        { percent: formatPercent(onlineMembers, memberTotal), label: `活跃-${onlineMembers}人` },
-        { percent: formatPercent(maleMembers, memberTotal), label: `男-${maleMembers}人` },
-        { percent: formatPercent(topLocation[1], memberTotal), label: `${topLocation[0]}-${topLocation[1]}人` },
-        { percent: formatPercent(bornIn90s, memberTotal), label: `90后-${bornIn90s}人` },
-      ];
-
       return (
-        <div className="contact-main contact-profile-main">
-          <div className="profile-panel group-profile-panel">
-            <div className="profile-identity">
-              <Avatar size={96} icon={<TeamOutlined />} />
+        <div className="contact-main qq-group-profile-main">
+          <div className="qq-group-profile">
+            <section className="qq-group-profile-hero">
+              <Avatar size={82} icon={<TeamOutlined />} />
               <div>
                 <h2>{activeGroup.name}</h2>
-                <p>群 ID {activeGroup.id}</p>
-                <span className="online-state online">
-                  <i /> {activeGroup.memberIds.length + 1} 位成员
-                </span>
+                <p>群号 {activeGroup.id} · {activeGroup.category}</p>
+                <span>群主 {activeGroupOwnerName} · {formatHistoryDate(activeGroup.createdAt)} 创建</span>
               </div>
-              <div className="profile-like">
-                <ClockCircleOutlined />
-                <span>{formatHistoryDate(activeGroup.createdAt)}</span>
+              <Space>
+                <Button icon={<ShareAltOutlined />} onClick={() => openShare(`群聊名片：${activeGroup.name}（${allGroupMembers.length}人）`)}>
+                  分享
+                </Button>
+                <Button type="primary" icon={<MessageOutlined />} onClick={() => selectGroupForChat(activeGroup)}>
+                  发消息
+                </Button>
+              </Space>
+            </section>
+
+            <section className="qq-group-profile-section">
+              <div className="qq-group-section-head">
+                <strong>群聊成员</strong>
+                <button type="button" onClick={() => showComingSoon('完整成员管理')}>
+                  查看{allGroupMembers.length}名群成员
+                </button>
               </div>
-            </div>
-            <div className="profile-fields">
-              <span>{activeGroup.category}</span>
-              <span>{activeGroup.ownerId === currentUserId ? '我创建的群聊' : '我加入的群聊'}</span>
-              <span>{activeGroup.pinned ? '已置顶' : '未置顶'}</span>
-            </div>
-            <div className="group-profile-cards">
-              <section className="group-profile-card">
-                <div>
-                  <EditOutlined />
-                  <strong>群介绍</strong>
-                </div>
-                <p>{activeGroup.note || '群主暂未填写群介绍'}</p>
-              </section>
-              <section className="group-profile-card">
-                <div>
-                  <BellOutlined />
-                  <strong>群公告</strong>
-                </div>
-                <p>{activeGroup.announcement || '暂无公告'}</p>
-              </section>
-            </div>
-            <div className="group-distribution">
-              <div className="group-distribution-title">
-                <TeamOutlined />
-                <strong>成员分布</strong>
-              </div>
-              <div className="group-distribution-grid">
-                {groupDistribution.map((item) => (
-                  <div key={item.label} className="group-distribution-item">
-                    <span>{item.percent}</span>
-                    <small>{item.label}</small>
-                  </div>
+              <div className="qq-group-profile-member-grid">
+                {activeGroupMemberPreview.map((member) => (
+                  <button type="button" key={member.id || member.username} onClick={() => showComingSoon('成员资料')}>
+                    {renderUserAvatar(member, 38)}
+                    <span>{getUserName(member)}</span>
+                  </button>
                 ))}
+                <button type="button" className="qq-group-member-action" onClick={() => setCreateGroupVisible(true)}>
+                  <PlusOutlined />
+                  <span>邀请</span>
+                </button>
+                <button type="button" className="qq-group-member-action" onClick={() => showComingSoon('移出群成员')}>
+                  <StopOutlined />
+                  <span>移出</span>
+                </button>
               </div>
-            </div>
-            <div className="group-member-grid">
-              {allGroupMembers.map((member) => (
-                <div key={member.id || member.username} className="group-member-card">
-                  {renderUserAvatar(member, 42)}
-                  <span>{getUserName(member)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="profile-actions">
-              <Button onClick={() => openShare(`群聊名片：${activeGroup.name}（${activeGroup.memberIds.length + 1}人）`)}>
-                分享
-              </Button>
-              <Button type="primary" onClick={() => selectGroupForChat(activeGroup)}>
-                发消息
-              </Button>
-            </div>
+            </section>
+
+            <section className="qq-group-profile-section">
+              <div className="qq-group-section-head">
+                <strong>资料管理</strong>
+              </div>
+              <button type="button" className="qq-profile-nav-row" onClick={() => showComingSoon('群资料设置')}>
+                <span>
+                  <SettingOutlined /> 群资料设置
+                </span>
+                <em>{activeGroup.ownerId === currentUserId ? '我创建的群聊' : '我加入的群聊'}</em>
+              </button>
+              <button type="button" className="qq-profile-nav-row" onClick={() => showComingSoon('群公告编辑')}>
+                <span>
+                  <BellOutlined /> 群公告
+                </span>
+                <em>{activeGroup.announcement || '暂无公告'}</em>
+              </button>
+              <label className="qq-profile-input-row">
+                <span>我在本群昵称</span>
+                <input value={currentUserName} readOnly />
+              </label>
+              <label className="qq-profile-input-row">
+                <span>群聊备注</span>
+                <input value={activeGroup.note || ''} readOnly placeholder="填写备注" />
+              </label>
+            </section>
+
+            <section className="qq-group-profile-section">
+              <div className="qq-group-section-head">
+                <strong>群消息设置</strong>
+              </div>
+              <button type="button" className="qq-profile-switch-row" onClick={toggleActiveGroupPinned}>
+                <span>设为置顶</span>
+                <i className={activeGroup.pinned ? 'on' : ''} />
+              </button>
+              <button type="button" className="qq-profile-switch-row" onClick={toggleActiveGroupMuted}>
+                <span>消息免打扰</span>
+                <i className={activeGroupMuted ? 'on' : ''} />
+              </button>
+              <button type="button" className="qq-profile-nav-row" onClick={() => void openGroupHistory()}>
+                <span>接收消息但不提醒</span>
+                <em>{activeGroupMuted ? '已开启' : '未开启'}</em>
+              </button>
+            </section>
+
+            <section className="qq-group-profile-danger">
+              <button type="button" onClick={() => showComingSoon('删除聊天记录')}>删除聊天记录</button>
+              <button type="button" onClick={() => showComingSoon('退出群聊')}>退出群聊</button>
+              <button type="button" onClick={() => showComingSoon('举报该群')}>被骚扰了？举报该群</button>
+            </section>
           </div>
         </div>
       );
@@ -4121,6 +4220,7 @@ const ChatPage = observer(() => {
     const messageType = normalizeMessageType(msg.type);
     const attachmentUrl = getAttachmentUrl(msg.filePath);
     const shareContent = attachmentUrl ? `${msg.content || '附件'}\n${attachmentUrl}` : msg.content;
+    const isMediaBubble = messageType === 'image' && Boolean(attachmentUrl);
     const sender = isMine
       ? (authStore.user as UserSummary | null)
       : (chatStore.contacts.find((contact) => contact.contact_user?.id === msg.senderId)?.contact_user as UserSummary | undefined);
@@ -4130,7 +4230,7 @@ const ChatPage = observer(() => {
         {showDate && <div className="message-date">{formatDateLabel(msg.createdAt)}</div>}
         <div className={`qq-message ${isMine ? 'sent' : 'received'}`}>
           {!isMine && renderUserAvatar(sender, 36)}
-          <div className="qq-bubble">
+          <div className={`qq-bubble ${isMediaBubble ? 'media-bubble' : ''}`}>
             {!isMine && <div className="group-message-sender">{msg.senderName}</div>}
             {messageType === 'audio' ? (
               <button
@@ -4189,6 +4289,21 @@ const ChatPage = observer(() => {
       );
     }
 
+    const groupMoreItems: MenuProps['items'] = [
+      { key: 'history', icon: <ClockCircleOutlined />, label: '聊天记录' },
+      { key: 'profile', icon: <TeamOutlined />, label: '群资料' },
+      { key: 'pin', icon: <BellOutlined />, label: activeGroup.pinned ? '取消置顶' : '设为置顶' },
+      { key: 'mute', icon: <StopOutlined />, label: activeGroupMuted ? '关闭免打扰' : '消息免打扰' },
+      { key: 'share', icon: <ShareAltOutlined />, label: '分享群聊' },
+    ];
+    const handleGroupMoreClick: MenuProps['onClick'] = ({ key }) => {
+      if (key === 'history') void openGroupHistory();
+      if (key === 'profile') selectGroupProfile(activeGroup);
+      if (key === 'pin') toggleActiveGroupPinned();
+      if (key === 'mute') toggleActiveGroupMuted();
+      if (key === 'share') openShare(`群聊名片：${activeGroup.name}（${allGroupMembers.length}人）`);
+    };
+
     return (
       <div className="group-chat-panel">
         <div className="chat-header">
@@ -4203,22 +4318,24 @@ const ChatPage = observer(() => {
             <small>{activeGroup.memberIds.length + 1}人</small>
           </div>
           <Space size={8}>
-            <Tooltip title="群聊记录">
-              <Button type="text" icon={<ClockCircleOutlined />} onClick={() => void openGroupHistory()} />
+            <Tooltip title="语音通话">
+              <Button type="text" icon={<PhoneOutlined />} onClick={() => showComingSoon('群语音通话')} />
             </Tooltip>
-            <Tooltip title="群资料">
-              <Button type="text" icon={<TeamOutlined />} onClick={() => selectGroupProfile(activeGroup)} />
+            <Tooltip title="视频通话">
+              <Button type="text" icon={<VideoCameraOutlined />} onClick={() => showComingSoon('群视频通话')} />
             </Tooltip>
-            <Tooltip title="分享群聊">
-              <Button
-                type="text"
-                icon={<ShareAltOutlined />}
-                onClick={() => openShare(`群聊名片：${activeGroup.name}（${activeGroup.memberIds.length + 1}人）`)}
-              />
+            <Tooltip title="屏幕共享">
+              <Button type="text" icon={<DesktopOutlined />} onClick={() => void handleScreenRecording()} />
             </Tooltip>
-            <Tooltip title="添加成员">
+            <Tooltip title="群应用">
+              <Button type="text" icon={<AppstoreOutlined />} onClick={() => showComingSoon('群应用')} />
+            </Tooltip>
+            <Tooltip title="邀请加群">
               <Button type="text" icon={<PlusOutlined />} onClick={() => setCreateGroupVisible(true)} />
             </Tooltip>
+            <Dropdown menu={{ items: groupMoreItems, onClick: handleGroupMoreClick }} trigger={['click']}>
+              <Button type="text" icon={<MoreOutlined />} />
+            </Dropdown>
           </Space>
         </div>
         <div className="group-chat-content">
@@ -4272,6 +4389,9 @@ const ChatPage = observer(() => {
                     onClick={() => void handleVoiceButtonClick()}
                   />
                 </Tooltip>
+                <Tooltip title="红包">
+                  <Button type="text" icon={<GiftOutlined />} onClick={() => showComingSoon('红包')} />
+                </Tooltip>
                 <Tooltip title="收藏笔记">
                   <Button type="text" icon={<HeartOutlined />} onClick={() => setFavoriteNoteVisible(true)} />
                 </Tooltip>
@@ -4320,19 +4440,55 @@ const ChatPage = observer(() => {
               </div>
             </div>
           </section>
-          <aside className="group-member-panel">
-            <div className="group-member-title">
-              <strong>群成员</strong>
-              <span>{allGroupMembers.length}</span>
-            </div>
-            <div className="group-member-list">
-              {allGroupMembers.map((member) => (
-                <div key={member.id || member.username} className="group-member-row">
-                  {renderUserAvatar(member, 34)}
-                  <span>{getUserName(member)}</span>
-                </div>
-              ))}
-            </div>
+          <aside className="group-detail-panel">
+            <button type="button" className="group-announcement-card" onClick={() => selectGroupProfile(activeGroup)}>
+              <span>
+                <BellOutlined /> 群公告
+              </span>
+              <p>{activeGroup.announcement || '暂无公告'}</p>
+            </button>
+            <section className="group-side-section">
+              <div className="group-side-head">
+                <strong>群聊成员</strong>
+                <span>{allGroupMembers.length}</span>
+              </div>
+              <button type="button" className="group-side-search" onClick={() => showComingSoon('搜索群成员')}>
+                <SearchOutlined /> 搜索群成员
+              </button>
+              <div className="group-side-member-grid">
+                {activeGroupMemberPreview.map((member) => (
+                  <button type="button" key={member.id || member.username} onClick={() => showComingSoon('成员资料')}>
+                    {renderUserAvatar(member, 32)}
+                    <span>{getUserName(member)}</span>
+                  </button>
+                ))}
+                <button type="button" className="group-side-member-action" onClick={() => setCreateGroupVisible(true)}>
+                  <PlusOutlined />
+                  <span>邀请</span>
+                </button>
+              </div>
+            </section>
+            <section className="group-side-section">
+              <div className="group-side-head">
+                <strong>资料管理</strong>
+              </div>
+              <button type="button" className="group-side-row" onClick={() => selectGroupProfile(activeGroup)}>
+                <span>群资料设置</span>
+                <em>{activeGroup.category}</em>
+              </button>
+              <button type="button" className="group-side-row" onClick={toggleActiveGroupPinned}>
+                <span>设为置顶</span>
+                <i className={activeGroup.pinned ? 'on' : ''} />
+              </button>
+              <button type="button" className="group-side-row" onClick={toggleActiveGroupMuted}>
+                <span>消息免打扰</span>
+                <i className={activeGroupMuted ? 'on' : ''} />
+              </button>
+              <button type="button" className="group-side-row" onClick={() => void openGroupHistory()}>
+                <span>聊天记录</span>
+                <em>查看</em>
+              </button>
+            </section>
           </aside>
         </div>
       </div>

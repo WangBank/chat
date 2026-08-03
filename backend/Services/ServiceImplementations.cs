@@ -299,40 +299,6 @@ namespace VideoCallAPI.Services
             _contentSecurity = contentSecurity;
         }
 
-        public async Task<ContactResponseDto> AddContactAsync(int userId, AddContactDto addContactDto)
-        {
-            var targetUsername = _contentSecurity.NormalizeRequiredText(addContactDto.username, "用户名", 50, filterSensitiveWords: false);
-            var displayName = _contentSecurity.NormalizeOptionalText(addContactDto.display_name, "联系人备注", 50);
-
-            // 查找要添加的用户
-            var contactUser = await _context.users.FirstOrDefaultAsync(u => u.username == targetUsername);
-            if (contactUser == null)
-            {
-                _logger.LogWarning("添加联系人失败，用户不存在: UserId={UserId}, ContactUsername={ContactUsername}", userId, targetUsername);
-                throw new ArgumentException("用户不存在");
-            }
-
-            if (contactUser.id == userId)
-            {
-                _logger.LogWarning("添加联系人失败，不能添加自己: UserId={UserId}", userId);
-                throw new InvalidOperationException("不能添加自己为联系人");
-            }
-
-            // 检查是否已经是联系人
-            if (await _context.Contacts.AnyAsync(c => c.user_id == userId && c.contact_user_id == contactUser.id))
-            {
-                _logger.LogWarning("添加联系人失败，已在联系人列表中: UserId={UserId}, ContactUserId={ContactUserId}", userId, contactUser.id);
-                throw new InvalidOperationException("用户已在联系人列表中");
-            }
-
-            var contact = await CreateContactPairAsync(userId, contactUser, displayName);
-
-            _logger.LogInformation("添加联系人成功: UserId={UserId}, ContactUserId={ContactUserId}, ContactId={ContactId}",
-                userId, contactUser.id, contact.id);
-
-            return contact;
-        }
-
         public async Task<FriendRequestResponseDto> CreateFriendRequestAsync(int userId, CreateFriendRequestDto requestDto)
         {
             var targetUsername = _contentSecurity.NormalizeRequiredText(requestDto.username, "用户名", 50, filterSensitiveWords: false);
@@ -669,11 +635,19 @@ namespace VideoCallAPI.Services
     {
         private readonly IConfiguration _configuration;
         private readonly string _secretKey;
+        private readonly string _issuer;
+        private readonly string _audience;
+        private readonly int _expirationInDays;
 
         public JwtService(IConfiguration configuration)
         {
             _configuration = configuration;
             _secretKey = _configuration["Jwt:SecretKey"] ?? "VideoCallSecretKey123456789012345678901234567890";
+            _issuer = _configuration["Jwt:Issuer"] ?? "VideoCallAPI";
+            _audience = _configuration["Jwt:Audience"] ?? "VideoCallClient";
+            _expirationInDays = int.TryParse(_configuration["Jwt:ExpirationInDays"], out var days)
+                ? Math.Clamp(days, 1, 30)
+                : 7;
         }
 
         public string GenerateToken(User user)
@@ -688,7 +662,9 @@ namespace VideoCallAPI.Services
                     new Claim(ClaimTypes.Name, user.username),
                     new Claim(ClaimTypes.Email, user.email)
                 }),
-                Expires = DateTime.UtcNow.AddDays(7),
+                Issuer = _issuer,
+                Audience = _audience,
+                Expires = DateTime.UtcNow.AddDays(_expirationInDays),
                 SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
             };
             var token = tokenHandler.CreateToken(tokenDescriptor);
@@ -705,8 +681,10 @@ namespace VideoCallAPI.Services
                 {
                     ValidateIssuerSigningKey = true,
                     IssuerSigningKey = new SymmetricSecurityKey(key),
-                    ValidateIssuer = false,
-                    ValidateAudience = false,
+                    ValidateIssuer = true,
+                    ValidIssuer = _issuer,
+                    ValidateAudience = true,
+                    ValidAudience = _audience,
                     ClockSkew = TimeSpan.Zero
                 }, out SecurityToken validatedToken);
 

@@ -46,6 +46,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   int _chatRefreshToken = 0; // 新增：聊天刷新令牌
   bool _showingIncomingCall = false; // 防止重复显示来电界面
   bool _restoringOnlinePresence = false;
+  String? _visibleCallRouteName;
+  String? _visibleCallId;
 
   // 全局NavigatorKey，用于在MaterialApp外部进行导航
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
@@ -154,17 +156,9 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       '🔄 MainApp收到CallManager状态变化: currentCall=${_callManager.currentCall?.callId}, isInCall=${_callManager.isInCall}, isWaitingForAnswer=${_callManager.isWaitingForAnswer}',
     );
 
-    // 当CallManager状态变化时，检查是否有来电
-    if (_callManager.currentCall != null &&
-        !_callManager.isInCall &&
-        !_callManager.isWaitingForAnswer &&
-        !_showingIncomingCall) {
-      print('📞 检测到来电，准备显示来电界面');
-      _showingIncomingCall = true;
-      setState(() {
-        // 触发重建以显示来电界面
-      });
-    } else if (_callManager.currentCall == null) {
+    final currentCall = _callManager.currentCall;
+
+    if (currentCall == null) {
       // 通话结束，隐藏所有通话相关界面
       if (_showingIncomingCall) {
         print('📞 通话结束，隐藏来电界面');
@@ -186,24 +180,44 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           print('⚠️ 关闭通话页面时出错: $e');
         }
       }
+      return;
     }
 
-    // 检查是否需要显示通话页面
-    if (_callManager.currentCall != null && _callManager.isInCall) {
+    if (_callManager.isInCall) {
       print(
         '📞 MainApp: 准备显示通话页面 - 当前状态: isInCall=${_callManager.isInCall}, isWaitingForAnswer=${_callManager.isWaitingForAnswer}',
       );
-      // 立即显示通话页面，不要延迟
+      if (_showingIncomingCall) {
+        _showingIncomingCall = false;
+        setState(() {
+          // 触发重建以隐藏来电界面
+        });
+      }
       print('📞 MainApp: 立即执行显示通话页面');
       _showCallPage();
+      return;
     }
 
     // 检查是否需要显示等待接听页面 (只有在不是通话中的情况下)
-    if (_callManager.currentCall != null &&
-        _callManager.isWaitingForAnswer &&
-        !_callManager.isInCall) {
+    if (_callManager.isWaitingForAnswer) {
+      if (_showingIncomingCall) {
+        _showingIncomingCall = false;
+        setState(() {
+          // 触发重建以隐藏来电界面
+        });
+      }
       print('📞 显示等待接听页面');
       _showWaitingCallPage();
+      return;
+    }
+
+    // 当CallManager状态变化时，检查是否有来电
+    if (!_showingIncomingCall) {
+      print('📞 检测到来电，准备显示来电界面');
+      _showingIncomingCall = true;
+      setState(() {
+        // 触发重建以显示来电界面
+      });
     }
   }
 
@@ -215,8 +229,10 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       // 根据通话类型显示不同的页面
       if (currentCall.callType == CallType.video) {
         print('📞 MainApp: 跳转到视频通话页面');
-        _navigatorKey.currentState?.push(
-          MaterialPageRoute(
+        _showUniqueCallRoute(
+          routeName: _videoCallRouteName,
+          callId: currentCall.callId,
+          route: MaterialPageRoute(
             settings: const RouteSettings(name: _videoCallRouteName),
             builder: (context) =>
                 VideoCallPage(call: currentCall, callManager: _callManager),
@@ -224,8 +240,10 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         );
       } else {
         print('📞 MainApp: 跳转到语音通话页面');
-        _navigatorKey.currentState?.push(
-          MaterialPageRoute(
+        _showUniqueCallRoute(
+          routeName: _voiceCallRouteName,
+          callId: currentCall.callId,
+          route: MaterialPageRoute(
             settings: const RouteSettings(name: _voiceCallRouteName),
             builder: (context) =>
                 CallPage(call: currentCall, callManager: _callManager),
@@ -240,8 +258,10 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   void _showWaitingCallPage() {
     final currentCall = _callManager.currentCall;
     if (currentCall != null) {
-      _navigatorKey.currentState?.push(
-        MaterialPageRoute(
+      _showUniqueCallRoute(
+        routeName: _waitingCallRouteName,
+        callId: currentCall.callId,
+        route: MaterialPageRoute(
           settings: const RouteSettings(name: _waitingCallRouteName),
           builder: (context) =>
               WaitingCallPage(call: currentCall, callManager: _callManager),
@@ -250,11 +270,39 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     }
   }
 
+  void _showUniqueCallRoute({
+    required String routeName,
+    required String callId,
+    required Route<dynamic> route,
+  }) {
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) return;
+
+    if (_visibleCallRouteName == routeName && _visibleCallId == callId) {
+      print('📞 MainApp: 通话页面已显示，跳过重复跳转: $routeName/$callId');
+      return;
+    }
+
+    _visibleCallRouteName = routeName;
+    _visibleCallId = callId;
+
+    navigator.pushAndRemoveUntil(route, (route) => !_isCallRoute(route)).then(
+      (_) {
+        if (_visibleCallRouteName == routeName && _visibleCallId == callId) {
+          _visibleCallRouteName = null;
+          _visibleCallId = null;
+        }
+      },
+    );
+  }
+
   void _popVisibleCallRoutes() {
     final navigator = _navigatorKey.currentState;
     if (navigator == null) return;
 
     navigator.popUntil((route) => !_isCallRoute(route));
+    _visibleCallRouteName = null;
+    _visibleCallId = null;
   }
 
   bool _isCallRoute(Route<dynamic> route) {

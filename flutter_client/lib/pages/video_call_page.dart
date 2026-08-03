@@ -133,9 +133,9 @@ class _VideoCallPageState extends State<VideoCallPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            widget.call.caller.display_name?.isNotEmpty == true
-                                ? widget.call.caller.display_name!
-                                : widget.call.caller.username,
+                            _otherUser.display_name?.isNotEmpty == true
+                                ? _otherUser.display_name!
+                                : _otherUser.username,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 18,

@@ -252,13 +252,12 @@ class ChatStore {
     try {
       const response = await apiService.addContact({ username, display_name: displayName });
       if (response.success && response.data) {
-        await this.loadContacts();
-        return { success: true };
+        return { success: true, message: response.message || 'Friend request sent' };
       } else {
-        return { success: false, message: response.message || 'Failed to add contact' };
+        return { success: false, message: response.message || 'Failed to send friend request' };
       }
     } catch (error: unknown) {
-      return { success: false, message: getApiErrorMessage(error, 'Failed to add contact') };
+      return { success: false, message: getApiErrorMessage(error, 'Failed to send friend request') };
     }
   }
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/contact.dart';
+import '../models/friend_request.dart';
 import '../models/user.dart';
 import '../models/call.dart';
 import '../services/api_service.dart';
@@ -35,8 +36,10 @@ class _ContactsPageState extends State<ContactsPage> {
 
   List<Contact> _contacts = [];
   List<Contact> _filteredContacts = [];
+  List<FriendRequest> _friendRequests = [];
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = false;
+  bool _isFriendRequestsLoading = false;
   Timer? _refreshTimer;
   late final OnUserOnlineStatusChangedCallback _onlineStatusListener;
 
@@ -48,9 +51,13 @@ class _ContactsPageState extends State<ContactsPage> {
       _onlineStatusListener,
     );
     _loadContacts();
+    _loadFriendRequests();
     _refreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       if (mounted && !_isLoading) {
         _loadContacts(showLoading: false);
+      }
+      if (mounted && !_isFriendRequestsLoading) {
+        _loadFriendRequests(showLoading: false);
       }
     });
   }
@@ -61,6 +68,7 @@ class _ContactsPageState extends State<ContactsPage> {
     // 新增：当刷新令牌变化时，触发重新加载
     if (widget.refreshToken != oldWidget.refreshToken) {
       _loadContacts();
+      _loadFriendRequests();
     }
   }
 
@@ -92,6 +100,35 @@ class _ContactsPageState extends State<ContactsPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('获取联系人失败: $e')));
+    }
+  }
+
+  Future<void> _loadFriendRequests({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _isFriendRequestsLoading = true;
+      });
+    }
+
+    try {
+      final requests = await widget.apiService.getFriendRequests();
+      if (!mounted) return;
+
+      setState(() {
+        _friendRequests = requests;
+        _isFriendRequestsLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isFriendRequestsLoading = false;
+      });
+      if (showLoading) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('获取好友申请失败: $e')));
+      }
     }
   }
 
@@ -137,13 +174,18 @@ class _ContactsPageState extends State<ContactsPage> {
 
   Future<void> _addContact(User user) async {
     try {
-      await widget.apiService.addContact(username: user.username);
+      final request =
+          await widget.apiService.addContact(username: user.username);
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('联系人添加成功')));
-      _loadContacts(); // 重新加载联系人列表
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            request.isIncoming ? '对方已向你发送申请，请在好友通知中处理' : '好友申请已发送，等待对方同意',
+          ),
+        ),
+      );
+      _loadFriendRequests(showLoading: false);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -292,6 +334,30 @@ class _ContactsPageState extends State<ContactsPage> {
       // 返回时重新加载联系人列表
       if (mounted) {
         _loadContacts();
+        _loadFriendRequests();
+      }
+    });
+  }
+
+  void _showFriendRequestsPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FriendRequestsPage(
+          apiService: widget.apiService,
+          initialRequests: _friendRequests,
+          onRequestsChanged: () {
+            _loadFriendRequests(showLoading: false);
+          },
+          onContactsChanged: () {
+            _loadContacts(showLoading: false);
+          },
+        ),
+      ),
+    ).then((_) {
+      if (mounted) {
+        _loadContacts(showLoading: false);
+        _loadFriendRequests(showLoading: false);
       }
     });
   }
@@ -417,6 +483,48 @@ class _ContactsPageState extends State<ContactsPage> {
           height: 1,
         ),
       ),
+    );
+  }
+
+  int get _pendingFriendRequestCount => _friendRequests
+      .where((request) => request.isIncoming && request.isPending)
+      .length;
+
+  Widget _buildFriendRequestAction() {
+    final count = _pendingFriendRequestCount;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.notifications_none),
+          onPressed: _showFriendRequestsPage,
+          tooltip: '好友通知',
+        ),
+        if (count > 0)
+          Positioned(
+            right: 6,
+            top: 6,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 18),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF3B30),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                count > 99 ? '99+' : '$count',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -595,6 +703,7 @@ class _ContactsPageState extends State<ContactsPage> {
       appBar: AppBar(
         title: const Text('联系人'),
         actions: [
+          _buildFriendRequestAction(),
           IconButton(
             icon: const Icon(Icons.person_add_alt_1),
             onPressed: _showUserSearchPage,
@@ -671,5 +780,315 @@ class _ContactsPageState extends State<ContactsPage> {
     } else {
       return '刚刚';
     }
+  }
+}
+
+class FriendRequestsPage extends StatefulWidget {
+  final ApiService apiService;
+  final List<FriendRequest> initialRequests;
+  final VoidCallback onRequestsChanged;
+  final VoidCallback onContactsChanged;
+
+  const FriendRequestsPage({
+    super.key,
+    required this.apiService,
+    required this.initialRequests,
+    required this.onRequestsChanged,
+    required this.onContactsChanged,
+  });
+
+  @override
+  State<FriendRequestsPage> createState() => _FriendRequestsPageState();
+}
+
+class _FriendRequestsPageState extends State<FriendRequestsPage> {
+  static const Color _qqBlue = Color(0xFF12A8F4);
+  static const Color _qqShell = Color(0xFFEFF7FC);
+  static const Color _qqText = Color(0xFF111820);
+  static const Color _qqMuted = Color(0xFF8C96A3);
+
+  late List<FriendRequest> _requests;
+  bool _isLoading = false;
+  bool _isHandling = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _requests = widget.initialRequests;
+    _loadRequests();
+  }
+
+  Future<void> _loadRequests() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final requests = await widget.apiService.getFriendRequests();
+      if (!mounted) return;
+
+      setState(() {
+        _requests = requests;
+        _isLoading = false;
+      });
+      widget.onRequestsChanged();
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('获取好友申请失败: $e')));
+    }
+  }
+
+  Future<void> _respond(FriendRequest request, String status) async {
+    if (_isHandling) return;
+
+    setState(() {
+      _isHandling = true;
+    });
+
+    try {
+      final updatedRequest = await widget.apiService.respondFriendRequest(
+        request.id,
+        status,
+      );
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            updatedRequest.isAccepted ? '已同意好友申请' : '已拒绝好友申请',
+          ),
+        ),
+      );
+      await _loadRequests();
+      if (updatedRequest.isAccepted) {
+        widget.onContactsChanged();
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('处理好友申请失败: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isHandling = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _clearHandled() async {
+    try {
+      await widget.apiService.clearHandledFriendRequests();
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已清理处理过的好友申请')));
+      await _loadRequests();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('清理好友申请失败: $e')));
+    }
+  }
+
+  String _displayName(User user) {
+    if (user.display_name?.trim().isNotEmpty == true) {
+      return user.display_name!.trim();
+    }
+    return user.username;
+  }
+
+  String _statusText(FriendRequest request) {
+    if (request.isAccepted) return '已同意';
+    if (request.isRejected) return '已拒绝';
+    return request.isIncoming ? '待你处理' : '等待对方同意';
+  }
+
+  Color _statusColor(FriendRequest request) {
+    if (request.isAccepted) return Colors.green;
+    if (request.isRejected) return Colors.red;
+    return _qqBlue;
+  }
+
+  Widget _buildSection(String title, List<FriendRequest> requests) {
+    return SliverList(
+      delegate: SliverChildListDelegate([
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+          child: Text(
+            '$title (${requests.length})',
+            style: const TextStyle(
+              color: _qqText,
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        if (requests.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Text(
+              '暂无记录',
+              style: TextStyle(color: _qqMuted, fontSize: 13),
+            ),
+          )
+        else
+          ...requests.map(_buildRequestCard),
+      ]),
+    );
+  }
+
+  Widget _buildRequestCard(FriendRequest request) {
+    final peer = request.peer;
+    final note = request.note?.trim();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: _qqBlue,
+                child: Text(
+                  _displayName(peer).isNotEmpty
+                      ? _displayName(peer)[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _displayName(peer),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: _qqText,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _statusText(request),
+                          style: TextStyle(
+                            color: _statusColor(request),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '@${peer.username} · ${request.source}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: _qqMuted, fontSize: 12),
+                    ),
+                    if (note?.isNotEmpty == true) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        note!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: _qqMuted, fontSize: 12),
+                      ),
+                    ],
+                    if (request.isIncoming && request.isPending) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          FilledButton(
+                            onPressed: _isHandling
+                                ? null
+                                : () => _respond(request, 'accepted'),
+                            child: const Text('同意'),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton(
+                            onPressed: _isHandling
+                                ? null
+                                : () => _respond(request, 'rejected'),
+                            child: const Text('拒绝'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final incomingPending = _requests
+        .where((request) => request.isIncoming && request.isPending)
+        .toList();
+    final outgoingPending = _requests
+        .where((request) => request.isOutgoing && request.isPending)
+        .toList();
+    final handled = _requests.where((request) => !request.isPending).toList();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('好友通知'),
+        actions: [
+          if (handled.isNotEmpty)
+            TextButton(
+              onPressed: _clearHandled,
+              child: const Text('清理'),
+            ),
+        ],
+      ),
+      body: Container(
+        color: _qqShell,
+        child: RefreshIndicator(
+          onRefresh: _loadRequests,
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : CustomScrollView(
+                  slivers: [
+                    _buildSection('待我处理', incomingPending),
+                    _buildSection('等待验证', outgoingPending),
+                    _buildSection('已处理', handled),
+                    const SliverToBoxAdapter(child: SizedBox(height: 18)),
+                  ],
+                ),
+        ),
+      ),
+    );
   }
 }

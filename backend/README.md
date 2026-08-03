@@ -94,7 +94,10 @@ dotnet ef database update
 - `POST /api/auth/change-password` - 修改密码
 - `GET /api/auth/profile` - 获取用户信息
 - `GET /api/contacts` - 获取联系人列表
-- `POST /api/contacts` - 添加联系人
+- `POST /api/contacts` - 兼容旧客户端，发送好友申请，不直接添加联系人
+- `GET /api/contacts/friend-requests` - 获取好友申请
+- `POST /api/contacts/friend-requests` - 发送好友申请
+- `PATCH /api/contacts/friend-requests/{requestId}` - 同意或拒绝好友申请
 - `DELETE /api/contacts/{id}` - 删除联系人
 - `PATCH /api/contacts/{id}/block` - 屏蔽或取消屏蔽联系人
 - `PATCH /api/contacts/{id}/display-name` - 修改联系人备注

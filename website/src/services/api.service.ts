@@ -272,8 +272,11 @@ class ApiService {
   }
 
   async addContact(data: { username: string; display_name?: string }) {
-    const response = await this.api.post<ApiResponse<ContactApiResponse>>('/api/contacts', data);
-    return response.data;
+    return this.createFriendRequest({
+      username: data.username,
+      note: data.display_name,
+      source: '联系人添加',
+    });
   }
 
   async getFriendRequests() {

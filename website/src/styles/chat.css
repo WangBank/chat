@@ -14,7 +14,7 @@
   --qq-online: #20d67a;
   --qq-offline: #b8c0cb;
   --qq-unread: #ff3b30;
-  --qq-sent-bubble: #bfeeff;
+  --qq-sent-bubble: #95ec69;
   --qq-shadow: 0 18px 42px rgba(16, 42, 70, 0.18);
 }
 
@@ -402,6 +402,38 @@
   white-space: nowrap;
 }
 
+.conversation-preview-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.conversation-preview-row .conversation-preview {
+  flex: 1 1 auto;
+}
+
+.conversation-item.pinned {
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.conversation-tags {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.conversation-tags em {
+  border-radius: 4px;
+  background: #e8edf2;
+  color: #8b95a1;
+  padding: 1px 4px;
+  font-style: normal;
+  font-size: 10px;
+  line-height: 16px;
+}
+
 .friend-manager-button {
   width: calc(100% - 24px);
   height: 36px;
@@ -736,6 +768,23 @@
   border-left: 7px solid var(--qq-sent-bubble);
 }
 
+.qq-message.received .qq-bubble.media-bubble,
+.qq-message.sent .qq-bubble.media-bubble {
+  max-width: min(360px, 58vw);
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.qq-message.received .qq-bubble.media-bubble::before,
+.qq-message.sent .qq-bubble.media-bubble::before {
+  content: none;
+}
+
+.qq-bubble.media-bubble .group-message-sender {
+  margin: 0 0 5px 2px;
+}
+
 .message-text {
   font-size: 15px;
   line-height: 1.55;
@@ -743,6 +792,7 @@
 
 .message-image-link {
   display: block;
+  background: transparent;
   line-height: 0;
 }
 
@@ -751,6 +801,7 @@
   max-width: min(360px, 58vw);
   max-height: 300px;
   border-radius: 8px;
+  background: transparent;
   object-fit: contain;
 }
 
@@ -1010,7 +1061,7 @@
 
 .group-chat-content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 230px;
+  grid-template-columns: minmax(0, 1fr) 304px;
   min-height: 0;
 }
 
@@ -1075,6 +1126,209 @@
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.group-detail-panel {
+  min-width: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--qq-border);
+  background: #fbfcfd;
+  padding: 14px 12px 18px;
+}
+
+.group-announcement-card,
+.group-side-section {
+  width: 100%;
+  border: 1px solid #edf0f3;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.group-announcement-card {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 12px;
+  color: #111820;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.group-announcement-card:hover,
+.group-side-row:hover,
+.group-side-search:hover,
+.group-side-member-grid button:hover {
+  background: #f6fbff;
+}
+
+.group-announcement-card span,
+.group-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.group-announcement-card span {
+  justify-content: flex-start;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.group-announcement-card p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #6d7783;
+  font-size: 12px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.group-side-section {
+  margin-top: 12px;
+  padding: 10px;
+}
+
+.group-side-head {
+  min-height: 30px;
+  color: #111820;
+}
+
+.group-side-head strong {
+  font-size: 14px;
+}
+
+.group-side-head span {
+  color: #8c96a3;
+  font-size: 12px;
+}
+
+.group-side-search {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  gap: 7px;
+  height: 32px;
+  margin: 4px 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: #f0f2f5;
+  color: #8b96a3;
+  cursor: pointer;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.group-side-member-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 6px;
+}
+
+.group-side-member-grid button {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 62px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #56616f;
+  cursor: pointer;
+  padding: 6px 2px;
+  font: inherit;
+  font-size: 11px;
+}
+
+.group-side-member-grid button > span:last-child {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-side-member-action .anticon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px dashed #cbd5df;
+  border-radius: 999px;
+  color: #85919e;
+  font-size: 15px;
+}
+
+.group-side-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  border-top: 1px solid #f0f2f4;
+  background: transparent;
+  color: #111820;
+  cursor: pointer;
+  padding: 0 2px;
+  font: inherit;
+  text-align: left;
+}
+
+.group-side-row:first-of-type {
+  border-top: 0;
+}
+
+.group-side-row span,
+.group-side-row em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-side-row em {
+  color: #8c96a3;
+  font-style: normal;
+  font-size: 12px;
+}
+
+.group-side-row i,
+.qq-profile-switch-row i {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: #ccd3dc;
+  transition: background 0.16s ease;
+}
+
+.group-side-row i::after,
+.qq-profile-switch-row i::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(17, 24, 32, 0.18);
+  transition: transform 0.16s ease;
+}
+
+.group-side-row i.on,
+.qq-profile-switch-row i.on {
+  background: var(--qq-blue);
+}
+
+.group-side-row i.on::after,
+.qq-profile-switch-row i.on::after {
+  transform: translateX(14px);
 }
 
 .empty-chat,
@@ -1729,6 +1983,233 @@
   color: #111;
   font: inherit;
   font-weight: 600;
+}
+
+.qq-group-profile-main {
+  background: #f2f3f5;
+  padding: 26px clamp(18px, 5vw, 96px) 36px;
+}
+
+.qq-group-profile {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.qq-group-profile-hero,
+.qq-group-profile-section,
+.qq-group-profile-danger {
+  border: 1px solid #e8edf2;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.qq-group-profile-hero {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 20px;
+}
+
+.qq-group-profile-hero .ant-avatar {
+  background: var(--qq-blue);
+}
+
+.qq-group-profile-hero h2 {
+  margin: 0 0 5px;
+  color: #111820;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.qq-group-profile-hero p,
+.qq-group-profile-hero span {
+  display: block;
+  margin: 0;
+  color: #8c96a3;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.qq-group-profile-hero .ant-btn {
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.qq-group-profile-hero .ant-btn-primary {
+  background: var(--qq-blue);
+}
+
+.qq-group-profile-section {
+  padding: 12px 16px;
+}
+
+.qq-group-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  gap: 12px;
+}
+
+.qq-group-section-head strong {
+  color: #111820;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.qq-group-section-head button {
+  border: 0;
+  background: transparent;
+  color: #8c96a3;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+}
+
+.qq-group-section-head button:hover {
+  color: var(--qq-blue-strong);
+}
+
+.qq-group-profile-member-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.qq-group-profile-member-grid button {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 74px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #56616f;
+  cursor: pointer;
+  padding: 8px 4px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.qq-group-profile-member-grid button:hover {
+  background: #f6fbff;
+}
+
+.qq-group-profile-member-grid button > span:last-child {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qq-group-member-action .anticon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px dashed #cbd5df;
+  border-radius: 999px;
+  color: #85919e;
+  font-size: 17px;
+}
+
+.qq-profile-nav-row,
+.qq-profile-switch-row,
+.qq-profile-input-row {
+  display: grid;
+  grid-template-columns: 156px minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-top: 1px solid #f0f2f4;
+  background: transparent;
+  color: #111820;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+}
+
+.qq-profile-nav-row,
+.qq-profile-switch-row {
+  cursor: pointer;
+}
+
+.qq-profile-nav-row:hover,
+.qq-profile-switch-row:hover {
+  background: #f6fbff;
+}
+
+.qq-profile-nav-row span,
+.qq-profile-switch-row span,
+.qq-profile-input-row span {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.qq-profile-nav-row em,
+.qq-profile-input-row input {
+  min-width: 0;
+  overflow: hidden;
+  color: #7d8792;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qq-profile-nav-row em {
+  justify-self: end;
+  max-width: 100%;
+  font-style: normal;
+  font-size: 13px;
+}
+
+.qq-profile-input-row input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  text-align: right;
+}
+
+.qq-profile-switch-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.qq-group-profile-danger {
+  display: grid;
+  overflow: hidden;
+}
+
+.qq-group-profile-danger button {
+  min-height: 44px;
+  border: 0;
+  border-top: 1px solid #f0f2f4;
+  background: #fff;
+  color: #d4380d;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.qq-group-profile-danger button:first-child {
+  border-top: 0;
+  color: #111820;
+}
+
+.qq-group-profile-danger button:hover {
+  background: #fff7f6;
 }
 
 .group-profile-panel .profile-identity .ant-avatar {
@@ -3195,8 +3676,18 @@ button.mac-dot {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .group-member-panel {
+  .group-member-panel,
+  .group-detail-panel {
     display: none;
+  }
+
+  .qq-group-profile-hero {
+    grid-template-columns: 82px minmax(0, 1fr);
+  }
+
+  .qq-group-profile-hero .ant-space {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .share-shell {
@@ -3446,5 +3937,34 @@ button.mac-dot {
 
   .share-quick-actions {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .qq-group-profile-main {
+    padding-inline: 14px;
+  }
+
+  .qq-group-profile-hero {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    text-align: center;
+  }
+
+  .qq-group-profile-hero .ant-space {
+    grid-column: auto;
+    justify-self: center;
+  }
+
+  .qq-profile-nav-row,
+  .qq-profile-switch-row,
+  .qq-profile-input-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 9px 0;
+  }
+
+  .qq-profile-nav-row em,
+  .qq-profile-input-row input {
+    justify-self: start;
+    text-align: left;
   }
 }

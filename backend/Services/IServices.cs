@@ -46,7 +46,6 @@ namespace VideoCallAPI.Services
 
     public interface IContactService
     {
-        Task<ContactResponseDto> AddContactAsync(int userId, AddContactDto addContactDto);
         Task<FriendRequestResponseDto> CreateFriendRequestAsync(int userId, CreateFriendRequestDto requestDto);
         Task<List<FriendRequestResponseDto>> GetFriendRequestsAsync(int userId);
         Task<FriendRequestResponseDto> RespondFriendRequestAsync(int userId, int requestId, FriendRequestDecisionDto decisionDto);

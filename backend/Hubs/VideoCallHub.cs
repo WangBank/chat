@@ -1,11 +1,14 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using VideoCallAPI.Models;
 using VideoCallAPI.Models.DTOs;
 using VideoCallAPI.Services;
 using System.Collections.Concurrent;
+using System.Security.Claims;
 
 namespace VideoCallAPI.Hubs
 {
+    [Authorize]
     public class VideoCallHub : Hub
     {
         private readonly IWebRTCService _webRTCService;
@@ -32,7 +35,16 @@ namespace VideoCallAPI.Hubs
 
         public override async Task OnConnectedAsync()
         {
-            _logger.LogInformation("客户端连接: {connection_id}", Context.ConnectionId);
+            var userId = GetAuthenticatedUserId();
+            if (userId == null)
+            {
+                _logger.LogWarning("拒绝未认证的SignalR连接: ConnectionId={ConnectionId}", Context.ConnectionId);
+                Context.Abort();
+                return;
+            }
+
+            await RegisterConnectionAsync(userId.Value);
+            _logger.LogInformation("客户端连接: UserId={UserId}, ConnectionId={ConnectionId}", userId, Context.ConnectionId);
             await base.OnConnectedAsync();
         }
 
@@ -62,16 +74,19 @@ namespace VideoCallAPI.Hubs
             await base.OnDisconnectedAsync(exception);
         }
 
-        // 用户认证
-        public async Task Authenticate(int userId)
+        // 用户认证。身份只能来自已验证的 JWT，不能信任客户端传入的 userId。
+        public async Task Authenticate()
         {
+            var userId = GetAuthenticatedUserId();
+            if (userId == null)
+            {
+                _logger.LogWarning("SignalR认证失败，缺少有效用户声明: ConnectionId={ConnectionId}", Context.ConnectionId);
+                throw new HubException("用户未认证");
+            }
+
             try
             {
-                CancelPendingOffline(userId);
-                _connectionUserMap[Context.ConnectionId] = userId;
-                await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
-                await _userService.UpdateHeartbeatAsync(userId);
-                await BroadcastOnlineStatusAsync(userId, true);
+                await RegisterConnectionAsync(userId.Value);
                 _logger.LogInformation("用户认证成功: UserId={UserId}, ConnectionId={ConnectionId}", userId, Context.ConnectionId);
             }
             catch (Exception ex)
@@ -439,7 +454,29 @@ namespace VideoCallAPI.Hubs
         private int? GetCurrentUserId()
         {
             var connectionId = Context.ConnectionId;
-            return _connectionUserMap.TryGetValue(connectionId, out var userId) ? userId : null;
+            return _connectionUserMap.TryGetValue(connectionId, out var userId)
+                ? userId
+                : GetAuthenticatedUserId();
+        }
+
+        private int? GetAuthenticatedUserId()
+        {
+            var claim = Context.User?.FindFirst(ClaimTypes.NameIdentifier)
+                ?? Context.User?.FindFirst("nameid")
+                ?? Context.User?.FindFirst("sub");
+
+            return claim != null && int.TryParse(claim.Value, out var userId)
+                ? userId
+                : null;
+        }
+
+        private async Task RegisterConnectionAsync(int userId)
+        {
+            CancelPendingOffline(userId);
+            _connectionUserMap[Context.ConnectionId] = userId;
+            await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
+            await _userService.UpdateHeartbeatAsync(userId);
+            await BroadcastOnlineStatusAsync(userId, true);
         }
     }
 }

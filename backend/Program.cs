@@ -87,8 +87,16 @@ builder.Services.AddDbContext<VideoCallDbContext>(options =>
     options.UseNpgsql(databaseConnectionString));
 
 // 配置JWT认证
-var jwtSecret = builder.Configuration["Jwt:SecretKey"] ?? "VideoCallSecretKey123456789012345678901234567890";
+const string DevelopmentJwtSecret = "VideoCallSecretKey123456789012345678901234567890";
+var jwtSecret = builder.Configuration["Jwt:SecretKey"] ?? DevelopmentJwtSecret;
+if (!builder.Environment.IsDevelopment() &&
+    string.Equals(jwtSecret, DevelopmentJwtSecret, StringComparison.Ordinal))
+{
+    throw new InvalidOperationException("Production JWT secret must be configured with a non-default value.");
+}
 var key = Encoding.ASCII.GetBytes(jwtSecret);
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "VideoCallAPI";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "VideoCallClient";
 
 builder.Services.AddAuthentication(x =>
 {
@@ -96,14 +104,16 @@ builder.Services.AddAuthentication(x =>
     x.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 }).AddJwtBearer(x =>
 {
-    x.RequireHttpsMetadata = false;
+    x.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
     x.SaveToken = true;
     x.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
         IssuerSigningKey = new SymmetricSecurityKey(key),
-        ValidateIssuer = false,
-        ValidateAudience = false,
+        ValidateIssuer = true,
+        ValidIssuer = jwtIssuer,
+        ValidateAudience = true,
+        ValidAudience = jwtAudience,
         ClockSkew = TimeSpan.Zero
     };
     
@@ -143,49 +153,13 @@ builder.Services.AddSignalR(options =>
 });
 
 // 配置CORS
+var productionCorsOrigins = BuildProductionCorsOrigins(builder.Configuration);
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
-    {
-        policy.AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowAnyOrigin();
-    });
-    
     options.AddPolicy("SignalRCors", policy =>
     {
-        // 允许指定主机和域名
         policy.SetIsOriginAllowed(origin =>
-        {
-            // 允许null origin（移动应用可能发送null或空字符串）
-            if (string.IsNullOrEmpty(origin) || origin == "null")
-                return true;
-            
-            try
-            {
-                var uri = new Uri(origin);
-                var host = uri.Host.ToLower();
-                
-                // 允许localhost（开发环境）
-                if (host == "localhost" || host == "127.0.0.1")
-                    return true;
-                
-                // 允许指定IP地址
-                if (host == "common.wangbank.top")
-                    return true;
-                
-                // 允许本地网络IP（用于手机访问，如 192.168.x.x, 10.0.x.x）
-                if (host.StartsWith("192.168.") || host.StartsWith("10.0.") || host.StartsWith("172.16.") || host.StartsWith("172.17.") || host.StartsWith("172.18.") || host.StartsWith("172.19.") || host.StartsWith("172.20.") || host.StartsWith("172.21.") || host.StartsWith("172.22.") || host.StartsWith("172.23.") || host.StartsWith("172.24.") || host.StartsWith("172.25.") || host.StartsWith("172.26.") || host.StartsWith("172.27.") || host.StartsWith("172.28.") || host.StartsWith("172.29.") || host.StartsWith("172.30.") || host.StartsWith("172.31."))
-                    return true;
-                
-                return false;
-            }
-            catch
-            {
-                // 如果解析失败，可能是移动应用的特殊Origin，允许通过
-                return true;
-            }
-        })
+            builder.Environment.IsDevelopment() || IsAllowedProductionOrigin(origin, productionCorsOrigins))
         .AllowAnyHeader()
         .AllowAnyMethod()
         .AllowCredentials();
@@ -203,38 +177,7 @@ builder.Services.AddCors(options =>
     // 生产环境的宽松CORS策略（用于部署后的网站和手机访问）
     options.AddPolicy("Production", policy =>
     {
-        policy.SetIsOriginAllowed(origin =>
-        {
-            // 允许null origin（移动应用可能发送null或空字符串）
-            if (string.IsNullOrEmpty(origin) || origin == "null")
-                return true;
-            
-            try
-            {
-                var uri = new Uri(origin);
-                var host = uri.Host.ToLower();
-                
-                // 允许localhost（开发环境）
-                if (host == "localhost" || host == "127.0.0.1")
-                    return true;
-                
-                // 允许指定IP地址和域名
-                if (host == "common.wangbank.top")
-                    return true;
-                
-                // 允许本地网络IP（用于手机访问）
-                if (host.StartsWith("192.168.") || host.StartsWith("10.0.") || 
-                    (host.StartsWith("172.") && host.Split('.').Length == 4))
-                    return true;
-                
-                return false;
-            }
-            catch
-            {
-                // 如果解析失败，可能是移动应用的特殊Origin，允许通过
-                return true;
-            }
-        })
+        policy.SetIsOriginAllowed(origin => IsAllowedProductionOrigin(origin, productionCorsOrigins))
         .AllowAnyHeader()
         .AllowAnyMethod()
         .AllowCredentials();
@@ -308,6 +251,7 @@ if (app.Environment.IsDevelopment())
 // 仅在生产环境使用 HTTPS 重定向
 if (!app.Environment.IsDevelopment())
 {
+    app.UseHsts();
     app.UseHttpsRedirection();
 }
 
@@ -336,7 +280,12 @@ if (!Directory.Exists(avatarPath))
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(avatarPath),
-    RequestPath = "/avatar"
+    RequestPath = "/avatar",
+    OnPrepareResponse = context =>
+    {
+        var allowInline = IsSafeInlineMediaType(context.Context.Response.ContentType);
+        ApplyStaticFileSecurityHeaders(context.Context.Response, allowInline);
+    }
 });
 
 // 配置聊天文件夹的静态文件服务
@@ -348,7 +297,12 @@ if (!Directory.Exists(chatFilesPath))
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(chatFilesPath),
-    RequestPath = "/chat-files"
+    RequestPath = "/chat-files",
+    OnPrepareResponse = context =>
+    {
+        var allowInline = IsSafeInlineMediaType(context.Context.Response.ContentType);
+        ApplyStaticFileSecurityHeaders(context.Context.Response, allowInline);
+    }
 });
 
 app.UseAuthentication();
@@ -359,12 +313,12 @@ app.MapControllers();
 // 配置SignalR Hub - 根据环境使用不同的CORS策略
 if (app.Environment.IsDevelopment())
 {
-    app.MapHub<VideoCallHub>("/videocallhub").RequireCors("Development");
+    app.MapHub<VideoCallHub>("/videocallhub").RequireAuthorization().RequireCors("Development");
 }
 else
 {
     // 生产环境使用Production策略，支持部署后的网站和手机访问
-app.MapHub<VideoCallHub>("/videocallhub").RequireCors("Production");
+    app.MapHub<VideoCallHub>("/videocallhub").RequireAuthorization().RequireCors("Production");
 }
 
 app.Run();
@@ -532,6 +486,70 @@ static async Task EnsureGroupMemberAsync(VideoCallDbContext context, int groupId
 
     member.role = role;
     member.is_active = true;
+}
+
+static HashSet<string> BuildProductionCorsOrigins(IConfiguration configuration)
+{
+    var origins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "http://common.wangbank.top",
+        "https://common.wangbank.top"
+    };
+
+    foreach (var item in configuration.GetSection("Cors:AllowedOrigins").GetChildren())
+    {
+        var normalized = NormalizeCorsOrigin(item.Value);
+        if (normalized != null)
+            origins.Add(normalized);
+    }
+
+    return origins;
+}
+
+static bool IsAllowedProductionOrigin(string? origin, HashSet<string> allowedOrigins)
+{
+    var normalized = NormalizeCorsOrigin(origin);
+    return normalized != null && allowedOrigins.Contains(normalized);
+}
+
+static string? NormalizeCorsOrigin(string? origin)
+{
+    if (string.IsNullOrWhiteSpace(origin) ||
+        string.Equals(origin, "null", StringComparison.OrdinalIgnoreCase))
+    {
+        return null;
+    }
+
+    if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+        return null;
+
+    if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+        return null;
+
+    return $"{uri.Scheme}://{uri.Authority}";
+}
+
+static bool IsSafeInlineMediaType(string? contentType)
+{
+    if (string.IsNullOrWhiteSpace(contentType))
+        return false;
+
+    var normalized = contentType.Split(';', 2)[0].Trim();
+    return normalized.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
+               !string.Equals(normalized, "image/svg+xml", StringComparison.OrdinalIgnoreCase) ||
+           normalized.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) ||
+           normalized.StartsWith("video/", StringComparison.OrdinalIgnoreCase);
+}
+
+static void ApplyStaticFileSecurityHeaders(HttpResponse response, bool allowInline)
+{
+    response.Headers["X-Content-Type-Options"] = "nosniff";
+    response.Headers["Referrer-Policy"] = "no-referrer";
+
+    if (!allowInline)
+    {
+        response.Headers["Content-Disposition"] = "attachment";
+    }
 }
 }
 catch (Exception ex)

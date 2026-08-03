@@ -1,10 +1,19 @@
 import * as signalR from '@microsoft/signalr';
 import { APP_CONFIG } from '../config/app.config';
+import type { ChatMessageApiResponse, UserSummaryResponse } from './api.service';
+
+type SignalRUser = UserSummaryResponse & {
+  id: number;
+  username: string;
+  created_at?: string;
+  updated_at?: string;
+  last_login_at?: string;
+};
 
 export interface IncomingCall {
   call_id: string;
-  caller: any;
-  receiver: any;
+  caller: SignalRUser;
+  receiver: SignalRUser;
   call_type: number; // 1: voice, 2: video
   status: number;
   start_time: string;
@@ -31,7 +40,7 @@ class SignalRService {
   onCallRejected?: (callId: string, receiverId: number) => void;
   onCallEnded?: (callId: string, endedBy: number) => void;
   onWebRTCMessage?: (message: WebRTCMessage) => void;
-  onNewMessage?: (message: any) => void;
+  onNewMessage?: (message: ChatMessageApiResponse) => void;
   onError?: (error: string) => void;
 
   get isConnected(): boolean {
@@ -55,7 +64,7 @@ class SignalRService {
     }
 
     this.connection = new signalR.HubConnectionBuilder()
-      .withUrl(`${APP_CONFIG.SIGNALR_HUB_URL}?access_token=${token}`, {
+      .withUrl(APP_CONFIG.SIGNALR_HUB_URL, {
         accessTokenFactory: () => token,
       })
       .withAutomaticReconnect()
@@ -133,7 +142,7 @@ class SignalRService {
     });
 
     // Chat messages
-    this.connection.on('NewMessage', (message: any) => {
+    this.connection.on('NewMessage', (message: ChatMessageApiResponse) => {
       console.log('New message:', message);
       this.onNewMessage?.(message);
     });
@@ -145,7 +154,7 @@ class SignalRService {
     });
   }
 
-  async authenticate(userId: number): Promise<void> {
+  async authenticate(userId?: number): Promise<void> {
     // Wait for connection to be ready
     if (!this.connection) {
       throw new Error('SignalR connection does not exist');
@@ -165,8 +174,10 @@ class SignalRService {
     }
 
     try {
-      await this.connection.invoke('Authenticate', userId);
-      this.currentUserId = userId;
+      await this.connection.invoke('Authenticate');
+      if (userId !== undefined) {
+        this.currentUserId = userId;
+      }
       this.startHeartbeat();
       console.log('User authenticated:', userId);
     } catch (error) {

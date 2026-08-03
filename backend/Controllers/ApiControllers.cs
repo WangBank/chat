@@ -545,29 +545,45 @@ namespace VideoCallAPI.Controllers
         }
 
         [HttpPost]
-        public async Task<ActionResult<ApiResponse<ContactResponseDto>>> AddContact(AddContactDto addContactDto)
+        public async Task<ActionResult<ApiResponse<FriendRequestResponseDto>>> AddContact(AddContactDto addContactDto)
         {
             try
             {
                 var userId = GetUserId();
-                _logger.LogInformation("添加联系人请求: UserId={UserId}, ContactUsername={ContactUsername}", userId, addContactDto.username);
-                var contact = await _contactService.AddContactAsync(userId, addContactDto);
-                _logger.LogInformation("添加联系人成功: UserId={UserId}, ContactId={ContactId}", userId, contact.id);
+                _logger.LogInformation(
+                    "发送好友申请请求: UserId={UserId}, ContactUsername={ContactUsername}",
+                    userId,
+                    addContactDto.username);
+                var request = await _contactService.CreateFriendRequestAsync(userId, new CreateFriendRequestDto
+                {
+                    username = addContactDto.username,
+                    source = "联系人添加"
+                });
+                _logger.LogInformation(
+                    "好友申请已发送: UserId={UserId}, RequestId={RequestId}",
+                    userId,
+                    request.id);
                 
-                return Ok(new ApiResponse<ContactResponseDto>
+                return Ok(new ApiResponse<FriendRequestResponseDto>
                 {
                     Success = true,
-                    Message = "添加联系人成功",
-                    Data = contact
+                    Message = request.direction == "incoming"
+                        ? "对方已向你发送好友申请，请在好友通知中处理"
+                        : "好友申请已发送，等待对方同意",
+                    Data = request
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "添加联系人失败: UserId={UserId}, ContactUsername={ContactUsername}", GetUserId(), addContactDto.username);
-                return BadRequest(new ApiResponse<ContactResponseDto>
+                _logger.LogError(
+                    ex,
+                    "发送好友申请失败: UserId={UserId}, ContactUsername={ContactUsername}",
+                    GetUserId(),
+                    addContactDto.username);
+                return BadRequest(new ApiResponse<FriendRequestResponseDto>
                 {
                     Success = false,
-                    Message = "添加联系人失败",
+                    Message = "发送好友申请失败",
                     Errors = new List<string> { ex.Message }
                 });
             }
