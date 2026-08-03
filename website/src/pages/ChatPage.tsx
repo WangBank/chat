@@ -2591,7 +2591,12 @@ const ChatPage = observer(() => {
   const handleInitiateCall = async (type: CallType, targetContact: Contact | null = chatStore.currentContact) => {
     if (!targetContact) return;
 
-    if (!targetContact.contact_user.is_online) {
+    await chatStore.loadContacts(false);
+    const latestContact =
+      chatStore.contacts.find((contact) => contact.contact_user?.id === targetContact.contact_user.id) ||
+      targetContact;
+
+    if (!latestContact.contact_user.is_online) {
       Modal.warning({
         title: '对方当前离线',
         content: '离线用户暂时无法接收通话。',
@@ -2601,9 +2606,9 @@ const ChatPage = observer(() => {
 
     try {
       await callStore.initiateCall(
-        targetContact.contact_user.id,
+        latestContact.contact_user.id,
         type,
-        targetContact.contact_user
+        latestContact.contact_user
       );
     } catch {
       message.error('发起通话失败');

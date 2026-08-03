@@ -87,6 +87,10 @@ class ChatStore {
         void this.loadContacts(false);
       }
     };
+
+    signalRService.onUserOnlineStatusChanged = (userId: number, isOnline: boolean) => {
+      this.updateUserOnlineStatus(userId, isOnline);
+    };
   }
 
   private getPeerUserId(message: ChatMessage, currentUserId?: number) {
@@ -115,6 +119,27 @@ class ChatStore {
     this.contacts = nextContacts;
     if (this.currentContact?.id === contactId) {
       const nextCurrentContact = nextContacts.find((contact) => contact.id === contactId);
+      if (nextCurrentContact) {
+        this.currentContact = nextCurrentContact;
+      }
+    }
+  }
+
+  private updateUserOnlineStatus(userId: number, isOnline: boolean) {
+    const nextContacts = this.contacts.map((contact) => {
+      if (contact.contact_user?.id !== userId) return contact;
+      return {
+        ...contact,
+        contact_user: {
+          ...contact.contact_user,
+          is_online: isOnline,
+        },
+      };
+    });
+
+    this.contacts = nextContacts;
+    if (this.currentContact?.contact_user?.id === userId) {
+      const nextCurrentContact = nextContacts.find((contact) => contact.id === this.currentContact?.id);
       if (nextCurrentContact) {
         this.currentContact = nextCurrentContact;
       }

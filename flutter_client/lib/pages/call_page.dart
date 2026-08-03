@@ -82,93 +82,112 @@ class _CallPageState extends State<CallPage> {
     return Scaffold(
       backgroundColor: _callBackground,
       body: SafeArea(
-        child: Column(
-          children: [
-            const Spacer(),
-            // 头像
-            DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  width: 3,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: _qqBlue.withValues(alpha: 0.28),
-                    blurRadius: 36,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final contentWidth = constraints.maxWidth > 56
+                ? constraints.maxWidth - 56
+                : constraints.maxWidth;
+
+            return SizedBox.expand(
+              child: Stack(
+                children: [
+                  Align(
+                    alignment: const Alignment(0, -0.2),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.9),
+                              width: 3,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: _qqBlue.withValues(alpha: 0.28),
+                                blurRadius: 36,
+                              ),
+                            ],
+                          ),
+                          child: CircleAvatar(
+                            radius: 60,
+                            backgroundColor: _qqBlue,
+                            child: avatarUrl != null
+                                ? ClipOval(
+                                    child: Image.network(
+                                      avatarUrl,
+                                      width: 120,
+                                      height: 120,
+                                      fit: BoxFit.cover,
+                                      errorBuilder:
+                                          (context, error, stackTrace) =>
+                                              _buildInitial(),
+                                    ),
+                                  )
+                                : _buildInitial(),
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        SizedBox(
+                          width: contentWidth,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              _peerDisplayName(),
+                              maxLines: 1,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          widget.call.callType == CallType.voice
+                              ? '语音通话'
+                              : '视频通话',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 18,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          '通话中...',
+                          style: TextStyle(color: Colors.white70, fontSize: 16),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Align(
+                    alignment: const Alignment(0, 0.82),
+                    child: FloatingActionButton.large(
+                      heroTag: 'voice-call-end',
+                      backgroundColor: _callDanger,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      onPressed: () async {
+                        print('📞 用户结束通话');
+                        try {
+                          await widget.callManager.endCall();
+                          // 不再在此直接 pop，交由监听器统一处理
+                        } catch (e) {
+                          print('❌ 结束通话失败: $e');
+                          // 保持一致，不在此 pop，避免重复导航
+                        }
+                      },
+                      child: const Icon(Icons.call_end, size: 36),
+                    ),
                   ),
                 ],
               ),
-              child: CircleAvatar(
-                radius: 60,
-                backgroundColor: _qqBlue,
-                child: avatarUrl != null
-                    ? ClipOval(
-                        child: Image.network(
-                          avatarUrl,
-                          width: 120,
-                          height: 120,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              _buildInitial(),
-                        ),
-                      )
-                    : _buildInitial(),
-              ),
-            ),
-            const SizedBox(height: 32),
-            // 通话信息
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  _peerDisplayName(),
-                  maxLines: 1,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              widget.call.callType == CallType.voice ? '语音通话' : '视频通话',
-              style: const TextStyle(color: Colors.white70, fontSize: 18),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '通话中...',
-              style: const TextStyle(color: Colors.white70, fontSize: 16),
-            ),
-            const Spacer(),
-            // 结束通话按钮
-            Padding(
-              padding: const EdgeInsets.all(32.0),
-              child: FloatingActionButton.large(
-                heroTag: 'voice-call-end',
-                backgroundColor: _callDanger,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                onPressed: () async {
-                  print('📞 用户结束通话');
-                  try {
-                    await widget.callManager.endCall();
-                    // 不再在此直接 pop，交由监听器统一处理
-                  } catch (e) {
-                    print('❌ 结束通话失败: $e');
-                    // 保持一致，不在此 pop，避免重复导航
-                  }
-                },
-                child: const Icon(Icons.call_end, size: 36),
-              ),
-            ),
-            const SizedBox(height: 32),
-          ],
+            );
+          },
         ),
       ),
     );

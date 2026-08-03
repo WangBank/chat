@@ -41,6 +41,7 @@ class SignalRService {
   onCallEnded?: (callId: string, endedBy: number) => void;
   onWebRTCMessage?: (message: WebRTCMessage) => void;
   onNewMessage?: (message: ChatMessageApiResponse) => void;
+  onUserOnlineStatusChanged?: (userId: number, isOnline: boolean) => void;
   onError?: (error: string) => void;
 
   get isConnected(): boolean {
@@ -145,6 +146,13 @@ class SignalRService {
     this.connection.on('NewMessage', (message: ChatMessageApiResponse) => {
       console.log('New message:', message);
       this.onNewMessage?.(message);
+    });
+
+    this.connection.on('UserOnlineStatusChanged', (data: { user_id?: number; userId?: number; is_online?: boolean; isOnline?: boolean }) => {
+      const userId = Number(data.user_id ?? data.userId);
+      const isOnline = data.is_online ?? data.isOnline;
+      if (!Number.isFinite(userId) || typeof isOnline !== 'boolean') return;
+      this.onUserOnlineStatusChanged?.(userId, isOnline);
     });
 
     // Error events

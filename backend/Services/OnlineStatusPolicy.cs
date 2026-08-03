@@ -4,8 +4,8 @@ namespace VideoCallAPI.Services
 {
     public static class OnlineStatusPolicy
     {
-        public static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromMinutes(5);
-        public static readonly TimeSpan OfflineGracePeriod = TimeSpan.FromSeconds(75);
+        public static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(5);
+        public static readonly TimeSpan OfflineGracePeriod = TimeSpan.FromSeconds(5);
 
         public static DateTime GetOnlineCutoffUtc(DateTime utcNow)
         {
