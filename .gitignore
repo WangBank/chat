@@ -226,3 +226,7 @@ web/
 *.orig
 
 .fake
+
+# Local repository/tooling folders
+.github/
+.codegraph/
