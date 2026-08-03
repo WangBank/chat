@@ -167,6 +167,18 @@ coverage/
 .env.test.local
 .env.production.local
 
+# Local backend secrets and deploy-time overrides
+backend/appsettings.Local.json
+backend/appsettings.Production.json
+backend/appsettings.*.local.json
+backend/appsettings.*.Local.json
+backend/*.secrets.json
+
+# Local Docker/Cloudflare deployment env files
+.env.production
+.env.deploy
+.env.deploy.local
+
 # Flutter integration example (不需要提交到版本控制)
 backend/flutter_integration_example.dart
 
