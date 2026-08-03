@@ -510,10 +510,7 @@ static async Task EnsureGroupMemberAsync(VideoCallDbContext context, int groupId
 
 static HashSet<string> BuildProductionCorsOrigins(IConfiguration configuration)
 {
-    var origins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "https://chat.wangbank.top"
-    };
+    var origins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     foreach (var item in configuration.GetSection("Cors:AllowedOrigins").GetChildren())
     {
