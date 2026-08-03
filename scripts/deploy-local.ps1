@@ -152,7 +152,7 @@ function Ensure-EnvFile {
             "QQ__AllowMockLogin=false",
             "SWAGGER_ENABLED=false",
             "USE_HTTPS_REDIRECTION=false",
-            "EXTRA_CORS_ORIGIN=http://common.wangbank.top"
+            "EXTRA_CORS_ORIGIN=https://chat.wangbank.top"
         ) | Set-Content -LiteralPath $Path -Encoding utf8
         Write-DeployLog "Created .env with generated local secrets."
         return

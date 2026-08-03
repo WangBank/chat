@@ -512,8 +512,7 @@ static HashSet<string> BuildProductionCorsOrigins(IConfiguration configuration)
 {
     var origins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "http://common.wangbank.top",
-        "https://common.wangbank.top"
+        "https://chat.wangbank.top"
     };
 
     foreach (var item in configuration.GetSection("Cors:AllowedOrigins").GetChildren())

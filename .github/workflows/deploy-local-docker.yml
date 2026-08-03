@@ -26,7 +26,7 @@ jobs:
       API_PUBLIC_URL: ${{ vars.API_PUBLIC_URL }}
       WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
       SIGNALR_PUBLIC_URL: ${{ vars.SIGNALR_PUBLIC_URL }}
-      EXTRA_CORS_ORIGIN: ${{ vars.EXTRA_CORS_ORIGIN || 'http://common.wangbank.top' }}
+      EXTRA_CORS_ORIGIN: ${{ vars.EXTRA_CORS_ORIGIN || 'https://chat.wangbank.top' }}
       SWAGGER_ENABLED: ${{ vars.SWAGGER_ENABLED || 'false' }}
       USE_HTTPS_REDIRECTION: ${{ vars.USE_HTTPS_REDIRECTION || 'false' }}
       QQ__ClientId: ${{ secrets.QQ_CLIENT_ID }}

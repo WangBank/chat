@@ -48,7 +48,7 @@ FLUTTER_DEVICE_CONNECTION=attached ./start.sh mobile
 默认后端地址在 `lib/config/app_config.dart`：
 
 ```text
-http://common.wangbank.top:17101/api
+https://chat.wangbank.top/api
 ```
 
 本地调试时可改为：

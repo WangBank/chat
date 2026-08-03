@@ -26,7 +26,7 @@ npm run build
 默认 API 地址位于 `src/config/app.config.ts`：
 
 ```text
-http://common.wangbank.top:17101
+https://chat.wangbank.top
 ```
 
 本地开发时可通过环境变量覆盖：

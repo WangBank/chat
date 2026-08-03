@@ -1,5 +1,5 @@
 class AppConfig {
-  static const String _defaultBaseUrl = 'http://common.wangbank.top:17101/api';
+  static const String _defaultBaseUrl = 'https://chat.wangbank.top/api';
   static const String _configuredBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: _defaultBaseUrl,
