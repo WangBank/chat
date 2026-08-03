@@ -65,6 +65,8 @@ chat/
 ./start.sh mobile       # 启动后端 + Android + iOS
 ./start.sh all          # 启动后端 + Web + Android + iOS
 ./start.sh web android  # 可组合参数
+./start.sh prod android # Android 连接线上生产环境
+./start.sh prod ios     # iOS 连接线上生产环境
 ```
 
 Android 未检测到已连接设备时会自动启动第一台可用 Android AVD；iOS 未指定设备时会自动选择第一台受支持的 iOS 设备。常用参数可通过环境变量覆盖：
@@ -77,6 +79,7 @@ IOS_DEVICE="iPhone 16 Pro" ./start.sh ios
 FLUTTER_DEVICE_CONNECTION=attached ./start.sh mobile
 FRONTEND_PORT=5174 ./start.sh web
 SKIP_INSTALL=1 ./start.sh all
+APP_ENV=production ./start.sh android
 ```
 
 Android 模拟器默认使用 `http://10.0.2.2:17101/api` 访问本机后端，iOS 模拟器默认使用 `http://localhost:17101/api`。真机调试时请用电脑局域网 IP 覆盖：
@@ -84,6 +87,21 @@ Android 模拟器默认使用 `http://10.0.2.2:17101/api` 访问本机后端，i
 ```bash
 ANDROID_API_URL=http://192.168.1.10:17101/api \
 ANDROID_SIGNALR_URL=http://192.168.1.10:17101/videocallhub \
+./start.sh android
+```
+
+线上生产环境地址为 `https://chat.wangbank.top`。手机端连接生产环境时使用：
+
+```bash
+./start.sh prod android
+./start.sh prod ios
+```
+
+等价的显式配置：
+
+```bash
+ANDROID_API_URL=https://chat.wangbank.top/api \
+ANDROID_SIGNALR_URL=https://chat.wangbank.top/videocallhub \
 ./start.sh android
 ```
 
@@ -131,7 +149,9 @@ Vite 默认监听 `http://localhost:5173`。
 ```bash
 cd flutter_client
 flutter pub get
-flutter run
+flutter run \
+  --dart-define=API_BASE_URL=https://chat.wangbank.top/api \
+  --dart-define=SIGNALR_HUB_URL=https://chat.wangbank.top/videocallhub
 ```
 
 Android debug APK：

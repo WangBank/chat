@@ -6,6 +6,11 @@ BACKEND_DIR="$ROOT_DIR/backend"
 WEBSITE_DIR="$ROOT_DIR/website"
 FLUTTER_DIR="$ROOT_DIR/flutter_client"
 
+APP_ENV="${APP_ENV:-local}"
+PRODUCTION_ORIGIN="${PRODUCTION_ORIGIN:-https://chat.wangbank.top}"
+PRODUCTION_ORIGIN="${PRODUCTION_ORIGIN%/}"
+PRODUCTION_API_URL="${PRODUCTION_API_URL:-$PRODUCTION_ORIGIN/api}"
+PRODUCTION_SIGNALR_URL="${PRODUCTION_SIGNALR_URL:-$PRODUCTION_ORIGIN/videocallhub}"
 BACKEND_URL="${BACKEND_URL:-http://localhost:17101}"
 BACKEND_URL="${BACKEND_URL%/}"
 BACKEND_PORT="${BACKEND_PORT:-}"
@@ -31,6 +36,10 @@ ANDROID_EMULATOR_TIMEOUT="${ANDROID_EMULATOR_TIMEOUT:-120}"
 IOS_DEVICE="${IOS_DEVICE:-}"
 FLUTTER_DEVICE_CONNECTION="${FLUTTER_DEVICE_CONNECTION:-both}"
 FLUTTER_DEVICE_TIMEOUT="${FLUTTER_DEVICE_TIMEOUT:-10}"
+ANDROID_API_URL_FROM_ENV="${ANDROID_API_URL:-}"
+ANDROID_SIGNALR_URL_FROM_ENV="${ANDROID_SIGNALR_URL:-}"
+IOS_API_URL_FROM_ENV="${IOS_API_URL:-}"
+IOS_SIGNALR_URL_FROM_ENV="${IOS_SIGNALR_URL:-}"
 ANDROID_API_URL="${ANDROID_API_URL:-http://10.0.2.2:$BACKEND_PORT/api}"
 ANDROID_SIGNALR_URL="${ANDROID_SIGNALR_URL:-http://10.0.2.2:$BACKEND_PORT/videocallhub}"
 IOS_API_URL="${IOS_API_URL:-$BACKEND_URL/api}"
@@ -60,9 +69,11 @@ need_command() {
 usage() {
   cat <<'EOF'
 Usage:
-  ./start.sh [web|android|ios|mobile|all]
+  ./start.sh [prod|local] [web|android|ios|mobile|all]
 
 Modes:
+  prod      Use the deployed API/SignalR at https://chat.wangbank.top.
+  local     Use the local backend API. This is the default.
   web       Start backend API and React website. This is the default.
   android   Start backend API and run the Flutter Android app.
   ios       Start backend API and run the Flutter iOS app.
@@ -71,8 +82,12 @@ Modes:
 
 Modes can be combined, for example:
   ./start.sh web android
+  ./start.sh prod android
+  ./start.sh prod ios
 
 Useful environment variables:
+  APP_ENV=production
+  PRODUCTION_ORIGIN=https://chat.wangbank.top
   BACKEND_URL=http://localhost:17101
   FRONTEND_PORT=5173
   ANDROID_DEVICE=emulator-5554
@@ -83,7 +98,9 @@ Useful environment variables:
   FLUTTER_DEVICE_CONNECTION=attached
   FLUTTER_DEVICE_TIMEOUT=10
   ANDROID_API_URL=http://10.0.2.2:17101/api
+  ANDROID_SIGNALR_URL=http://10.0.2.2:17101/videocallhub
   IOS_API_URL=http://localhost:17101/api
+  IOS_SIGNALR_URL=http://localhost:17101/videocallhub
   SKIP_INSTALL=1
   SKIP_POSTGRES=1
   STOP_EXISTING_SERVICES=0
@@ -98,25 +115,38 @@ configure_targets() {
     return 0
   fi
 
+  local saw_run_target=0
+
   for target in "$@"; do
     case "$target" in
+      prod|production)
+        APP_ENV="production"
+        ;;
+      local|dev|development)
+        APP_ENV="local"
+        ;;
       web|website|front|frontend)
         START_WEBSITE=1
+        saw_run_target=1
         ;;
       android)
         START_ANDROID=1
+        saw_run_target=1
         ;;
       ios)
         START_IOS=1
+        saw_run_target=1
         ;;
       mobile)
         START_ANDROID=1
         START_IOS=1
+        saw_run_target=1
         ;;
       all)
         START_WEBSITE=1
         START_ANDROID=1
         START_IOS=1
+        saw_run_target=1
         ;;
       -h|--help|help)
         usage
@@ -128,6 +158,30 @@ configure_targets() {
         ;;
     esac
   done
+
+  if [[ "$saw_run_target" == "0" ]]; then
+    START_WEBSITE=1
+  fi
+}
+
+configure_environment() {
+  case "$APP_ENV" in
+    prod|production)
+      APP_ENV="production"
+      BACKEND_URL="$PRODUCTION_ORIGIN"
+      SKIP_POSTGRES=1
+      [[ -n "$ANDROID_API_URL_FROM_ENV" ]] || ANDROID_API_URL="$PRODUCTION_API_URL"
+      [[ -n "$ANDROID_SIGNALR_URL_FROM_ENV" ]] || ANDROID_SIGNALR_URL="$PRODUCTION_SIGNALR_URL"
+      [[ -n "$IOS_API_URL_FROM_ENV" ]] || IOS_API_URL="$PRODUCTION_API_URL"
+      [[ -n "$IOS_SIGNALR_URL_FROM_ENV" ]] || IOS_SIGNALR_URL="$PRODUCTION_SIGNALR_URL"
+      ;;
+    local|dev|development)
+      APP_ENV="local"
+      ;;
+    *)
+      die "Unknown APP_ENV: $APP_ENV"
+      ;;
+  esac
 }
 
 pids_on_port() {
@@ -280,8 +334,10 @@ install_dependencies() {
     return 0
   }
 
-  log "Restoring backend dependencies"
-  (cd "$BACKEND_DIR" && dotnet restore)
+  if [[ "$APP_ENV" != "production" ]]; then
+    log "Restoring backend dependencies"
+    (cd "$BACKEND_DIR" && dotnet restore)
+  fi
 
   if [[ "$START_WEBSITE" == "1" && ! -d "$WEBSITE_DIR/node_modules" ]]; then
     log "Installing website dependencies"
@@ -525,18 +581,30 @@ monitor_processes() {
 
 main() {
   configure_targets "$@"
+  configure_environment
 
-  need_command dotnet
   need_command curl
-  need_command lsof
+  if [[ "$APP_ENV" != "production" ]]; then
+    need_command dotnet
+    need_command lsof
+  fi
+  if [[ "$APP_ENV" == "production" && "$START_WEBSITE" == "1" ]]; then
+    need_command lsof
+  fi
   [[ "$START_WEBSITE" == "1" ]] && need_command npm
   [[ "$START_ANDROID" == "1" || "$START_IOS" == "1" ]] && need_command flutter
 
-  stop_existing_services
-  ensure_postgres
-  install_dependencies
-  start_backend
-  wait_for_url "Backend API" "$BACKEND_URL/swagger/v1/swagger.json" 90
+  if [[ "$APP_ENV" == "production" ]]; then
+    log "Using production backend: $PRODUCTION_ORIGIN"
+    install_dependencies
+    wait_for_url "Production website" "$PRODUCTION_ORIGIN/chat" 30
+  else
+    stop_existing_services
+    ensure_postgres
+    install_dependencies
+    start_backend
+    wait_for_url "Backend API" "$BACKEND_URL/swagger/v1/swagger.json" 90
+  fi
 
   if [[ "$START_WEBSITE" == "1" ]]; then
     start_website
@@ -547,8 +615,14 @@ main() {
   [[ "$START_IOS" == "1" ]] && start_ios
 
   log "All services are running"
-  log "Backend: $BACKEND_URL"
-  log "Swagger: $BACKEND_URL/swagger"
+  if [[ "$APP_ENV" == "production" ]]; then
+    log "Backend: $PRODUCTION_ORIGIN"
+    log "API: $PRODUCTION_API_URL"
+    log "SignalR: $PRODUCTION_SIGNALR_URL"
+  else
+    log "Backend: $BACKEND_URL"
+    log "Swagger: $BACKEND_URL/swagger"
+  fi
   [[ "$START_WEBSITE" == "1" ]] && log "Website: http://localhost:$FRONTEND_PORT"
   [[ "$START_ANDROID" == "1" ]] && log "Android app started"
   [[ "$START_IOS" == "1" ]] && log "iOS app started"

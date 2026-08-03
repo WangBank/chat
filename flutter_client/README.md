@@ -68,6 +68,21 @@ IOS_SIGNALR_URL=http://localhost:17101/videocallhub
 
 如果使用真机访问本机后端，应替换为电脑在局域网中的 IP。
 
+连接线上生产环境：
+
+```bash
+../start.sh prod android
+../start.sh prod ios
+```
+
+手工运行时使用：
+
+```bash
+flutter run \
+  --dart-define=API_BASE_URL=https://chat.wangbank.top/api \
+  --dart-define=SIGNALR_HUB_URL=https://chat.wangbank.top/videocallhub
+```
+
 ## Android
 
 当前 Android 工程按 Flutter 3.44 模板升级：

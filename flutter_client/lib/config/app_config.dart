@@ -60,15 +60,19 @@ class ConfigurationInstructions {
    - Windows: 运行 `ipconfig`
    - 例如：192.168.1.100
 
-2. 确保防火墙允许端口17101的访问
+2. 生产环境默认连接：
+   https://chat.wangbank.top/api
 
-3. 重新构建应用：
+3. 本地调试时确保防火墙允许端口17101的访问
+
+4. 重新构建应用：
    flutter clean && flutter pub get && flutter run
 
-4. 测试连接：
+5. 测试连接：
    在浏览器访问 http://你的IP:17101 确认服务器可访问
 
-5. 如果在模拟器上测试：
-   使用 'http://localhost:17101/api'
+6. 如果在模拟器上测试本机后端：
+   Android 使用 'http://10.0.2.2:17101/api'
+   iOS 使用 'http://localhost:17101/api'
 ''';
 }

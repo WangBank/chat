@@ -152,8 +152,11 @@ namespace VideoCallAPI.Services
                 GetOptionalJsonString(root, "figureurl_qq_1") ??
                 GetOptionalJsonString(root, "figureurl_2") ??
                 GetOptionalJsonString(root, "figureurl_1");
+            var gender = GetOptionalJsonString(root, "gender");
+            var province = GetOptionalJsonString(root, "province");
+            var city = GetOptionalJsonString(root, "city");
 
-            return new QQProfile(openId, unionId, nickname, avatarUrl);
+            return new QQProfile(openId, unionId, nickname, avatarUrl, gender, province, city);
         }
 
         private async Task<User> FindOrCreateQQUserAsync(QQProfile profile)
@@ -211,9 +214,21 @@ namespace VideoCallAPI.Services
             user.qq_nickname = NormalizeNickname(profile.Nickname);
             user.qq_avatar_url = NormalizeExternalUrl(profile.AvatarUrl, "QQ头像地址");
             user.qq_bound_at ??= DateTime.UtcNow;
+            var qqGender = NormalizeQQGender(profile.Gender);
+            var qqProvince = NormalizeQQProfileField(profile.Province, "QQ省份", 50);
+            var qqCity = NormalizeQQProfileField(profile.City, "QQ城市", 50);
 
             if (overwriteLocalProfile || string.IsNullOrWhiteSpace(user.display_name))
                 user.display_name = user.qq_nickname;
+
+            if (ShouldApplyQQProfileField(overwriteLocalProfile, user.gender, qqGender))
+                user.gender = qqGender;
+
+            if (ShouldApplyQQProfileField(overwriteLocalProfile, user.province, qqProvince))
+                user.province = qqProvince;
+
+            if (ShouldApplyQQProfileField(overwriteLocalProfile, user.region, qqCity))
+                user.region = qqCity;
 
             if ((overwriteLocalProfile || string.IsNullOrWhiteSpace(user.avatar_path)) &&
                 !string.IsNullOrWhiteSpace(user.qq_avatar_url) &&
@@ -230,7 +245,7 @@ namespace VideoCallAPI.Services
             var nickname = _contentSecurity.NormalizeOptionalText(loginDto.nickname, "QQ昵称", 100)
                 ?? "QQ测试用户";
             var avatarUrl = NormalizeExternalUrl(loginDto.avatar_url, "QQ头像地址");
-            return new QQProfile(openId, null, nickname, avatarUrl);
+            return new QQProfile(openId, null, nickname, avatarUrl, null, null, null);
         }
 
         private string BuildAuthorizationUrl(string state)
@@ -281,6 +296,28 @@ namespace VideoCallAPI.Services
         private string NormalizeNickname(string value)
         {
             return _contentSecurity.NormalizeOptionalText(value, "QQ昵称", 100) ?? "QQ用户";
+        }
+
+        private string? NormalizeQQGender(string? value)
+        {
+            var normalized = NormalizeQQProfileField(value, "QQ性别", 10);
+            return normalized?.ToLowerInvariant() switch
+            {
+                "male" => "男",
+                "female" => "女",
+                _ => normalized
+            };
+        }
+
+        private string? NormalizeQQProfileField(string? value, string fieldName, int maxLength)
+        {
+            return _contentSecurity.NormalizeOptionalText(value, fieldName, maxLength);
+        }
+
+        private static bool ShouldApplyQQProfileField(bool overwriteLocalProfile, string? currentValue, string? qqValue)
+        {
+            return !string.IsNullOrWhiteSpace(qqValue) &&
+                   (overwriteLocalProfile || string.IsNullOrWhiteSpace(currentValue));
         }
 
         private static UserResponseDto MapToUserResponse(User user)
@@ -412,6 +449,13 @@ namespace VideoCallAPI.Services
             return property.ValueKind == JsonValueKind.String ? property.GetString() : property.ToString();
         }
 
-        private sealed record QQProfile(string OpenId, string? UnionId, string Nickname, string? AvatarUrl);
+        private sealed record QQProfile(
+            string OpenId,
+            string? UnionId,
+            string Nickname,
+            string? AvatarUrl,
+            string? Gender,
+            string? Province,
+            string? City);
     }
 }

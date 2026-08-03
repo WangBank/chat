@@ -1,3 +1,4 @@
+:root,
 .qq-app {
   --qq-blue: #13a8f2;
   --qq-blue-strong: #0794df;
@@ -449,19 +450,23 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  height: 40px;
-  padding: 0 15px;
+  height: 38px;
+  padding: 0 12px 0 15px;
   border: 0;
+  border-radius: 0;
   background: transparent;
   color: #171717;
   cursor: pointer;
   font-size: 15px;
   font-weight: 600;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .notice-link > span:first-child {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
   gap: 8px;
 }
 
@@ -469,9 +474,45 @@
   background: var(--qq-list-hover);
 }
 
+.notice-link:focus-visible,
+.notice-sublist button:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 0 0 2px rgba(19, 168, 242, 0.28);
+}
+
 .notice-link.active {
-  background: var(--qq-blue-soft);
+  background: #dff2ff;
   color: var(--qq-blue-strong);
+}
+
+.notice-meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 42px;
+  gap: 8px;
+}
+
+.notice-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--qq-unread);
+  color: #fff;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+}
+
+.notice-link .group-arrow {
+  flex: 0 0 auto;
+  border-left-color: #7d8792;
+}
+
+.notice-link.active .group-arrow {
+  border-left-color: var(--qq-blue-strong);
 }
 
 .notice-block {
@@ -480,15 +521,16 @@
 
 .notice-sublist {
   display: grid;
-  gap: 2px;
-  padding: 4px 10px 8px 34px;
+  gap: 3px;
+  padding: 4px 10px 8px 31px;
 }
 
 .notice-sublist button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  height: 30px;
+  height: 31px;
+  padding: 0 8px 0 10px;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -500,7 +542,7 @@
 
 .notice-sublist button:hover,
 .notice-sublist button.active {
-  background: #e7f3fb;
+  background: #e7f4ff;
   color: var(--qq-blue-strong);
 }
 
@@ -1865,6 +1907,112 @@
   color: #8a6d2f;
 }
 
+.group-notice-main {
+  display: grid;
+  grid-template-rows: 44px auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.group-notice-strip {
+  display: inline-grid;
+  grid-auto-flow: column;
+  justify-self: start;
+  overflow: hidden;
+  margin: 8px 0 18px;
+  border: 1px solid #dfe4e9;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.group-notice-strip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 92px;
+  height: 34px;
+  border: 0;
+  border-right: 1px solid #e7ebef;
+  background: transparent;
+  color: #6c7580;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.group-notice-strip button:last-child {
+  border-right: 0;
+}
+
+.group-notice-strip button:hover,
+.group-notice-strip button.active {
+  background: #e8f6ff;
+  color: var(--qq-blue-strong);
+}
+
+.group-notice-strip button:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 0 0 2px rgba(19, 168, 242, 0.28);
+}
+
+.group-notice-strip em {
+  min-width: 18px;
+  border-radius: 999px;
+  background: #eef2f6;
+  color: #87919d;
+  font-style: normal;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.group-notice-strip button.active em {
+  background: #fff;
+  color: var(--qq-blue-strong);
+}
+
+.group-notice-empty-state {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 16px;
+  min-height: 430px;
+  color: #111820;
+  text-align: center;
+}
+
+.group-notice-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  border: 3px solid #111820;
+  border-radius: 999px;
+  background: transparent;
+  color: #111820;
+  font-size: 44px;
+}
+
+.group-notice-empty-state strong {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.group-notice-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.group-notice-actions .ant-btn {
+  min-width: 100px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
 .profile-panel {
   max-width: 690px;
   margin: 42px auto 0;
@@ -2565,7 +2713,19 @@
 
 .contact-manager-all.active,
 .contact-manager-group-item.active {
-  background: #dde0e4;
+  background: #dff2ff;
+  box-shadow: inset 3px 0 0 var(--qq-blue);
+  color: var(--qq-blue-strong);
+}
+
+.contact-manager-group-item.active button:first-child,
+.contact-manager-all.active strong {
+  color: var(--qq-blue-strong);
+}
+
+.contact-manager-group-item.active em,
+.contact-manager-all.active span {
+  color: #3288b8;
 }
 
 .contact-manager-all strong,
@@ -2666,12 +2826,20 @@
 }
 
 .contact-manager-header .ant-input-affix-wrapper {
-  width: min(260px, 42vw);
+  flex: 0 1 280px;
+  width: min(280px, 42vw);
+  min-width: 190px;
   height: 36px;
   border: 0;
   border-radius: 9px;
   background: #eceef1;
   box-shadow: none;
+}
+
+.contact-manager-header .ant-input-affix-wrapper:hover,
+.contact-manager-header .ant-input-affix-wrapper-focused {
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(19, 168, 242, 0.18);
 }
 
 .contact-manager-table {
@@ -2847,7 +3015,8 @@ button.mac-dot {
 
 .qq-search-topline {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 96px;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  align-items: center;
   gap: 10px;
   padding: 14px 24px 12px;
   background: #fff;
@@ -2862,10 +3031,20 @@ button.mac-dot {
 }
 
 .qq-search-topline .ant-btn {
+  width: 88px;
   height: 38px;
+  border: 0;
   border-radius: 10px;
   background: var(--qq-blue);
+  box-shadow: none;
+  color: #fff;
   font-weight: 700;
+}
+
+.qq-search-topline .ant-btn:hover,
+.qq-search-topline .ant-btn:focus-visible {
+  background: var(--qq-blue-strong);
+  color: #fff;
 }
 
 .qq-search-tabs {
@@ -3871,6 +4050,20 @@ button.mac-dot {
 
   .qq-search-body {
     height: min(530px, calc(100vh - 210px));
+  }
+
+  .group-notice-strip {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .group-notice-strip button {
+    flex: 0 0 92px;
+  }
+
+  .group-notice-empty-state {
+    min-height: 320px;
   }
 
   .add-contact-user-card {

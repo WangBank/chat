@@ -239,6 +239,7 @@ namespace VideoCallAPI.Services
 
             // 排除当前用户
             query = query.Where(u => u.id != currentUserId);
+            query = query.Where(u => u.username.ToLower() != "admin");
 
             // 排除已经是联系人的用户
             var existingContactIds = await _context.Contacts
@@ -306,6 +307,9 @@ namespace VideoCallAPI.Services
             var receiver = await _context.users.FirstOrDefaultAsync(u => u.username == targetUsername);
             if (receiver == null)
                 throw new ArgumentException("用户不存在");
+
+            if (string.Equals(receiver.username, "admin", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("管理员账号不支持添加为好友");
 
             if (receiver.id == userId)
                 throw new InvalidOperationException("不能添加自己为好友");

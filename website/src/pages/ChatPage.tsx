@@ -24,7 +24,6 @@ import {
   ClockCircleOutlined,
   CloudOutlined,
   DeleteOutlined,
-  DownOutlined,
   DesktopOutlined,
   EditOutlined,
   FileOutlined,
@@ -80,7 +79,7 @@ const { TextArea } = Input;
 
 type MainView = 'messages' | 'contacts' | 'favorites';
 type ContactPanel = 'friends' | 'groups';
-type ContactContent = 'profile' | 'requests' | 'groupProfile';
+type ContactContent = 'profile' | 'requests' | 'groupProfile' | 'groupNotices';
 type RequestStatus = 'pending' | 'accepted' | 'rejected';
 type RequestDirection = 'incoming' | 'outgoing';
 type FavoriteFilter = 'all' | 'chat' | 'media' | 'file' | 'link' | 'note';
@@ -262,6 +261,7 @@ const provinceOptions = ['山东', '北京', '上海', '广东', '江苏', '浙�
 const regionOptions = ['青岛', '济南', '北京', '上海', '广州', '深圳', '杭州', '成都'];
 const DEFAULT_CONTACT_GROUP_NAME = '默认分组';
 const CONTACT_MANAGER_ALL_GROUP = '__all__';
+const ADMIN_USERNAME = APP_CONFIG.ADMIN_USERNAME.toLowerCase();
 const addContactTabs: Array<{ key: AddContactTab; label: string }> = [
   { key: 'all', label: '全部' },
   { key: 'user', label: '用户' },
@@ -698,6 +698,10 @@ function getInitial(name?: string) {
   return (name || 'U').trim().slice(0, 1).toUpperCase();
 }
 
+function normalizeUsername(username?: string | null) {
+  return (username || '').trim().toLowerCase();
+}
+
 function isMessageFromCurrentUser(msg: ChatMessage, currentUserId: number) {
   return msg.sender_id === currentUserId;
 }
@@ -1061,6 +1065,7 @@ const ChatPage = observer(() => {
     'friend-request-handled': false,
   });
   const [activeFriendRequestSection, setActiveFriendRequestSection] = useState('friend-request-pending');
+  const [activeGroupNoticeSection, setActiveGroupNoticeSection] = useState('group-notice-join');
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [friendRequestsLoading, setFriendRequestsLoading] = useState(false);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
@@ -1230,6 +1235,7 @@ const ChatPage = observer(() => {
 
   const currentUserId = authStore.user?.id || 0;
   const currentUserName = authStore.user?.display_name || authStore.user?.username || '我的账号';
+  const currentUsername = normalizeUsername(authStore.user?.username);
   const currentSignature = getDisplaySignature(authStore.user);
 
   useEffect(() => {
@@ -1537,10 +1543,31 @@ const ChatPage = observer(() => {
       emptyText: '暂无已处理记录',
     },
   ];
+  const groupNoticeSections = [
+    {
+      key: 'group-notice-join',
+      title: '加群申请',
+      count: 0,
+    },
+    {
+      key: 'group-notice-invite',
+      title: '群邀请',
+      count: 0,
+    },
+    {
+      key: 'group-notice-handled',
+      title: '已处理',
+      count: 0,
+    },
+  ];
+  const pendingGroupNoticeCount = groupNoticeSections
+    .filter((section) => section.key !== 'group-notice-handled')
+    .reduce((total, section) => total + section.count, 0);
+  const totalGroupNoticeCount = groupNoticeSections.reduce((total, section) => total + section.count, 0);
   const friendRequestUsernameMap = new Map(
     friendRequests
       .map((request) => {
-        const username = getFriendRequestPeer(request).username;
+        const username = normalizeUsername(getFriendRequestPeer(request).username);
         return username ? [username, request] as const : null;
       })
       .filter((item): item is readonly [string, FriendRequest] => Boolean(item))
@@ -1549,15 +1576,18 @@ const ChatPage = observer(() => {
     chatStore.contacts
       .map((contact) => contact.contact_user?.username)
       .filter((username): username is string => Boolean(username))
+      .map((username) => normalizeUsername(username))
   );
   const filterPotentialUsers = (users: UserSummary[]) => {
     const seen = new Set<string>();
     return users.filter((user) => {
-      const key = user.username || String(user.id || '');
+      const username = normalizeUsername(user.username);
+      const key = username || String(user.id || '');
       if (!key || seen.has(key)) return false;
       seen.add(key);
-      if (user.id === currentUserId || user.username === authStore.user?.username) return false;
-      if (user.username && existingContactUsernames.has(user.username)) return false;
+      if (username === ADMIN_USERNAME) return false;
+      if (user.id === currentUserId || username === currentUsername) return false;
+      if (username && existingContactUsernames.has(username)) return false;
       return true;
     });
   };
@@ -2533,6 +2563,10 @@ const ChatPage = observer(() => {
       message.warning('请输入用户名');
       return;
     }
+    if (normalizeUsername(targetUsername) === ADMIN_USERNAME) {
+      message.warning('管理员账号不支持添加为好友');
+      return;
+    }
 
     try {
       const response = await apiService.createFriendRequest({
@@ -3261,7 +3295,8 @@ const ChatPage = observer(() => {
 
   const renderAddContactUser = (user: UserSummary, source: string) => {
     const username = user.username || '';
-    const peerRequest = username ? friendRequestUsernameMap.get(username) : undefined;
+    const normalizedUsername = normalizeUsername(username);
+    const peerRequest = normalizedUsername ? friendRequestUsernameMap.get(normalizedUsername) : undefined;
     const requestStatus = peerRequest ? getFriendRequestStatus(peerRequest) : null;
     const incomingPending = peerRequest?.direction === 'incoming' && peerRequest.status === 'pending';
     const disabled = requestStatus === 'waiting' || requestStatus === 'accepted' || !username;
@@ -3634,15 +3669,22 @@ const ChatPage = observer(() => {
               onClick={() => {
                 setContactPanel('friends');
                 setContactContent('requests');
-                toggleGroup('friendNotice');
+                setExpandedGroups((groups) => ({
+                  ...groups,
+                  friendNotice: !(groups.friendNotice ?? true),
+                }));
               }}
+              aria-expanded={expandedGroups.friendNotice}
             >
               <span>
                 <BellOutlined /> 好友通知
               </span>
-              <Badge count={pendingRequestCount} size="small">
+              <span className="notice-meta" aria-hidden="true">
+                {pendingRequestCount > 0 && (
+                  <em className="notice-count">{pendingRequestCount > 99 ? '99+' : pendingRequestCount}</em>
+                )}
                 <span className={expandedGroups.friendNotice ? 'group-arrow expanded' : 'group-arrow'} />
-              </Badge>
+              </span>
             </button>
             {expandedGroups.friendNotice && (
               <div className="notice-sublist">
@@ -3652,9 +3694,14 @@ const ChatPage = observer(() => {
                     key={section.key}
                     className={activeFriendRequestSection === section.key ? 'active' : ''}
                     onClick={() => {
+                      setContactPanel('friends');
                       setContactContent('requests');
                       setActiveFriendRequestSection(section.key);
-                      toggleGroup(section.key);
+                      setExpandedGroups((groups) => ({
+                        ...groups,
+                        friendNotice: true,
+                        [section.key]: true,
+                      }));
                     }}
                   >
                     <span>{section.title}</span>
@@ -3664,12 +3711,25 @@ const ChatPage = observer(() => {
               </div>
             )}
           </div>
-          <button type="button" className="notice-link">
-            <span>
-              <TeamOutlined /> 群通知
-            </span>
-            <DownOutlined />
-          </button>
+          <div className="notice-block">
+            <button
+              type="button"
+              className={`notice-link ${contactContent === 'groupNotices' ? 'active' : ''}`}
+              onClick={() => {
+                setContactContent('groupNotices');
+              }}
+            >
+              <span>
+                <TeamOutlined /> 群通知
+              </span>
+              <span className="notice-meta" aria-hidden="true">
+                {pendingGroupNoticeCount > 0 && (
+                  <em className="notice-count">{pendingGroupNoticeCount > 99 ? '99+' : pendingGroupNoticeCount}</em>
+                )}
+                <span className="group-arrow" />
+              </span>
+            </button>
+          </div>
           <Segmented
             block
             className="contact-segment"
@@ -3934,6 +3994,66 @@ const ChatPage = observer(() => {
                 );
               })
             )}
+          </div>
+        </div>
+      );
+    }
+
+    if (contactContent === 'groupNotices') {
+      const currentGroupNoticeSection =
+        groupNoticeSections.find((section) => section.key === activeGroupNoticeSection) || groupNoticeSections[0];
+
+      return (
+        <div className="contact-main group-notice-main">
+          <div className="contact-main-header">
+            <h2>群通知</h2>
+            <Space>
+              <Tooltip title="筛选">
+                <Button type="text" icon={<FilterOutlined />} disabled={totalGroupNoticeCount === 0} />
+              </Tooltip>
+              <Tooltip title="清理已处理">
+                <Button type="text" icon={<DeleteOutlined />} disabled={totalGroupNoticeCount === 0} />
+              </Tooltip>
+            </Space>
+          </div>
+
+          <div className="group-notice-strip">
+            {groupNoticeSections.map((section) => (
+              <button
+                type="button"
+                key={section.key}
+                className={activeGroupNoticeSection === section.key ? 'active' : ''}
+                onClick={() => {
+                  setActiveGroupNoticeSection(section.key);
+                }}
+              >
+                <span>{section.title}</span>
+                <em>{section.count}</em>
+              </button>
+            ))}
+          </div>
+
+          <div className="group-notice-empty-state">
+            <span className="group-notice-empty-icon">
+              <BellOutlined />
+            </span>
+            <strong>{currentGroupNoticeSection?.count ? currentGroupNoticeSection.title : '暂无群通知'}</strong>
+            <div className="group-notice-actions">
+              <Button
+                icon={<TeamOutlined />}
+                disabled={localGroups.length === 0}
+                onClick={() => {
+                  if (localGroups[0]) {
+                    selectGroupProfile(localGroups[0]);
+                  }
+                }}
+              >
+                查看群聊
+              </Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateGroupVisible(true)}>
+                创建群聊
+              </Button>
+            </div>
           </div>
         </div>
       );
