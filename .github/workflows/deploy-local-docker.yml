@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Resolve version
-        shell: pwsh
+        shell: powershell
         run: |
           $baseVersion = (Get-Content -LiteralPath VERSION -Raw).Trim()
           $shortSha = $env:GITHUB_SHA.Substring(0, 7)
@@ -48,21 +48,21 @@ jobs:
           "Resolved version $appVersion"
 
       - name: Show Docker environment
-        shell: pwsh
+        shell: powershell
         run: |
           docker --version
           docker compose version
           docker info
 
       - name: Deploy to local Docker
-        shell: pwsh
+        shell: powershell
         run: |
           ./scripts/deploy-local.ps1 `
             -AppVersion "$env:APP_VERSION" `
             -ImageTag "$env:IMAGE_TAG"
 
       - name: Deployment summary
-        shell: pwsh
+        shell: powershell
         run: |
           $api = if ($env:API_PUBLIC_URL) { $env:API_PUBLIC_URL } else { "http://localhost:$env:API_PORT" }
           $web = if ($env:WEB_PUBLIC_URL) { $env:WEB_PUBLIC_URL } else { "http://localhost:$env:WEB_PORT" }
