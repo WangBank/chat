@@ -26,13 +26,13 @@ npm run build
 默认 API 地址位于 `src/config/app.config.ts`：
 
 ```text
-http://common.wangbank.top:7001
+http://common.wangbank.top:17101
 ```
 
 本地开发时可通过环境变量覆盖：
 
 ```bash
-VITE_API_BASE_URL=http://localhost:7001 npm run dev
+VITE_API_BASE_URL=http://localhost:17101 npm run dev
 ```
 
 ## 功能

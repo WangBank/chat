@@ -3,10 +3,10 @@ import { decryptConfig } from '../utils/encryption.utils';
 // App configuration
 export const APP_CONFIG = {
   // API base URL
-  API_BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://common.wangbank.top:7001',
+  API_BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://common.wangbank.top:17101',
   
   // SignalR Hub URL
-  SIGNALR_HUB_URL: import.meta.env.VITE_SIGNALR_HUB_URL || 'http://common.wangbank.top:7001/videocallhub',
+  SIGNALR_HUB_URL: import.meta.env.VITE_SIGNALR_HUB_URL || 'http://common.wangbank.top:17101/videocallhub',
   
   // App name
   APP_NAME: 'SimpleChat',

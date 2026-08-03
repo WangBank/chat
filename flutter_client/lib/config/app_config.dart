@@ -1,5 +1,5 @@
 class AppConfig {
-  static const String _defaultBaseUrl = 'http://common.wangbank.top:7001/api';
+  static const String _defaultBaseUrl = 'http://common.wangbank.top:17101/api';
   static const String _configuredBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: _defaultBaseUrl,
@@ -46,7 +46,7 @@ class AppConfig {
 
   // 开发环境辅助方法
   static String getLocalNetworkUrl(String ipAddress) {
-    return 'http://$ipAddress:7001/api';
+    return 'http://$ipAddress:17101/api';
   }
 }
 
@@ -60,15 +60,15 @@ class ConfigurationInstructions {
    - Windows: 运行 `ipconfig`
    - 例如：192.168.1.100
 
-2. 确保防火墙允许端口7001的访问
+2. 确保防火墙允许端口17101的访问
 
 3. 重新构建应用：
    flutter clean && flutter pub get && flutter run
 
 4. 测试连接：
-   在浏览器访问 http://你的IP:7001 确认服务器可访问
+   在浏览器访问 http://你的IP:17101 确认服务器可访问
 
 5. 如果在模拟器上测试：
-   使用 'http://localhost:7001/api'
+   使用 'http://localhost:17101/api'
 ''';
 }

@@ -20,8 +20,9 @@ jobs:
     timeout-minutes: 45
 
     env:
-      API_PORT: ${{ vars.API_PORT || '7001' }}
-      WEB_PORT: ${{ vars.WEB_PORT || '7002' }}
+      POSTGRES_PORT: ${{ vars.POSTGRES_PORT || '17132' }}
+      API_PORT: ${{ vars.API_PORT || '17101' }}
+      WEB_PORT: ${{ vars.WEB_PORT || '17102' }}
       API_PUBLIC_URL: ${{ vars.API_PUBLIC_URL }}
       WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
       SIGNALR_PUBLIC_URL: ${{ vars.SIGNALR_PUBLIC_URL }}

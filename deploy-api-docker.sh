@@ -6,8 +6,8 @@ BACKEND_DIR="$ROOT_DIR/backend"
 
 API_IMAGE="${API_IMAGE:-foreverlove-chat-api:latest}"
 API_CONTAINER="${API_CONTAINER:-foreverlove-chat-api}"
-API_PORT="${API_PORT:-7001}"
-API_CONTAINER_PORT="7001"
+API_PORT="${API_PORT:-17101}"
+API_CONTAINER_PORT="17101"
 API_ENVIRONMENT="${API_ENVIRONMENT:-Development}"
 DOCKER_NETWORK="${DOCKER_NETWORK:-foreverlove-chat-net}"
 STOP_EXISTING_SERVICES="${STOP_EXISTING_SERVICES:-1}"
@@ -17,7 +17,7 @@ SKIP_POSTGRES="${SKIP_POSTGRES:-0}"
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-foreverlove-chat-postgres}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:latest}"
 POSTGRES_HOST="${POSTGRES_HOST:-$POSTGRES_CONTAINER}"
-POSTGRES_PORT="${POSTGRES_PORT:-54329}"
+POSTGRES_PORT="${POSTGRES_PORT:-17132}"
 POSTGRES_CONTAINER_PORT="${POSTGRES_CONTAINER_PORT:-5432}"
 POSTGRES_DB="${POSTGRES_DB:-foreverlove_chat_dev}"
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
@@ -46,7 +46,7 @@ Build and run the ASP.NET Core API in Docker.
 Useful environment variables:
   API_IMAGE=foreverlove-chat-api:latest
   API_CONTAINER=foreverlove-chat-api
-  API_PORT=7001
+  API_PORT=17101
   API_ENVIRONMENT=Development
   DOCKER_NETWORK=foreverlove-chat-net
   POSTGRES_CONTAINER=foreverlove-chat-postgres
@@ -59,8 +59,8 @@ Useful environment variables:
 
 Examples:
   ./deploy-api-docker.sh
-  API_PORT=7002 ./deploy-api-docker.sh
-  API_ENVIRONMENT=Production POSTGRES_HOST=host.docker.internal POSTGRES_CONTAINER_PORT=54329 SKIP_POSTGRES=1 ./deploy-api-docker.sh
+  API_PORT=17103 ./deploy-api-docker.sh
+  API_ENVIRONMENT=Production POSTGRES_HOST=host.docker.internal POSTGRES_CONTAINER_PORT=17132 SKIP_POSTGRES=1 ./deploy-api-docker.sh
 EOF
 }
 

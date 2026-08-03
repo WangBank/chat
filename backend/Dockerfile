@@ -27,11 +27,11 @@ LABEL org.opencontainers.image.version=$APP_VERSION
 LABEL org.opencontainers.image.revision=$VCS_REF
 
 ENV ASPNETCORE_ENVIRONMENT=Production
-ENV ASPNETCORE_URLS=http://0.0.0.0:7001
+ENV ASPNETCORE_URLS=http://0.0.0.0:17101
 ENV App__Version=$APP_VERSION
 
-EXPOSE 7001
+EXPOSE 17101
 
 COPY --from=build /app/publish ./
 
-ENTRYPOINT ["dotnet", "VideoCallAPI.dll", "--urls", "http://0.0.0.0:7001"]
+ENTRYPOINT ["dotnet", "VideoCallAPI.dll", "--urls", "http://0.0.0.0:17101"]

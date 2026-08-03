@@ -48,22 +48,22 @@ FLUTTER_DEVICE_CONNECTION=attached ./start.sh mobile
 默认后端地址在 `lib/config/app_config.dart`：
 
 ```text
-http://common.wangbank.top:7001/api
+http://common.wangbank.top:17101/api
 ```
 
 本地调试时可改为：
 
 ```text
-http://localhost:7001/api
+http://localhost:17101/api
 ```
 
 `start.sh` 会通过 `--dart-define` 注入本地 API 地址，不需要手工改代码。可用环境变量覆盖：
 
 ```bash
-ANDROID_API_URL=http://10.0.2.2:7001/api
-ANDROID_SIGNALR_URL=http://10.0.2.2:7001/videocallhub
-IOS_API_URL=http://localhost:7001/api
-IOS_SIGNALR_URL=http://localhost:7001/videocallhub
+ANDROID_API_URL=http://10.0.2.2:17101/api
+ANDROID_SIGNALR_URL=http://10.0.2.2:17101/videocallhub
+IOS_API_URL=http://localhost:17101/api
+IOS_SIGNALR_URL=http://localhost:17101/videocallhub
 ```
 
 如果使用真机访问本机后端，应替换为电脑在局域网中的 IP。

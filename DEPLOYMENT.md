@@ -21,17 +21,17 @@ and prints the URLs to use from the website and Flutter.
 
 Default endpoints:
 
-- Website: `http://<LAN-IP>:7002`
-- API: `http://<LAN-IP>:7001`
-- API health: `http://localhost:7001/health`
-- Version: `http://localhost:7001/api/system/version`
+- Website: `http://<LAN-IP>:17102`
+- API: `http://<LAN-IP>:17101`
+- API health: `http://localhost:17101/health`
+- Version: `http://localhost:17101/api/system/version`
 
 For a public domain or router-forwarded address, set these before deploying:
 
 ```powershell
-$env:WEB_PUBLIC_URL = "http://your-domain-or-public-ip:7002"
-$env:API_PUBLIC_URL = "http://your-domain-or-public-ip:7001"
-$env:SIGNALR_PUBLIC_URL = "http://your-domain-or-public-ip:7001/videocallhub"
+$env:WEB_PUBLIC_URL = "http://your-domain-or-public-ip:17102"
+$env:API_PUBLIC_URL = "http://your-domain-or-public-ip:17101"
+$env:SIGNALR_PUBLIC_URL = "http://your-domain-or-public-ip:17101/videocallhub"
 .\scripts\deploy-local.ps1
 ```
 
@@ -39,8 +39,8 @@ For Flutter builds, use:
 
 ```powershell
 flutter run `
-  --dart-define=API_BASE_URL=http://your-domain-or-public-ip:7001/api `
-  --dart-define=SIGNALR_HUB_URL=http://your-domain-or-public-ip:7001/videocallhub
+  --dart-define=API_BASE_URL=http://your-domain-or-public-ip:17101/api `
+  --dart-define=SIGNALR_HUB_URL=http://your-domain-or-public-ip:17101/videocallhub
 ```
 
 Opening the ports to the public internet still requires Windows Firewall,
@@ -72,7 +72,7 @@ Recommended GitHub repository settings:
 
 - Secrets: `JWT_SECRET`, `POSTGRES_PASSWORD`
 - Variables: `API_PUBLIC_URL`, `WEB_PUBLIC_URL`, `SIGNALR_PUBLIC_URL`
-- Optional variables: `API_PORT`, `WEB_PORT`, `EXTRA_CORS_ORIGIN`,
+- Optional variables: `POSTGRES_PORT`, `API_PORT`, `WEB_PORT`, `EXTRA_CORS_ORIGIN`,
   `SWAGGER_ENABLED`, `USE_HTTPS_REDIRECTION`
 
 If secrets are not configured, `scripts/deploy-local.ps1` uses the shared local

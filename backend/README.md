@@ -22,14 +22,14 @@
 docker run --name foreverlove-chat-postgres \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=foreverlove_chat_dev \
-  -p 54329:5432 \
+  -p 17132:5432 \
   -d postgres:latest
 ```
 
 默认连接串位于 `appsettings.Development.json`：
 
 ```text
-Host=localhost;Port=54329;Database=foreverlove_chat_dev;Username=postgres;Password=postgres
+Host=localhost;Port=17132;Database=foreverlove_chat_dev;Username=postgres;Password=postgres
 ```
 
 生产默认连接串位于 `appsettings.json`，也可以通过环境变量 `ConnectionStrings__DefaultConnection` 覆盖。
@@ -43,7 +43,7 @@ dotnet ef database update
 ASPNETCORE_ENVIRONMENT=Development dotnet run
 ```
 
-服务默认监听 `http://localhost:7001`，Swagger UI 位于 `http://localhost:7001/swagger`。
+服务默认监听 `http://localhost:17101`，Swagger UI 位于 `http://localhost:17101/swagger`。
 
 ## Docker 一键部署
 
@@ -56,13 +56,13 @@ ASPNETCORE_ENVIRONMENT=Development dotnet run
 默认访问地址：
 
 ```text
-http://localhost:7001/swagger
+http://localhost:17101/swagger
 ```
 
 常用覆盖项：
 
 ```bash
-API_PORT=7002 ./deploy-api-docker.sh
+API_PORT=17103 ./deploy-api-docker.sh
 API_IMAGE=foreverlove-chat-api:prod API_CONTAINER=foreverlove-chat-api-prod ./deploy-api-docker.sh
 ```
 
@@ -71,7 +71,7 @@ API_IMAGE=foreverlove-chat-api:prod API_CONTAINER=foreverlove-chat-api-prod ./de
 ```bash
 API_ENVIRONMENT=Production \
 POSTGRES_HOST=host.docker.internal \
-POSTGRES_CONTAINER_PORT=54329 \
+POSTGRES_CONTAINER_PORT=17132 \
 SKIP_POSTGRES=1 \
 ./deploy-api-docker.sh
 ```
@@ -130,8 +130,8 @@ grep "ERR" logs/videocall-*.log
 基础 smoke test：
 
 ```bash
-curl -s http://localhost:7001/swagger/v1/swagger.json
-curl -s -X POST http://localhost:7001/api/auth/register \
+curl -s http://localhost:17101/swagger/v1/swagger.json
+curl -s -X POST http://localhost:17101/api/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"username":"demo","email":"demo@example.com","password":"Password123!"}'
 ```

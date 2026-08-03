@@ -6,8 +6,8 @@ RUN npm install
 
 COPY . ./
 
-ARG VITE_API_BASE_URL=http://localhost:7001
-ARG VITE_SIGNALR_HUB_URL=http://localhost:7001/videocallhub
+ARG VITE_API_BASE_URL=http://localhost:17101
+ARG VITE_SIGNALR_HUB_URL=http://localhost:17101/videocallhub
 ARG VITE_APP_VERSION=1.0.0-local
 
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL

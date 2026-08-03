@@ -6,18 +6,18 @@ BACKEND_DIR="$ROOT_DIR/backend"
 WEBSITE_DIR="$ROOT_DIR/website"
 FLUTTER_DIR="$ROOT_DIR/flutter_client"
 
-BACKEND_URL="${BACKEND_URL:-http://localhost:7001}"
+BACKEND_URL="${BACKEND_URL:-http://localhost:17101}"
 BACKEND_URL="${BACKEND_URL%/}"
 BACKEND_PORT="${BACKEND_PORT:-}"
 if [[ -z "$BACKEND_PORT" ]]; then
   BACKEND_PORT="$(printf '%s' "$BACKEND_URL" | sed -E 's#^https?://[^/:]+:([0-9]+).*#\1#')"
-  [[ "$BACKEND_PORT" == "$BACKEND_URL" ]] && BACKEND_PORT="7001"
+  [[ "$BACKEND_PORT" == "$BACKEND_URL" ]] && BACKEND_PORT="17101"
 fi
 FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-foreverlove-chat-postgres}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:latest}"
-POSTGRES_PORT="${POSTGRES_PORT:-54329}"
+POSTGRES_PORT="${POSTGRES_PORT:-17132}"
 POSTGRES_DB="${POSTGRES_DB:-foreverlove_chat_dev}"
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
@@ -73,7 +73,7 @@ Modes can be combined, for example:
   ./start.sh web android
 
 Useful environment variables:
-  BACKEND_URL=http://localhost:7001
+  BACKEND_URL=http://localhost:17101
   FRONTEND_PORT=5173
   ANDROID_DEVICE=emulator-5554
   ANDROID_EMULATOR=Pixel_9_Pro_XL_API_35
@@ -82,8 +82,8 @@ Useful environment variables:
   IOS_DEVICE="iPhone 16 Pro"
   FLUTTER_DEVICE_CONNECTION=attached
   FLUTTER_DEVICE_TIMEOUT=10
-  ANDROID_API_URL=http://10.0.2.2:7001/api
-  IOS_API_URL=http://localhost:7001/api
+  ANDROID_API_URL=http://10.0.2.2:17101/api
+  IOS_API_URL=http://localhost:17101/api
   SKIP_INSTALL=1
   SKIP_POSTGRES=1
   STOP_EXISTING_SERVICES=0

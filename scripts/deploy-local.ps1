@@ -6,6 +6,7 @@ param(
     [string]$WebPublicUrl = "",
     [string]$ApiPort = "",
     [string]$WebPort = "",
+    [string]$PostgresPort = "",
     [switch]$SkipBuild
 )
 
@@ -79,6 +80,46 @@ function Add-DotEnvValue {
     Add-Content -LiteralPath $Path -Value "$Name=$Value"
 }
 
+function Set-DotEnvValue {
+    param(
+        [string]$Path,
+        [string]$Name,
+        [string]$Value
+    )
+
+    $lines = @(Get-Content -LiteralPath $Path)
+    $updated = $false
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match "^\s*$([regex]::Escape($Name))\s*=") {
+            $lines[$i] = "$Name=$Value"
+            $updated = $true
+        }
+    }
+
+    if ($updated) {
+        Set-Content -LiteralPath $Path -Value $lines -Encoding utf8
+    }
+    else {
+        Add-DotEnvValue -Path $Path -Name $Name -Value $Value
+    }
+}
+
+function Update-LegacyDefaultPort {
+    param(
+        [string]$Path,
+        [hashtable]$Values,
+        [string]$Name,
+        [string]$OldValue,
+        [string]$NewValue
+    )
+
+    if ($Values.ContainsKey($Name) -and [string]$Values[$Name] -eq $OldValue) {
+        Set-DotEnvValue -Path $Path -Name $Name -Value $NewValue
+        Write-DeployLog "Updated $Name from legacy default $OldValue to $NewValue."
+    }
+}
+
 function Ensure-EnvFile {
     param([string]$Path)
 
@@ -95,12 +136,12 @@ function Ensure-EnvFile {
             "POSTGRES_DB=foreverlove_chat",
             "POSTGRES_USER=postgres",
             "POSTGRES_PASSWORD=$initialPostgresPassword",
-            "POSTGRES_PORT=54329",
+            "POSTGRES_PORT=17132",
             "POSTGRES_BIND_HOST=127.0.0.1",
             "API_ENVIRONMENT=Production",
-            "API_PORT=7001",
+            "API_PORT=17101",
             "API_BIND_HOST=0.0.0.0",
-            "WEB_PORT=7002",
+            "WEB_PORT=17102",
             "WEB_BIND_HOST=0.0.0.0",
             "JWT_SECRET=$initialSecret",
             "JWT_ISSUER=VideoCallAPI",
@@ -123,6 +164,10 @@ function Ensure-EnvFile {
         Add-DotEnvValue -Path $Path -Name "POSTGRES_PASSWORD" -Value (New-RandomSecret -Bytes 24)
         Write-DeployLog "Added POSTGRES_PASSWORD to .env."
     }
+
+    Update-LegacyDefaultPort -Path $Path -Values $values -Name "POSTGRES_PORT" -OldValue "54329" -NewValue "17132"
+    Update-LegacyDefaultPort -Path $Path -Values $values -Name "API_PORT" -OldValue "7001" -NewValue "17101"
+    Update-LegacyDefaultPort -Path $Path -Values $values -Name "WEB_PORT" -OldValue "7002" -NewValue "17102"
 }
 
 function Resolve-Setting {
@@ -303,8 +348,9 @@ if ([string]::IsNullOrWhiteSpace($ImageTag)) {
     $ImageTag = ConvertTo-DockerTag -Value $AppVersion
 }
 
-$ApiPort = Resolve-Setting -ExplicitValue $ApiPort -EnvName "API_PORT" -DotEnv $DotEnv -DefaultValue "7001"
-$WebPort = Resolve-Setting -ExplicitValue $WebPort -EnvName "WEB_PORT" -DotEnv $DotEnv -DefaultValue "7002"
+$PostgresPort = Resolve-Setting -ExplicitValue $PostgresPort -EnvName "POSTGRES_PORT" -DotEnv $DotEnv -DefaultValue "17132"
+$ApiPort = Resolve-Setting -ExplicitValue $ApiPort -EnvName "API_PORT" -DotEnv $DotEnv -DefaultValue "17101"
+$WebPort = Resolve-Setting -ExplicitValue $WebPort -EnvName "WEB_PORT" -DotEnv $DotEnv -DefaultValue "17102"
 
 $hostAddress = Get-LanAddress
 if ([string]::IsNullOrWhiteSpace($ApiPublicUrl)) {
@@ -324,6 +370,7 @@ $vcsRef = if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_SHA)) { $env:GITHUB_
 Set-Env -Name "APP_VERSION" -Value $AppVersion
 Set-Env -Name "IMAGE_TAG" -Value $ImageTag
 Set-Env -Name "VCS_REF" -Value $vcsRef
+Set-Env -Name "POSTGRES_PORT" -Value $PostgresPort
 Set-Env -Name "API_PORT" -Value $ApiPort
 Set-Env -Name "WEB_PORT" -Value $WebPort
 Set-Env -Name "API_PUBLIC_URL" -Value $ApiPublicUrl
@@ -334,6 +381,7 @@ foreach ($publicValue in @(
     @{ Name = "APP_VERSION"; Value = $AppVersion },
     @{ Name = "IMAGE_TAG"; Value = $ImageTag },
     @{ Name = "VCS_REF"; Value = $vcsRef },
+    @{ Name = "POSTGRES_PORT"; Value = $PostgresPort },
     @{ Name = "API_PORT"; Value = $ApiPort },
     @{ Name = "WEB_PORT"; Value = $WebPort },
     @{ Name = "API_PUBLIC_URL"; Value = $ApiPublicUrl },

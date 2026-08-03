@@ -79,23 +79,23 @@ FRONTEND_PORT=5174 ./start.sh web
 SKIP_INSTALL=1 ./start.sh all
 ```
 
-Android 模拟器默认使用 `http://10.0.2.2:7001/api` 访问本机后端，iOS 模拟器默认使用 `http://localhost:7001/api`。真机调试时请用电脑局域网 IP 覆盖：
+Android 模拟器默认使用 `http://10.0.2.2:17101/api` 访问本机后端，iOS 模拟器默认使用 `http://localhost:17101/api`。真机调试时请用电脑局域网 IP 覆盖：
 
 ```bash
-ANDROID_API_URL=http://192.168.1.10:7001/api \
-ANDROID_SIGNALR_URL=http://192.168.1.10:7001/videocallhub \
+ANDROID_API_URL=http://192.168.1.10:17101/api \
+ANDROID_SIGNALR_URL=http://192.168.1.10:17101/videocallhub \
 ./start.sh android
 ```
 
 ### 1. PostgreSQL
 
-开发环境默认连接本机 `54329` 端口：
+开发环境默认连接本机 `17132` 端口：
 
 ```bash
 docker run --name foreverlove-chat-postgres \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=foreverlove_chat_dev \
-  -p 54329:5432 \
+  -p 17132:5432 \
   -d postgres:latest
 ```
 
@@ -114,7 +114,7 @@ dotnet ef database update
 ASPNETCORE_ENVIRONMENT=Development dotnet run
 ```
 
-后端默认监听 `http://localhost:7001`，Swagger 文档在 `http://localhost:7001/swagger`。
+后端默认监听 `http://localhost:17101`，Swagger 文档在 `http://localhost:17101/swagger`。
 
 ### 3. Web 客户端
 
