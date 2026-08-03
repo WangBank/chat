@@ -63,6 +63,12 @@ import { signalRService } from '../services/signalr.service';
 import CallModal from '../components/CallModal';
 import CallPage from './CallPage';
 import { APP_CONFIG } from '../config/app.config';
+import {
+  gifStickerCategories,
+  gifStickers,
+  type GifSticker,
+  type GifStickerCategoryKey,
+} from '../data/gifStickers';
 import '../styles/chat.css';
 import '../styles/common.css';
 
@@ -77,6 +83,27 @@ type FavoriteFilter = 'all' | 'chat' | 'media' | 'file' | 'link' | 'note';
 type ChatKind = 'contact' | 'group';
 type HistoryFilter = 'all' | 'image' | 'emoji' | 'file' | 'link';
 type AddContactTab = 'all' | 'user' | 'group' | 'channel' | 'mini' | 'emoji' | 'bot';
+type EmojiPanelMode = 'emoji' | 'favorite' | 'gif';
+type TranslationProvider = 'browser' | 'local';
+
+interface TranslationResult {
+  source: string;
+  translated: string;
+  provider: TranslationProvider;
+}
+
+interface BrowserTranslator {
+  translate: (text: string) => Promise<string>;
+  destroy?: () => void;
+}
+
+interface BrowserTranslatorFactory {
+  create?: (options: { sourceLanguage: string; targetLanguage: string }) => Promise<BrowserTranslator>;
+}
+
+interface LegacyTranslationApi {
+  createTranslator?: (options: { sourceLanguage: string; targetLanguage: string }) => Promise<BrowserTranslator>;
+}
 
 interface FriendRequest {
   id: number;
@@ -509,6 +536,94 @@ const emojiSections = [
   },
 ];
 
+const emojiSearchChips = ['哈哈哈', '在吗', '宝贝', '拜拜', '为什么', '我不知道', '笑死我了', '爱你'];
+const localTranslationDictionary: Array<[RegExp, string]> = [
+  [/测试用户/g, 'Test user'],
+  [/你们已经是好友了/g, 'You are already friends'],
+  [/暂无聊天记录/g, 'No chat history yet'],
+  [/暂无群聊记录/g, 'No group chat history yet'],
+  [/聊天长截图/g, 'Chat long screenshot'],
+  [/录屏/g, 'Screen recording'],
+  [/语音消息/g, 'Voice message'],
+  [/哈哈哈/g, 'Hahaha'],
+  [/爱你/g, 'Love you'],
+  [/收到/g, 'Got it'],
+  [/惊喜/g, 'Surprise'],
+  [/在吗/g, 'Are you there?'],
+  [/加油/g, 'Keep going'],
+  [/图片/g, 'Image'],
+  [/视频/g, 'Video'],
+  [/语音/g, 'Voice'],
+  [/文件/g, 'File'],
+  [/群聊/g, 'Group chat'],
+  [/消息/g, 'Message'],
+  [/好友/g, 'Friend'],
+  [/默认分组/g, 'Default group'],
+  [/管理员/g, 'Administrator'],
+  [/在线/g, 'Online'],
+  [/离线/g, 'Offline'],
+];
+
+function getTranslationLanguages(text: string) {
+  const hasChinese = /[\u3400-\u9fff]/.test(text);
+  return {
+    sourceLanguage: hasChinese ? 'zh-Hans' : 'en',
+    targetLanguage: hasChinese ? 'en' : 'zh-Hans',
+  };
+}
+
+function translateWithLocalDictionary(text: string) {
+  let translated = text;
+  localTranslationDictionary.forEach(([pattern, replacement]) => {
+    translated = translated.replace(pattern, replacement);
+  });
+
+  translated = translated
+    .replace(/\[(Image|Video|Voice|File)\]/g, '[$1]')
+    .replace(/：/g, ': ')
+    .replace(/，/g, ', ')
+    .replace(/。/g, '. ');
+
+  return translated === text ? `${text}\n\n(本地词典暂无更多可替换内容)` : translated;
+}
+
+async function translateWithBrowserApi(text: string) {
+  const { sourceLanguage, targetLanguage } = getTranslationLanguages(text);
+  const win = window as Window & {
+    Translator?: BrowserTranslatorFactory;
+    translation?: LegacyTranslationApi;
+  };
+  const translator =
+    win.Translator?.create
+      ? await win.Translator.create({ sourceLanguage, targetLanguage })
+      : win.translation?.createTranslator
+        ? await win.translation.createTranslator({ sourceLanguage, targetLanguage })
+        : null;
+
+  if (!translator) return null;
+
+  try {
+    return await translator.translate(text);
+  } finally {
+    translator.destroy?.();
+  }
+}
+
+function withTimeout<T>(task: Promise<T>, timeoutMs: number) {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error('timeout')), timeoutMs);
+    task
+      .then((value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
 function parseDate(timestamp?: string | Date) {
   if (!timestamp) return null;
   const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
@@ -607,6 +722,10 @@ function isAudioMessage(msg: { type?: number | string }) {
   return normalizeMessageType(msg.type) === 'audio';
 }
 
+function isVideoMessage(msg: { type?: number | string }) {
+  return normalizeMessageType(msg.type) === 'video';
+}
+
 function isFileMessage(msg: { type?: number | string }) {
   return normalizeMessageType(msg.type) === 'file';
 }
@@ -626,6 +745,23 @@ function formatScreenshotFileName() {
 function formatVoiceFileName() {
   const now = new Date();
   return `voice-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.webm`;
+}
+
+function formatScreenRecordingFileName() {
+  const now = new Date();
+  return `screen-recording-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.webm`;
+}
+
+function formatLongScreenshotFileName() {
+  const now = new Date();
+  return `chat-longshot-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.png`;
+}
+
+function getScreenRecordingMimeType() {
+  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
+  return ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find((type) =>
+    MediaRecorder.isTypeSupported(type)
+  ) || '';
 }
 
 function getWesternZodiac(month: number, day: number) {
@@ -789,7 +925,7 @@ function createLocalId(prefix: string) {
 }
 
 function getFavoriteType(msg: ChatMessage): FavoriteItem['type'] {
-  if (isImageMessage(msg)) return 'media';
+  if (isImageMessage(msg) || isVideoMessage(msg)) return 'media';
   if (isFileMessage(msg)) return 'file';
   return getContentFavoriteType(msg.content);
 }
@@ -895,6 +1031,9 @@ const ChatPage = observer(() => {
   const [editDisplayNameVisible, setEditDisplayNameVisible] = useState(false);
   const [displayNameForm] = Form.useForm();
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [emojiPanelMode, setEmojiPanelMode] = useState<EmojiPanelMode>('emoji');
+  const [emojiSearchText, setEmojiSearchText] = useState('');
+  const [gifCategory, setGifCategory] = useState<GifStickerCategoryKey>('smileys');
   const [historyVisible, setHistoryVisible] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyMode, setHistoryMode] = useState<ChatKind>('contact');
@@ -928,6 +1067,11 @@ const ChatPage = observer(() => {
   const [attachmentUploading, setAttachmentUploading] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [voiceRecordSeconds, setVoiceRecordSeconds] = useState(0);
+  const [isScreenRecording, setIsScreenRecording] = useState(false);
+  const [privacyMaskVisible, setPrivacyMaskVisible] = useState(false);
+  const [translationVisible, setTranslationVisible] = useState(false);
+  const [translationLoading, setTranslationLoading] = useState(false);
+  const [translationResult, setTranslationResult] = useState<TranslationResult | null>(null);
   const [contactGroupAssignments, setContactGroupAssignments] = useState<Record<string, string>>(
     initialContactGroupAssignments
   );
@@ -955,6 +1099,11 @@ const ChatPage = observer(() => {
   const voiceTimerRef = useRef<number | null>(null);
   const voiceCancelledRef = useRef(false);
   const voiceTargetRef = useRef<AttachmentTarget | null>(null);
+  const screenRecorderRef = useRef<MediaRecorder | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const screenChunksRef = useRef<Blob[]>([]);
+  const screenStartedAtRef = useRef(0);
+  const screenTargetRef = useRef<AttachmentTarget | null>(null);
 
   useEffect(() => {
     return () => {
@@ -972,6 +1121,15 @@ const ChatPage = observer(() => {
       voiceStreamRef.current = null;
       voiceRecorderRef.current = null;
       voiceTargetRef.current = null;
+      const screenRecorder = screenRecorderRef.current;
+      if (screenRecorder?.state === 'recording') {
+        screenRecorder.onstop = null;
+        screenRecorder.stop();
+      }
+      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+      screenStreamRef.current = null;
+      screenRecorderRef.current = null;
+      screenTargetRef.current = null;
     };
   }, []);
 
@@ -1401,8 +1559,7 @@ const ChatPage = observer(() => {
         countText: `${contacts.length}`,
         contacts,
       };
-    })
-    .filter((group) => group.contacts.length > 0 || group.key === DEFAULT_CONTACT_GROUP_NAME);
+    });
   const contactManagerGroups = contactGroupNames.map((groupName) => ({
     name: groupName,
     count: chatStore.contacts.filter((contact) => getContactGroupName(contact) === groupName).length,
@@ -1657,6 +1814,186 @@ const ChatPage = observer(() => {
     await sendAttachment(file, type);
   };
 
+  const appendEmoji = (emoji: string) => {
+    if (activeChatKind === 'group') {
+      setGroupMessageText((value) => `${value}${emoji}`);
+    } else {
+      setMessageText((value) => `${value}${emoji}`);
+    }
+  };
+
+  const sendGifSticker = async (sticker: GifSticker) => {
+    const target = getCurrentAttachmentTarget();
+    if (!target) {
+      message.warning('请先选择一个会话');
+      return;
+    }
+
+    setEmojiOpen(false);
+    try {
+      const response = await fetch(sticker.src, { mode: 'cors' });
+      if (!response.ok) {
+        throw new Error(`sticker fetch failed: ${response.status}`);
+      }
+      const blob = await response.blob();
+      await sendAttachment(new File([blob], `${sticker.id}.png`, { type: 'image/png' }), MESSAGE_TYPES.Image, {
+        content: sticker.title,
+        successText: '动态表情已发送',
+        target,
+      });
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, 'GIF 发送失败'));
+    }
+  };
+
+  const getConversationSnapshotRows = () => {
+    if (activeChatKind === 'group') {
+      return activeGroupMessages.slice(-100).map((msg) => {
+        const type = normalizeMessageType(msg.type);
+        const prefix =
+          type === 'image' ? '[图片] ' :
+          type === 'video' ? '[视频] ' :
+          type === 'audio' ? '[语音] ' :
+          type === 'file' ? '[文件] ' : '';
+        return {
+          mine: msg.senderId === currentUserId,
+          sender: msg.senderId === currentUserId ? currentUserName : msg.senderName,
+          time: formatClock(msg.createdAt),
+          content: `${prefix}${msg.content || '消息'}`,
+        };
+      });
+    }
+
+    return chatStore.messages.slice(-100).map((msg) => {
+      const prefix =
+        isImageMessage(msg) ? '[图片] ' :
+        isVideoMessage(msg) ? '[视频] ' :
+        isAudioMessage(msg) ? '[语音] ' :
+        isFileMessage(msg) ? '[文件] ' : '';
+      return {
+        mine: isMessageFromCurrentUser(msg, currentUserId),
+        sender: isMessageFromCurrentUser(msg, currentUserId)
+          ? currentUserName
+          : getContactName(chatStore.currentContact),
+        time: formatClock(msg.created_at),
+        content: `${prefix}${msg.content || '消息'}`,
+      };
+    });
+  };
+
+  const getCurrentConversationTitle = () => {
+    if (activeChatKind === 'group') return activeGroup?.name || '群聊';
+    return getContactName(chatStore.currentContact) || '聊天';
+  };
+
+  const collectCurrentConversationText = () => {
+    return getConversationSnapshotRows()
+      .map((row) => `[${row.time || '--:--'}] ${row.sender}: ${row.content}`)
+      .join('\n');
+  };
+
+  const copyTextToClipboard = async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.setAttribute('readonly', 'true');
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-9999px';
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textArea);
+  };
+
+  const createConversationSnapshotBlob = async () => {
+    const rows = getConversationSnapshotRows();
+    if (rows.length === 0) return null;
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+
+    const width = 900;
+    const padding = 28;
+    const bubbleMaxWidth = 620;
+    const lineHeight = 24;
+    const title = getCurrentConversationTitle();
+
+    const wrapText = (text: string, maxWidth: number) => {
+      const lines: string[] = [];
+      let line = '';
+      Array.from(text).forEach((char) => {
+        const nextLine = `${line}${char}`;
+        if (line && context.measureText(nextLine).width > maxWidth) {
+          lines.push(line);
+          line = char;
+        } else {
+          line = nextLine;
+        }
+      });
+      if (line) lines.push(line);
+      return lines.length > 0 ? lines : [''];
+    };
+
+    context.font = '15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    const preparedRows = rows.map((row) => ({
+      ...row,
+      lines: wrapText(row.content, bubbleMaxWidth - 42),
+    }));
+    const height = Math.min(
+      12000,
+      92 + preparedRows.reduce((sum, row) => sum + Math.max(54, 28 + row.lines.length * lineHeight) + 14, 0)
+    );
+
+    canvas.width = width;
+    canvas.height = height;
+    context.fillStyle = '#eef4f8';
+    context.fillRect(0, 0, width, height);
+    context.fillStyle = '#12a8f4';
+    context.fillRect(0, 0, width, 58);
+    context.fillStyle = '#ffffff';
+    context.font = '700 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    context.fillText(title, padding, 36);
+    context.font = '13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    context.fillText(`聊天长截图 · ${formatDateLabel(new Date())}`, width - 230, 36);
+
+    let y = 82;
+    preparedRows.forEach((row) => {
+      const bubbleHeight = Math.max(48, 26 + row.lines.length * lineHeight);
+      if (y + bubbleHeight + 24 > height) return;
+
+      const bubbleWidth = Math.min(
+        bubbleMaxWidth,
+        Math.max(160, Math.max(...row.lines.map((line) => context.measureText(line).width)) + 42)
+      );
+      const x = row.mine ? width - padding - bubbleWidth : padding;
+      context.fillStyle = row.mine ? '#95ec69' : '#ffffff';
+      context.beginPath();
+      if (typeof context.roundRect === 'function') {
+        context.roundRect(x, y, bubbleWidth, bubbleHeight, 10);
+      } else {
+        context.rect(x, y, bubbleWidth, bubbleHeight);
+      }
+      context.fill();
+
+      context.fillStyle = '#7c8793';
+      context.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      context.fillText(`${row.sender} ${row.time}`, x + 18, y + 18);
+      context.fillStyle = '#111820';
+      context.font = '15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      row.lines.forEach((line, index) => {
+        context.fillText(line, x + 18, y + 42 + index * lineHeight);
+      });
+      y += bubbleHeight + 14;
+    });
+
+    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  };
+
   const handleVoiceButtonClick = async () => {
     if (isRecordingVoice) {
       voiceRecorderRef.current?.stop();
@@ -1801,6 +2138,199 @@ const ChatPage = observer(() => {
       stream?.getTracks().forEach((track) => track.stop());
     }
   };
+
+  const handleScreenRecording = async () => {
+    const recording = screenRecorderRef.current;
+    if (recording?.state === 'recording') {
+      recording.stop();
+      return;
+    }
+
+    const target = getCurrentAttachmentTarget();
+    if (!target) {
+      message.warning('请先选择一个会话');
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getDisplayMedia || typeof MediaRecorder === 'undefined') {
+      message.warning('当前浏览器不支持录屏');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      const mimeType = getScreenRecordingMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      screenStreamRef.current = stream;
+      screenRecorderRef.current = recorder;
+      screenChunksRef.current = [];
+      screenStartedAtRef.current = Date.now();
+      screenTargetRef.current = target;
+      setIsScreenRecording(true);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          screenChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const chunks = screenChunksRef.current;
+        const recordingTarget = screenTargetRef.current;
+        const duration = Math.max(1, Math.round((Date.now() - screenStartedAtRef.current) / 1000));
+        screenChunksRef.current = [];
+        screenTargetRef.current = null;
+        screenRecorderRef.current = null;
+        screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+        screenStreamRef.current = null;
+        setIsScreenRecording(false);
+
+        if (chunks.length === 0 || !recordingTarget) {
+          message.warning('没有录到屏幕内容');
+          return;
+        }
+
+        const blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
+        const file = new File([blob], formatScreenRecordingFileName(), { type: blob.type || 'video/webm' });
+        void sendAttachment(file, MESSAGE_TYPES.Video, {
+          content: `录屏 ${duration}s`,
+          duration,
+          successText: '录屏已发送',
+          target: recordingTarget,
+        });
+      };
+
+      stream.getVideoTracks().forEach((track) => {
+        track.onended = () => {
+          if (recorder.state === 'recording') {
+            recorder.stop();
+          }
+        };
+      });
+      recorder.start(1000);
+      message.info('录屏中，再次点击录屏可停止');
+    } catch (error: unknown) {
+      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+      screenStreamRef.current = null;
+      screenRecorderRef.current = null;
+      screenTargetRef.current = null;
+      setIsScreenRecording(false);
+      if ((error as { name?: string }).name !== 'NotAllowedError') {
+        message.error(getErrorMessage(error, '录屏失败'));
+      }
+    }
+  };
+
+  const handleLongScreenshot = async () => {
+    const target = getCurrentAttachmentTarget();
+    if (!target) {
+      message.warning('请先选择一个会话');
+      return;
+    }
+
+    const blob = await createConversationSnapshotBlob();
+    if (!blob) {
+      message.info('当前会话暂无可生成的长截图');
+      return;
+    }
+
+    await sendAttachment(new File([blob], formatLongScreenshotFileName(), { type: 'image/png' }), MESSAGE_TYPES.Image, {
+      content: `聊天长截图 - ${getCurrentConversationTitle()}`,
+      successText: '长截图已发送',
+      target,
+    });
+  };
+
+  const handleExtractChatText = async () => {
+    const text = collectCurrentConversationText();
+    if (!text.trim()) {
+      message.info('当前会话暂无可提取文字');
+      return;
+    }
+
+    try {
+      await copyTextToClipboard(text);
+      message.success('已提取并复制当前会话文字');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '提取文字失败'));
+    }
+  };
+
+  const handleTranslateScreenText = async () => {
+    const text = collectCurrentConversationText();
+    if (!text.trim()) {
+      message.info('当前会话暂无可翻译文字');
+      return;
+    }
+
+    setTranslationResult({
+      source: text,
+      translated: '',
+      provider: 'local',
+    });
+    setTranslationVisible(true);
+    setTranslationLoading(true);
+
+    const fallback = () => ({
+      source: text,
+      translated: translateWithLocalDictionary(text),
+      provider: 'local' as const,
+    });
+
+    try {
+      const translated = await withTimeout(translateWithBrowserApi(text), 1500);
+      setTranslationResult(
+        translated?.trim()
+          ? { source: text, translated, provider: 'browser' }
+          : fallback()
+      );
+    } catch {
+      setTranslationResult(fallback());
+    } finally {
+      setTranslationLoading(false);
+    }
+  };
+
+  const handleHideCurrentWindow = () => {
+    setPrivacyMaskVisible(true);
+    window.setTimeout(() => setPrivacyMaskVisible(false), 5000);
+    message.info('已临时隐藏聊天内容，点击遮罩可立即恢复');
+  };
+
+  const screenshotToolItems: MenuProps['items'] = [
+    { key: 'screenshot', icon: <ScissorOutlined />, label: '截图' },
+    { key: 'record', icon: <VideoCameraOutlined />, label: isScreenRecording ? '停止录屏' : '录屏' },
+    { key: 'longshot', icon: <PictureOutlined />, label: '长截图' },
+    { key: 'extract', icon: <FileOutlined />, label: '提取文字' },
+    { key: 'translate', icon: <CloudOutlined />, label: '屏幕翻译' },
+    { key: 'hide', icon: <StopOutlined />, label: '隐藏当前窗口' },
+  ];
+
+  const handleScreenshotToolClick: MenuProps['onClick'] = ({ key }) => {
+    if (key === 'screenshot') void handleScreenshot();
+    if (key === 'record') void handleScreenRecording();
+    if (key === 'longshot') void handleLongScreenshot();
+    if (key === 'extract') void handleExtractChatText();
+    if (key === 'translate') void handleTranslateScreenText();
+    if (key === 'hide') handleHideCurrentWindow();
+  };
+
+  const renderScreenshotToolButton = () => (
+    <Dropdown
+      trigger={['click']}
+      placement="topLeft"
+      classNames={{ root: 'screenshot-tool-dropdown' }}
+      menu={{ items: screenshotToolItems, onClick: handleScreenshotToolClick }}
+    >
+      <Button
+        type="text"
+        icon={<ScissorOutlined />}
+        loading={attachmentUploading && !isScreenRecording}
+        className={isScreenRecording ? 'screenshot-tool-button recording' : 'screenshot-tool-button'}
+        aria-label="截图工具"
+      />
+    </Dropdown>
+  );
 
   const handleComposerPaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const imageFile = Array.from(event.clipboardData.files).find((file) => file.type.startsWith('image/'));
@@ -2344,6 +2874,7 @@ const ChatPage = observer(() => {
 
   const selectContactProfile = (contact: Contact) => {
     setMainView('contacts');
+    setContactPanel('friends');
     setActiveChatKind('contact');
     setActiveGroupId('');
     setProfileContact(contact);
@@ -2678,7 +3209,7 @@ const ChatPage = observer(() => {
         <div className={`qq-message ${isMine ? 'sent' : 'received'}`}>
           {!isMine && renderAvatar(chatStore.currentContact, 36)}
           <div className="qq-bubble">
-            {msg.duration || isAudioMessage(msg) ? (
+            {isAudioMessage(msg) ? (
               <button
                 type="button"
                 className="voice-bubble voice-bubble-button"
@@ -2696,6 +3227,8 @@ const ChatPage = observer(() => {
               <a className="message-image-link" href={attachmentUrl} target="_blank" rel="noreferrer">
                 <img className="message-image" src={attachmentUrl} alt={msg.content || '图片'} />
               </a>
+            ) : isVideoMessage(msg) && attachmentUrl ? (
+              <video className="message-video" src={attachmentUrl} controls playsInline />
             ) : isFileMessage(msg) && attachmentUrl ? (
               <a className="message-file-card" href={attachmentUrl} target="_blank" rel="noreferrer" download>
                 <FileOutlined />
@@ -2727,37 +3260,173 @@ const ChatPage = observer(() => {
     );
   };
 
+  const emojiKeyword = emojiSearchText.trim().toLowerCase();
+  const filteredEmojiSections = emojiSections
+    .map((section) => ({
+      ...section,
+      emojis: section.emojis.filter((emoji) => !emojiKeyword || section.title.toLowerCase().includes(emojiKeyword) || emoji.includes(emojiKeyword)),
+    }))
+    .filter((section) => section.emojis.length > 0);
+  const activeGifCategory = gifStickerCategories.find((category) => category.key === gifCategory) || gifStickerCategories[0];
+  const filteredGifStickers = gifStickers.filter((sticker) => {
+    if (!emojiKeyword) return sticker.category === activeGifCategory.key;
+    const stickerCategory = gifStickerCategories.find((category) => category.key === sticker.category);
+    return [sticker.title, sticker.glyph, stickerCategory?.label || '', ...sticker.tags].some((text) =>
+      text.toLowerCase().includes(emojiKeyword)
+    );
+  });
+  const favoriteEmojis = emojiSections.slice(0, 2).flatMap((section) => section.emojis).slice(0, 32);
+
   const emojiContent = (
     <div className="emoji-panel">
+      <div className="emoji-search-row">
+        <Input
+          prefix={<SearchOutlined />}
+          value={emojiSearchText}
+          onChange={(event) => setEmojiSearchText(event.target.value)}
+          placeholder="搜索表情"
+          allowClear
+        />
+      </div>
+      <div className="emoji-chip-row">
+        {emojiSearchChips.map((chip) => (
+          <button
+            type="button"
+            key={chip}
+            onClick={() => {
+              setEmojiPanelMode('gif');
+              setEmojiSearchText(chip);
+            }}
+          >
+            {chip}
+          </button>
+        ))}
+      </div>
       <div className="emoji-scroll">
-        {emojiSections.map((section) => (
-          <div key={section.title} className="emoji-section">
-            <div className="emoji-title">{section.title}</div>
-            <div className="emoji-grid">
-              {section.emojis.map((emoji) => (
+        {emojiPanelMode === 'gif' ? (
+          <>
+            <div className="gif-category-row" role="tablist" aria-label="动态表情分类">
+              {gifStickerCategories.map((category) => (
                 <button
                   type="button"
-                  key={`${section.title}-${emoji}`}
-                  className="emoji-cell"
+                  key={category.key}
+                  className={category.key === activeGifCategory.key && !emojiKeyword ? 'active' : ''}
                   onClick={() => {
-                    if (activeChatKind === 'group') {
-                      setGroupMessageText((value) => `${value}${emoji}`);
-                    } else {
-                      setMessageText((value) => `${value}${emoji}`);
-                    }
+                    setGifCategory(category.key);
+                    setEmojiSearchText('');
                   }}
+                  role="tab"
+                  aria-selected={category.key === activeGifCategory.key && !emojiKeyword}
+                >
+                  <span>{category.icon}</span>
+                  <strong>{category.label}</strong>
+                  <small>
+                    {category.available}
+                    {category.total > category.available ? `/${category.total}` : ''}
+                  </small>
+                </button>
+              ))}
+            </div>
+            <div className="gif-result-bar">
+              {emojiKeyword
+                ? `搜索结果 ${filteredGifStickers.length} 个`
+                : `${activeGifCategory.label} ${activeGifCategory.available} 个`}
+            </div>
+            {filteredGifStickers.length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有找到 GIF" />
+            ) : (
+              <div className="gif-sticker-grid">
+                {filteredGifStickers.map((sticker) => (
+                  <button
+                    type="button"
+                    key={`${sticker.category}-${sticker.id}`}
+                    className="gif-sticker-card"
+                    onClick={() => void sendGifSticker(sticker)}
+                  >
+                    <span className="gif-sticker-preview">
+                      <span className="gif-sticker-glyph" aria-hidden="true">
+                        {sticker.glyph}
+                      </span>
+                      <img
+                        src={sticker.src}
+                        alt={sticker.title}
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
+                        onError={(event) => {
+                          event.currentTarget.classList.add('failed');
+                          event.currentTarget.parentElement?.classList.add('image-failed');
+                        }}
+                      />
+                    </span>
+                    <span className="gif-sticker-label">{sticker.title}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        ) : emojiPanelMode === 'favorite' ? (
+          <div className="emoji-section">
+            <div className="emoji-title">常用收藏</div>
+            <div className="emoji-grid">
+              {favoriteEmojis.map((emoji, index) => (
+                <button
+                  type="button"
+                  key={`favorite-${emoji}-${index}`}
+                  className="emoji-cell"
+                  onClick={() => appendEmoji(emoji)}
                 >
                   {emoji}
                 </button>
               ))}
             </div>
           </div>
-        ))}
+        ) : filteredEmojiSections.length === 0 ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有找到表情" />
+        ) : (
+          filteredEmojiSections.map((section) => (
+            <div key={section.title} className="emoji-section">
+              <div className="emoji-title">{section.title}</div>
+              <div className="emoji-grid">
+                {section.emojis.map((emoji, index) => (
+                  <button
+                    type="button"
+                    key={`${section.title}-${emoji}-${index}`}
+                    className="emoji-cell"
+                    onClick={() => appendEmoji(emoji)}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
       </div>
       <div className="emoji-tabs">
-        <Button type="text" icon={<SmileOutlined />} />
-        <Button type="text" icon={<HeartOutlined />} />
-        <Button type="text">GIF</Button>
+        <button
+          type="button"
+          className={emojiPanelMode === 'emoji' ? 'active' : ''}
+          onClick={() => setEmojiPanelMode('emoji')}
+          aria-label="表情"
+        >
+          <SmileOutlined />
+        </button>
+        <button
+          type="button"
+          className={emojiPanelMode === 'favorite' ? 'active' : ''}
+          onClick={() => setEmojiPanelMode('favorite')}
+          aria-label="收藏"
+        >
+          <HeartOutlined />
+        </button>
+        <button
+          type="button"
+          className={emojiPanelMode === 'gif' ? 'active' : ''}
+          onClick={() => setEmojiPanelMode('gif')}
+        >
+          GIF
+        </button>
       </div>
     </div>
   );
@@ -2929,23 +3598,27 @@ const ChatPage = observer(() => {
                   </button>
                   {expandedGroups[group.key] && (
                     <div className="friend-group-list">
-                      {group.contacts.map((contact) => (
-                        <button
-                          type="button"
-                          key={contact.id}
-                          className={`friend-row ${profileContact?.id === contact.id ? 'active' : ''}`}
-                          onClick={() => selectContactProfile(contact)}
-                        >
-                          {renderAvatar(contact, 42)}
-                          <span>
-                            <strong>{getContactName(contact)}</strong>
-                            <small>
-                              {contact.contact_user?.is_online ? '[在线]' : '[离线]'}{' '}
-                              {contact.contact_user?.username || 'what can I say'}
-                            </small>
-                          </span>
-                        </button>
-                      ))}
+                      {group.contacts.length === 0 ? (
+                        <div className="friend-empty-row">暂无好友</div>
+                      ) : (
+                        group.contacts.map((contact) => (
+                          <button
+                            type="button"
+                            key={contact.id}
+                            className={`friend-row ${profileContact?.id === contact.id ? 'active' : ''}`}
+                            onClick={() => selectContactProfile(contact)}
+                          >
+                            {renderAvatar(contact, 42)}
+                            <span>
+                              <strong>{getContactName(contact)}</strong>
+                              <small>
+                                {contact.contact_user?.is_online ? '[在线]' : '[离线]'}{' '}
+                                {contact.contact_user?.username || 'what can I say'}
+                              </small>
+                            </span>
+                          </button>
+                        ))
+                      )}
                     </div>
                   )}
                 </div>
@@ -3459,7 +4132,7 @@ const ChatPage = observer(() => {
           {!isMine && renderUserAvatar(sender, 36)}
           <div className="qq-bubble">
             {!isMine && <div className="group-message-sender">{msg.senderName}</div>}
-            {msg.duration || messageType === 'audio' ? (
+            {messageType === 'audio' ? (
               <button
                 type="button"
                 className="voice-bubble voice-bubble-button"
@@ -3477,6 +4150,8 @@ const ChatPage = observer(() => {
               <a className="message-image-link" href={attachmentUrl} target="_blank" rel="noreferrer">
                 <img className="message-image" src={attachmentUrl} alt={msg.content || '图片'} />
               </a>
+            ) : messageType === 'video' && attachmentUrl ? (
+              <video className="message-video" src={attachmentUrl} controls playsInline />
             ) : messageType === 'file' && attachmentUrl ? (
               <a className="message-file-card" href={attachmentUrl} target="_blank" rel="noreferrer" download>
                 <FileOutlined />
@@ -3571,9 +4246,7 @@ const ChatPage = observer(() => {
 	                >
                   <Button type="text" icon={<SmileOutlined />} />
                 </Popover>
-                <Tooltip title="截图">
-                  <Button type="text" icon={<ScissorOutlined />} loading={attachmentUploading} onClick={() => void handleScreenshot()} />
-                </Tooltip>
+                {renderScreenshotToolButton()}
                 <Tooltip title="发送文件">
                   <Button
                     type="text"
@@ -3735,9 +4408,7 @@ const ChatPage = observer(() => {
             >
               <Button type="text" icon={<SmileOutlined />} />
             </Popover>
-            <Tooltip title="截图">
-              <Button type="text" icon={<ScissorOutlined />} loading={attachmentUploading} onClick={() => void handleScreenshot()} />
-            </Tooltip>
+            {renderScreenshotToolButton()}
             <Tooltip title="发送文件">
               <Button
                 type="text"
@@ -3885,6 +4556,12 @@ const ChatPage = observer(() => {
                 : renderChatMain()}
           </main>
         </div>
+        {privacyMaskVisible && (
+          <button type="button" className="privacy-mask" onClick={() => setPrivacyMaskVisible(false)}>
+            <strong>当前窗口已隐藏</strong>
+            <span>点击恢复聊天内容</span>
+          </button>
+        )}
       </div>
 
       <Modal
@@ -4022,6 +4699,59 @@ const ChatPage = observer(() => {
           maxLength={24}
           autoFocus
         />
+      </Modal>
+
+      <Modal
+        title="屏幕翻译"
+        open={translationVisible}
+        onCancel={() => setTranslationVisible(false)}
+        footer={null}
+        width={760}
+        className="screen-translation-modal"
+      >
+        <div className="screen-translation-shell">
+          <section>
+            <div className="translation-panel-head">
+              <strong>原文</strong>
+              <Button
+                size="small"
+                onClick={() => {
+                  if (translationResult?.source) {
+                    void copyTextToClipboard(translationResult.source).then(() => message.success('原文已复制'));
+                  }
+                }}
+              >
+                复制原文
+              </Button>
+            </div>
+            <pre>{translationResult?.source || '暂无内容'}</pre>
+          </section>
+          <section>
+            <div className="translation-panel-head">
+              <span>
+                <strong>译文</strong>
+                <em>{translationResult?.provider === 'browser' ? '浏览器翻译' : '本地词典'}</em>
+              </span>
+              <Button
+                size="small"
+                type="primary"
+                disabled={translationLoading || !translationResult?.translated}
+                onClick={() => {
+                  if (translationResult?.translated) {
+                    void copyTextToClipboard(translationResult.translated).then(() => message.success('译文已复制'));
+                  }
+                }}
+              >
+                复制译文
+              </Button>
+            </div>
+            {translationLoading ? (
+              <div className="translation-loading">翻译中...</div>
+            ) : (
+              <pre>{translationResult?.translated || '暂无译文'}</pre>
+            )}
+          </section>
+        </div>
       </Modal>
 
       <Modal
