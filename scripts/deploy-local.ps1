@@ -146,6 +146,10 @@ function Ensure-EnvFile {
             "JWT_SECRET=$initialSecret",
             "JWT_ISSUER=VideoCallAPI",
             "JWT_AUDIENCE=VideoCallClient",
+            "QQ__ClientId=",
+            "QQ__ClientSecret=",
+            "QQ__RedirectUri=https://chat.wangbank.top/qq-callback",
+            "QQ__AllowMockLogin=false",
             "SWAGGER_ENABLED=false",
             "USE_HTTPS_REDIRECTION=false",
             "EXTRA_CORS_ORIGIN=http://common.wangbank.top"
@@ -163,6 +167,16 @@ function Ensure-EnvFile {
     if (-not $values.ContainsKey("POSTGRES_PASSWORD") -and [string]::IsNullOrWhiteSpace($env:POSTGRES_PASSWORD)) {
         Add-DotEnvValue -Path $Path -Name "POSTGRES_PASSWORD" -Value (New-RandomSecret -Bytes 24)
         Write-DeployLog "Added POSTGRES_PASSWORD to .env."
+    }
+
+    if (-not $values.ContainsKey("QQ__RedirectUri") -and [string]::IsNullOrWhiteSpace($env:QQ__RedirectUri)) {
+        Add-DotEnvValue -Path $Path -Name "QQ__RedirectUri" -Value "https://chat.wangbank.top/qq-callback"
+        Write-DeployLog "Added QQ__RedirectUri to .env."
+    }
+
+    if (-not $values.ContainsKey("QQ__AllowMockLogin") -and [string]::IsNullOrWhiteSpace($env:QQ__AllowMockLogin)) {
+        Add-DotEnvValue -Path $Path -Name "QQ__AllowMockLogin" -Value "false"
+        Write-DeployLog "Added QQ__AllowMockLogin to .env."
     }
 
     Update-LegacyDefaultPort -Path $Path -Values $values -Name "POSTGRES_PORT" -OldValue "54329" -NewValue "17132"

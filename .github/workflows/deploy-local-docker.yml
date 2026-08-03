@@ -29,6 +29,10 @@ jobs:
       EXTRA_CORS_ORIGIN: ${{ vars.EXTRA_CORS_ORIGIN || 'http://common.wangbank.top' }}
       SWAGGER_ENABLED: ${{ vars.SWAGGER_ENABLED || 'false' }}
       USE_HTTPS_REDIRECTION: ${{ vars.USE_HTTPS_REDIRECTION || 'false' }}
+      QQ__ClientId: ${{ secrets.QQ_CLIENT_ID }}
+      QQ__ClientSecret: ${{ secrets.QQ_CLIENT_SECRET }}
+      QQ__RedirectUri: ${{ vars.QQ_REDIRECT_URI || 'https://chat.wangbank.top/qq-callback' }}
+      QQ__AllowMockLogin: ${{ vars.QQ_ALLOW_MOCK_LOGIN || 'false' }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
 

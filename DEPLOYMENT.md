@@ -70,13 +70,29 @@ Windows runner registered to this repository with the label `local-docker`.
 
 Recommended GitHub repository settings:
 
-- Secrets: `JWT_SECRET`, `POSTGRES_PASSWORD`
-- Variables: `API_PUBLIC_URL`, `WEB_PUBLIC_URL`, `SIGNALR_PUBLIC_URL`
+- Secrets: `JWT_SECRET`, `POSTGRES_PASSWORD`, `QQ_CLIENT_ID`, `QQ_CLIENT_SECRET`
+- Variables: `API_PUBLIC_URL`, `WEB_PUBLIC_URL`, `SIGNALR_PUBLIC_URL`, `QQ_REDIRECT_URI`
 - Optional variables: `POSTGRES_PORT`, `API_PORT`, `WEB_PORT`, `EXTRA_CORS_ORIGIN`,
-  `SWAGGER_ENABLED`, `USE_HTTPS_REDIRECTION`
+  `QQ_ALLOW_MOCK_LOGIN`, `SWAGGER_ENABLED`, `USE_HTTPS_REDIRECTION`
 
 If secrets are not configured, `scripts/deploy-local.ps1` uses the shared local
 env file on the self-hosted runner machine.
+
+For the local self-hosted deployment, keep QQ OAuth values in the shared local
+env file instead of committed appsettings files:
+
+```text
+%USERPROFILE%\.foreverlove-chat\foreverlove-chat.env
+```
+
+Use ASP.NET Core environment variable names:
+
+```dotenv
+QQ__ClientId=QQ_APP_ID
+QQ__ClientSecret=QQ_APP_KEY
+QQ__RedirectUri=https://chat.wangbank.top/qq-callback
+QQ__AllowMockLogin=false
+```
 
 ## Register the local runner
 

@@ -42,6 +42,10 @@ services:
       Jwt__SecretKey: ${JWT_SECRET:-}
       Jwt__Issuer: ${JWT_ISSUER:-VideoCallAPI}
       Jwt__Audience: ${JWT_AUDIENCE:-VideoCallClient}
+      QQ__ClientId: ${QQ__ClientId:-}
+      QQ__ClientSecret: ${QQ__ClientSecret:-}
+      QQ__RedirectUri: ${QQ__RedirectUri:-https://chat.wangbank.top/qq-callback}
+      QQ__AllowMockLogin: ${QQ__AllowMockLogin:-false}
       Cors__AllowedOrigins__0: ${WEB_PUBLIC_URL:-http://localhost:17102}
       Cors__AllowedOrigins__1: http://localhost:${WEB_PORT:-17102}
       Cors__AllowedOrigins__2: http://127.0.0.1:${WEB_PORT:-17102}
