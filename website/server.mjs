@@ -47,6 +47,9 @@ async function sendFile(response, filePath) {
   const body = await readFile(filePath);
 
   applySecurityHeaders(response);
+  if (extension === '.html') {
+    response.setHeader('Cache-Control', 'no-store');
+  }
   if (['.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp', '.woff', '.woff2'].includes(extension)) {
     response.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
   }
