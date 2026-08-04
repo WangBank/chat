@@ -52,24 +52,47 @@ namespace VideoCallAPI.Controllers
         }
 
         [HttpPost("register")]
-        public async Task<ActionResult<ApiResponse<UserResponseDto>>> Register(UserRegistrationDto registrationDto)
+        public async Task<ActionResult<ApiResponse<object>>> Register(UserRegistrationDto registrationDto)
         {
             try
             {
                 _logger.LogInformation("用户注册请求: {Username}, {Email}", registrationDto.username, registrationDto.email);
-                var user = await _userService.RegisterAsync(registrationDto);
-                _logger.LogInformation("用户注册成功: UserId={UserId}, Username={Username}", user.id, user.username);
-                return Ok(new ApiResponse<UserResponseDto>
+                await _userService.RegisterAsync(registrationDto);
+                var token = await _userService.LoginAsync(new UserLoginDto
+                {
+                    username = registrationDto.username,
+                    password = registrationDto.password
+                });
+                var userId = _jwtService.GetUserIdFromToken(token);
+
+                if (userId == null)
+                {
+                    _logger.LogWarning("注册成功但无法从Token中获取用户ID: Username={Username}", registrationDto.username);
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "注册后自动登录失败",
+                        Errors = new List<string> { "无法从Token中获取用户ID" }
+                    });
+                }
+
+                var user = await _userService.GetUserByIdAsync(userId.Value);
+                _logger.LogInformation("用户注册并自动登录成功: UserId={UserId}, Username={Username}", user.id, user.username);
+                return Ok(new ApiResponse<object>
                 {
                     Success = true,
                     Message = "注册成功",
-                    Data = user
+                    Data = new
+                    {
+                        Token = token,
+                        User = user
+                    }
                 });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "用户注册失败: Username={Username}, Email={Email}", registrationDto.username, registrationDto.email);
-                return BadRequest(new ApiResponse<UserResponseDto>
+                return BadRequest(new ApiResponse<object>
                 {
                     Success = false,
                     Message = ApiErrorMessage.ForClient(ex, "注册失败"),

@@ -57,7 +57,7 @@ class AuthStore {
         return { success: false, message: response.message || 'Login failed' };
       }
     } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || 'Login failed' };
+      return { success: false, message: error.response?.data?.message || error.message || 'Login failed' };
     } finally {
       this.isLoading = false;
     }
@@ -74,7 +74,7 @@ class AuthStore {
         return { success: false, message: response.message || 'Registration failed' };
       }
     } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || 'Registration failed' };
+      return { success: false, message: error.response?.data?.message || error.message || 'Registration failed' };
     } finally {
       this.isLoading = false;
     }
@@ -137,6 +137,10 @@ class AuthStore {
   }
 
   private async applyAuthResponse(data: AuthApiResponse) {
+    if (!data?.token || !data.user) {
+      throw new Error('认证响应缺少登录凭证');
+    }
+
     this.token = data.token;
     this.user = data.user;
     this.isAuthenticated = true;

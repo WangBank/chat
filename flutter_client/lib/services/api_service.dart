@@ -88,6 +88,17 @@ class ApiService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          final authData = data['data'];
+          if (authData['token'] != null) {
+            _token = authData['token'];
+            print('🔑 注册Token已保存: ${_token!.substring(0, 20)}...');
+          }
+          if (authData['user'] != null) {
+            _currentUser = User.fromJson(authData['user']);
+            print('✅ 注册用户信息已保存: ${_currentUser!.username}');
+          }
+        }
         print('✅ 注册成功');
         return data;
       } else {

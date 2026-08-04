@@ -86,44 +86,34 @@ class _LoginPageState extends State<LoginPage> {
 
       // 处理成功响应
       if (result['success'] == true && result['data'] != null) {
-        if (_isLogin) {
-          // 登录成功：获取token和用户信息
-          final data = result['data'];
-          if (data['user'] != null) {
-            final user = User.fromJson(data['user']);
+        final data = result['data'];
+        if (data['user'] != null) {
+          final user = User.fromJson(data['user']);
 
-            // 如果选择记住登录状态，保存到本地存储
-            if (_rememberMe) {
-              try {
-                await StorageService.saveLoginInfo(
-                    user, _apiService.token ?? '');
-              } catch (e) {
-                print('❌ 保存登录信息失败: $e');
-              }
+          // 如果选择记住登录状态，保存到本地存储
+          if (_rememberMe) {
+            try {
+              await StorageService.saveLoginInfo(user, _apiService.token ?? '');
+            } catch (e) {
+              print('❌ 保存登录信息失败: $e');
             }
-
-            widget.onLoginSuccess?.call(user);
           }
+
+          if (!_isLogin && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('注册成功，已自动登录'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+
+          widget.onLoginSuccess?.call(user);
         } else {
-          // 注册成功：显示成功消息并切换到登录模式
           setState(() {
+            _errorMessage = '登录信息缺失，请重试';
             _isLoading = false;
-            _errorMessage = null;
-          });
-
-          // 显示成功消息
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('注册成功！请使用新账号登录'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 3),
-            ),
-          );
-
-          // 清空密码字段，切换到登录模式
-          _passwordController.clear();
-          setState(() {
-            _isLogin = true;
           });
         }
       } else {

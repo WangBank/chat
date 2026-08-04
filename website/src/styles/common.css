@@ -184,31 +184,40 @@
 .qq-third-party-row {
   display: grid;
   justify-items: center;
-  gap: 6px;
+  gap: 8px;
   color: #7d8794;
   font-size: 12px;
 }
 
-.qq-social-button.ant-btn {
+.qq-connect-login-button {
   display: inline-grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border: 1px solid #dfe8ef;
-  background: #fff;
-  color: #12a8f4;
-  box-shadow: 0 4px 12px rgba(18, 168, 244, 0.12);
+  width: 100px;
+  height: 38px;
+  border: 1px solid #d7eaf7;
+  border-radius: 8px;
+  background: #f7fbfe;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }
 
-.qq-social-button.ant-btn:hover,
-.qq-social-button.ant-btn:focus-visible {
+.qq-connect-login-button:hover,
+.qq-connect-login-button:focus-visible {
   border-color: #12a8f4;
   background: #e8f6ff;
-  color: #0794df;
+  box-shadow: 0 0 0 2px rgba(18, 168, 244, 0.12);
+  outline: none;
 }
 
-.qq-social-button .anticon {
-  font-size: 22px;
+.qq-connect-login-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.qq-connect-login-button img {
+  display: block;
+  width: 76px;
+  height: 24px;
 }
 
 @media (max-width: 480px) {
