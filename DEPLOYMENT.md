@@ -70,11 +70,15 @@ Windows runner registered to this repository with the label `local-docker`.
 
 Recommended GitHub repository settings:
 
-- Secrets: `JWT_SECRET`, `POSTGRES_PASSWORD`, `QQ_CLIENT_ID`, `QQ_CLIENT_SECRET`
+- Secrets: `JWT_SECRET`, `POSTGRES_PASSWORD`, `QQ_CLIENT_ID`, `QQ_CLIENT_SECRET`,
+  `EMAIL_PASSWORD`
 - Variables: `API_PUBLIC_URL`, `WEB_PUBLIC_URL`, `SIGNALR_PUBLIC_URL`, `QQ_REDIRECT_URI`,
-  `ADMIN_EMAILS`, `VITE_ADMIN_EMAILS`
+  `ADMIN_EMAILS`, `VITE_ADMIN_EMAILS`, `EMAIL_USERNAME`, `EMAIL_FROM_EMAIL`,
+  `EMAIL_PASSWORD_RESET_BASE_URL`
 - Optional variables: `POSTGRES_PORT`, `API_PORT`, `WEB_PORT`, `EXTRA_CORS_ORIGIN`,
-  `QQ_ALLOW_MOCK_LOGIN`, `SWAGGER_ENABLED`, `USE_HTTPS_REDIRECTION`
+  `QQ_ALLOW_MOCK_LOGIN`, `EMAIL_SMTP_HOST`, `EMAIL_SMTP_PORT`, `EMAIL_ENABLE_SSL`,
+  `EMAIL_FROM_NAME`, `EMAIL_PASSWORD_RESET_TOKEN_MINUTES`, `SWAGGER_ENABLED`,
+  `USE_HTTPS_REDIRECTION`
 
 If secrets are not configured, `scripts/deploy-local.ps1` uses the shared local
 env file on the self-hosted runner machine.
@@ -95,6 +99,15 @@ QQ__RedirectUri=https://chat.wangbank.top/qq-callback
 QQ__AllowMockLogin=false
 ADMIN_EMAILS=1224327326@qq.com
 VITE_ADMIN_EMAILS=1224327326@qq.com
+Email__SmtpHost=smtp.qq.com
+Email__SmtpPort=587
+Email__EnableSsl=true
+Email__Username=1224327326@qq.com
+Email__Password=QQ_MAIL_AUTHORIZATION_CODE
+Email__FromEmail=1224327326@qq.com
+Email__FromName=Forever Love
+Email__PasswordResetBaseUrl=https://chat.wangbank.top/reset-password
+Email__PasswordResetTokenMinutes=30
 ```
 
 ## Register the local runner

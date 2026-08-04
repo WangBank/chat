@@ -35,6 +35,15 @@ jobs:
       QQ__AllowMockLogin: ${{ vars.QQ_ALLOW_MOCK_LOGIN || 'false' }}
       ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
       VITE_ADMIN_EMAILS: ${{ vars.VITE_ADMIN_EMAILS || vars.ADMIN_EMAILS }}
+      Email__SmtpHost: ${{ vars.EMAIL_SMTP_HOST || 'smtp.qq.com' }}
+      Email__SmtpPort: ${{ vars.EMAIL_SMTP_PORT || '587' }}
+      Email__EnableSsl: ${{ vars.EMAIL_ENABLE_SSL || 'true' }}
+      Email__Username: ${{ vars.EMAIL_USERNAME }}
+      Email__Password: ${{ secrets.EMAIL_PASSWORD }}
+      Email__FromEmail: ${{ vars.EMAIL_FROM_EMAIL || vars.EMAIL_USERNAME }}
+      Email__FromName: ${{ vars.EMAIL_FROM_NAME || 'Forever Love' }}
+      Email__PasswordResetBaseUrl: ${{ vars.EMAIL_PASSWORD_RESET_BASE_URL || 'https://chat.wangbank.top/reset-password' }}
+      Email__PasswordResetTokenMinutes: ${{ vars.EMAIL_PASSWORD_RESET_TOKEN_MINUTES || '30' }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
 

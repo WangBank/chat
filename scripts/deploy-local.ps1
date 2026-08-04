@@ -152,6 +152,15 @@ function Ensure-EnvFile {
             "QQ__AllowMockLogin=false",
             "ADMIN_EMAILS=",
             "VITE_ADMIN_EMAILS=",
+            "Email__SmtpHost=smtp.qq.com",
+            "Email__SmtpPort=587",
+            "Email__EnableSsl=true",
+            "Email__Username=",
+            "Email__Password=",
+            "Email__FromEmail=",
+            "Email__FromName=Forever Love",
+            "Email__PasswordResetBaseUrl=https://chat.wangbank.top/reset-password",
+            "Email__PasswordResetTokenMinutes=30",
             "SWAGGER_ENABLED=false",
             "USE_HTTPS_REDIRECTION=false",
             "EXTRA_CORS_ORIGIN=https://chat.wangbank.top"
@@ -189,6 +198,26 @@ function Ensure-EnvFile {
     if (-not $values.ContainsKey("VITE_ADMIN_EMAILS") -and [string]::IsNullOrWhiteSpace($env:VITE_ADMIN_EMAILS)) {
         Add-DotEnvValue -Path $Path -Name "VITE_ADMIN_EMAILS" -Value ""
         Write-DeployLog "Added VITE_ADMIN_EMAILS to .env."
+    }
+
+    $emailDefaults = [ordered]@{
+        "Email__SmtpHost" = "smtp.qq.com"
+        "Email__SmtpPort" = "587"
+        "Email__EnableSsl" = "true"
+        "Email__Username" = ""
+        "Email__Password" = ""
+        "Email__FromEmail" = ""
+        "Email__FromName" = "Forever Love"
+        "Email__PasswordResetBaseUrl" = "https://chat.wangbank.top/reset-password"
+        "Email__PasswordResetTokenMinutes" = "30"
+    }
+
+    foreach ($emailDefault in $emailDefaults.GetEnumerator()) {
+        if (-not $values.ContainsKey($emailDefault.Key) -and
+            [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($emailDefault.Key))) {
+            Add-DotEnvValue -Path $Path -Name $emailDefault.Key -Value $emailDefault.Value
+            Write-DeployLog "Added $($emailDefault.Key) to .env."
+        }
     }
 
     Update-LegacyDefaultPort -Path $Path -Values $values -Name "POSTGRES_PORT" -OldValue "54329" -NewValue "17132"
