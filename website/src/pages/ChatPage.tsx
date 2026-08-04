@@ -23,6 +23,7 @@ import {
   CheckOutlined,
   ClockCircleOutlined,
   CloudOutlined,
+  CopyOutlined,
   DeleteOutlined,
   DesktopOutlined,
   EditOutlined,
@@ -66,6 +67,7 @@ import { signalRService } from '../services/signalr.service';
 import CallModal from '../components/CallModal';
 import CallPage from './CallPage';
 import { APP_CONFIG } from '../config/app.config';
+import { isAdminEmail } from '../utils/admin.utils';
 import {
   gifStickerCategories,
   gifStickers,
@@ -89,6 +91,7 @@ type HistoryFilter = 'all' | 'image' | 'emoji' | 'file' | 'link';
 type AddContactTab = 'all' | 'user' | 'group' | 'channel' | 'mini' | 'emoji' | 'bot';
 type EmojiPanelMode = 'emoji' | 'favorite' | 'gif';
 type TranslationProvider = 'browser' | 'local';
+type ShareMode = 'share' | 'forward';
 
 interface TranslationResult {
   source: string;
@@ -200,6 +203,15 @@ interface GroupMessageSendDraft {
   duration?: number;
 }
 
+interface ForwardMessagePayload {
+  content: string;
+  type: number;
+  file_path?: string;
+  file_size?: number;
+  duration?: number;
+  preview: string;
+}
+
 interface UserSummary {
   id?: number;
   username?: string;
@@ -244,7 +256,7 @@ interface ProfileDraft {
   region: string;
 }
 
-const DEFAULT_SIGNATURE = '事无对错，人分善恶。但行所愿，莫问前程。';
+const DEFAULT_SIGNATURE = '来描绘属于自己的签名吧';
 const PROFILE_NAME_MAX_LENGTH = 36;
 const PROFILE_SIGNATURE_MAX_LENGTH = 100;
 const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024;
@@ -268,7 +280,6 @@ const provinceOptions = ['山东', '北京', '上海', '广东', '江苏', '浙�
 const regionOptions = ['青岛', '济南', '北京', '上海', '广州', '深圳', '杭州', '成都'];
 const DEFAULT_CONTACT_GROUP_NAME = '默认分组';
 const CONTACT_MANAGER_ALL_GROUP = '__all__';
-const ADMIN_USERNAME = APP_CONFIG.ADMIN_USERNAME.toLowerCase();
 const addContactTabs: Array<{ key: AddContactTab; label: string }> = [
   { key: 'all', label: '全部' },
   { key: 'user', label: '用户' },
@@ -709,6 +720,10 @@ function normalizeUsername(username?: string | null) {
   return (username || '').trim().toLowerCase();
 }
 
+function isAdminSummary(user?: UserSummary | null) {
+  return isAdminEmail(user?.email);
+}
+
 function isMessageFromCurrentUser(msg: ChatMessage, currentUserId: number) {
   return msg.sender_id === currentUserId;
 }
@@ -736,6 +751,24 @@ function normalizeMessageType(type?: number | string) {
   if (type === MESSAGE_TYPES.Audio) return 'audio';
   if (type === MESSAGE_TYPES.File) return 'file';
   return 'text';
+}
+
+function getMessageTypeValue(type?: number | string) {
+  const normalizedType = normalizeMessageType(type);
+  if (normalizedType === 'image') return MESSAGE_TYPES.Image;
+  if (normalizedType === 'video') return MESSAGE_TYPES.Video;
+  if (normalizedType === 'audio') return MESSAGE_TYPES.Audio;
+  if (normalizedType === 'file') return MESSAGE_TYPES.File;
+  return MESSAGE_TYPES.Text;
+}
+
+function getForwardPreview(payload: Pick<ForwardMessagePayload, 'content' | 'type' | 'file_path'>) {
+  const normalizedType = normalizeMessageType(payload.type);
+  if (normalizedType === 'image') return payload.content || '[图片]';
+  if (normalizedType === 'video') return payload.content || '[视频]';
+  if (normalizedType === 'audio') return payload.content || '[语音]';
+  if (normalizedType === 'file') return payload.content || '[文件]';
+  return payload.content;
 }
 
 function isImageMessage(msg: { type?: number | string }) {
@@ -839,6 +872,10 @@ function formatBirthdayLabel(birthday?: string | null) {
 function formatLocation(user?: UserSummary | null) {
   const parts = [user?.country, user?.province, user?.region].filter(Boolean);
   return parts.length > 0 ? `现居 ${parts.join('·')}` : '现居 未填写';
+}
+
+function formatTextAreaCount({ count, maxLength }: { count: number; maxLength?: number }) {
+  return typeof maxLength === 'number' ? `${count}/${maxLength}` : String(count);
 }
 
 function getFriendRequestDirection(request: FriendRequest, currentUserId?: number): RequestDirection | null {
@@ -1059,7 +1096,9 @@ const ChatPage = observer(() => {
   const [groupCategoryDraft, setGroupCategoryDraft] = useState('我创建的群聊');
   const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<number[]>([]);
   const [shareVisible, setShareVisible] = useState(false);
+  const [shareMode, setShareMode] = useState<ShareMode>('share');
   const [sharePayload, setSharePayload] = useState('');
+  const [forwardPayload, setForwardPayload] = useState<ForwardMessagePayload | null>(null);
   const [shareSearchText, setShareSearchText] = useState('');
   const [shareNote, setShareNote] = useState('');
   const [selectedShareTargetIds, setSelectedShareTargetIds] = useState<string[]>([]);
@@ -1638,7 +1677,7 @@ const ChatPage = observer(() => {
       const key = username || String(user.id || '');
       if (!key || seen.has(key)) return false;
       seen.add(key);
-      if (username === ADMIN_USERNAME) return false;
+      if (isAdminSummary(user)) return false;
       if (user.id === currentUserId || username === currentUsername) return false;
       if (username && existingContactUsernames.has(username)) return false;
       return true;
@@ -2621,7 +2660,7 @@ const ChatPage = observer(() => {
       message.warning('请输入用户名');
       return;
     }
-    if (normalizeUsername(targetUsername) === ADMIN_USERNAME) {
+    if (user && isAdminSummary(user)) {
       message.warning('管理员账号不支持添加为好友');
       return;
     }
@@ -2638,7 +2677,7 @@ const ChatPage = observer(() => {
       message.warning('请输入用户名');
       return;
     }
-    if (normalizeUsername(targetUsername) === ADMIN_USERNAME) {
+    if (target?.user && isAdminSummary(target.user)) {
       message.warning('管理员账号不支持添加为好友');
       return;
     }
@@ -3250,17 +3289,85 @@ const ChatPage = observer(() => {
       return;
     }
 
+    setShareMode('share');
     setSharePayload(content);
+    setForwardPayload(null);
     setShareSearchText('');
     setShareNote('');
     setSelectedShareTargetIds([]);
     setShareVisible(true);
   };
 
+  const openForward = (payload: ForwardMessagePayload) => {
+    const content = payload.content.trim() || payload.preview.trim();
+    if (!content) {
+      message.warning('没有可转发的内容');
+      return;
+    }
+
+    const nextPayload = {
+      ...payload,
+      content,
+      preview: payload.preview.trim() || content,
+    };
+    setShareMode('forward');
+    setSharePayload(nextPayload.preview);
+    setForwardPayload(nextPayload);
+    setShareSearchText('');
+    setShareNote('');
+    setSelectedShareTargetIds([]);
+    setShareVisible(true);
+  };
+
+  const openForwardFromMessage = (msg: ChatMessage) => {
+    const type = getMessageTypeValue(msg.type);
+    const content = (msg.content || getForwardPreview({ content: '', type })).trim();
+    openForward({
+      content,
+      type,
+      file_path: msg.file_path,
+      file_size: msg.file_size,
+      duration: msg.duration,
+      preview: getForwardPreview({ content, type, file_path: msg.file_path }),
+    });
+  };
+
+  const openForwardFromGroupMessage = (msg: LocalGroupMessage) => {
+    const type = getMessageTypeValue(msg.type);
+    const content = (msg.content || getForwardPreview({ content: '', type })).trim();
+    openForward({
+      content,
+      type,
+      file_path: msg.filePath,
+      file_size: msg.fileSize,
+      duration: msg.duration,
+      preview: getForwardPreview({ content, type, file_path: msg.filePath }),
+    });
+  };
+
   const toggleShareTarget = (targetId: string) => {
     setSelectedShareTargetIds((ids) =>
       ids.includes(targetId) ? ids.filter((id) => id !== targetId) : [...ids, targetId]
     );
+  };
+
+  const copyMessageContent = async (content: string) => {
+    const nextContent = content.trim();
+    if (!nextContent) {
+      message.warning('没有可复制的内容');
+      return;
+    }
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        message.error('当前浏览器不支持复制');
+        return;
+      }
+      await navigator.clipboard.writeText(nextContent);
+      message.success('已复制');
+    } catch {
+      message.error('复制失败');
+    }
   };
 
   const handleNativeShare = async () => {
@@ -3280,12 +3387,13 @@ const ChatPage = observer(() => {
 
   const confirmShare = async () => {
     if (selectedShareTargets.length === 0) {
-      message.warning('请选择分享对象');
+      message.warning(shareMode === 'forward' ? '请选择转发对象' : '请选择分享对象');
       return;
     }
 
     const note = shareNote.trim();
-    const content = note ? `${sharePayload}\n\n${note}` : sharePayload;
+    const isForwarding = shareMode === 'forward' && forwardPayload;
+    const content = isForwarding ? sharePayload : note ? `${sharePayload}\n\n${note}` : sharePayload;
 
     try {
       for (const target of selectedShareTargets) {
@@ -3294,7 +3402,36 @@ const ChatPage = observer(() => {
           const contact = chatStore.contacts.find((item) => item.id === contactId);
           const receiverId = contact?.contact_user?.id;
           if (contact && typeof receiverId === 'number') {
-            if (chatStore.currentContact?.id === contact.id) {
+            if (isForwarding) {
+              const sendOptions = {
+                type: forwardPayload.type,
+                file_path: forwardPayload.file_path,
+                file_size: forwardPayload.file_size,
+                duration: forwardPayload.duration,
+              };
+              const result =
+                chatStore.currentContact?.id === contact.id
+                  ? await chatStore.sendMessage(receiverId, forwardPayload.content, sendOptions)
+                  : await apiService.sendMessage({
+                    receiver_id: receiverId,
+                    content: forwardPayload.content,
+                    type: forwardPayload.type,
+                    file_path: forwardPayload.file_path,
+                    file_size: forwardPayload.file_size,
+                    duration: forwardPayload.duration,
+                  });
+              if (!result.success) {
+                message.error(result.message || '转发失败');
+                return;
+              }
+              if (note) {
+                if (chatStore.currentContact?.id === contact.id) {
+                  await chatStore.sendMessage(receiverId, note);
+                } else {
+                  await apiService.sendMessage({ receiver_id: receiverId, content: note, type: MESSAGE_TYPES.Text });
+                }
+              }
+            } else if (chatStore.currentContact?.id === contact.id) {
               await chatStore.sendMessage(receiverId, content);
             } else {
               await apiService.sendMessage({ receiver_id: receiverId, content, type: MESSAGE_TYPES.Text });
@@ -3302,35 +3439,35 @@ const ChatPage = observer(() => {
           }
         } else {
           const groupId = target.id.replace('group-', '');
-          let sharedMessage: LocalGroupMessage | null = null;
+          const group = localGroups.find((item) => item.id === groupId);
+          if (!group) {
+            message.error('群聊不存在');
+            return;
+          }
 
-          if (isBackendId(groupId)) {
-            const response = await apiService.sendGroupMessage(Number(groupId), {
+          if (isForwarding) {
+            const sent = await sendGroupMessagePayload(group, {
+              content: forwardPayload.content,
+              type: forwardPayload.type,
+              file_path: forwardPayload.file_path,
+              file_size: forwardPayload.file_size,
+              duration: forwardPayload.duration,
+            });
+            if (!sent) return;
+            if (note) {
+              const noteSent = await sendGroupMessagePayload(group, {
+                content: note,
+                type: MESSAGE_TYPES.Text,
+              });
+              if (!noteSent) return;
+            }
+          } else {
+            const sent = await sendGroupMessagePayload(group, {
               content,
               type: MESSAGE_TYPES.Text,
             });
-
-            if (response.success && response.data) {
-              sharedMessage = mapApiGroupMessage(response.data);
-            } else {
-              message.error(response.message || '分享失败');
-              return;
-            }
+            if (!sent) return;
           }
-
-          if (!sharedMessage) {
-            sharedMessage = {
-              id: createLocalId('group-message'),
-              groupId,
-              senderId: currentUserId,
-              senderName: currentUserName,
-              content,
-              type: MESSAGE_TYPES.Text,
-              createdAt: new Date().toISOString(),
-            };
-          }
-
-          setLocalGroupMessages((messages) => [...messages, sharedMessage]);
         }
       }
 
@@ -3339,9 +3476,11 @@ const ChatPage = observer(() => {
       setShareVisible(false);
       setSelectedShareTargetIds([]);
       setShareNote('');
-      message.success('已分享');
+      setForwardPayload(null);
+      setShareMode('share');
+      message.success(isForwarding ? '已转发' : '已分享');
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '分享失败'));
+      message.error(getErrorMessage(error, shareMode === 'forward' ? '转发失败' : '分享失败'));
     }
   };
 
@@ -3438,54 +3577,83 @@ const ChatPage = observer(() => {
     const attachmentUrl = getAttachmentUrl(msg.file_path);
     const shareContent = attachmentUrl ? `${msg.content || '附件'}\n${attachmentUrl}` : msg.content;
     const isMediaBubble = isImageMessage(msg) && Boolean(attachmentUrl);
+    const contextMenu: MenuProps = {
+      items: [
+        {
+          key: 'copy',
+          icon: <CopyOutlined />,
+          label: '复制',
+          disabled: !shareContent.trim(),
+        },
+        {
+          key: 'forward',
+          icon: <ShareAltOutlined />,
+          label: '转发',
+        },
+        {
+          key: 'favorite',
+          icon: <HeartOutlined />,
+          label: '收藏',
+        },
+      ],
+      onClick: ({ key }) => {
+        if (key === 'copy') {
+          void copyMessageContent(shareContent);
+        }
+        if (key === 'forward') openForwardFromMessage(msg);
+        if (key === 'favorite') void addFavoriteFromMessage(msg);
+      },
+    };
 
     return (
       <div key={`${msg.id}-${index}`} className="message-block">
         {showDate && <div className="message-date">{formatDateLabel(msg.created_at)}</div>}
         <div className={`qq-message ${isMine ? 'sent' : 'received'}`}>
           {!isMine && renderAvatar(chatStore.currentContact, 36)}
-          <div className={`qq-bubble ${isMediaBubble ? 'media-bubble' : ''}`}>
-            {isAudioMessage(msg) ? (
-              <button
-                type="button"
-                className="voice-bubble voice-bubble-button"
-                disabled={!attachmentUrl}
-                onClick={() => {
-                  if (!attachmentUrl) return;
-                  void new Audio(attachmentUrl).play().catch(() => message.error('语音播放失败'));
-                }}
-              >
-                <span className="voice-play" />
-                <span className="voice-bars" />
-                <span>{msg.duration || 4}&quot;</span>
-              </button>
-            ) : isImageMessage(msg) && attachmentUrl ? (
-              <a className="message-image-link" href={attachmentUrl} target="_blank" rel="noreferrer">
-                <img className="message-image" src={attachmentUrl} alt={msg.content || '图片'} />
-              </a>
-            ) : isVideoMessage(msg) && attachmentUrl ? (
-              <video className="message-video" src={attachmentUrl} controls playsInline />
-            ) : isFileMessage(msg) && attachmentUrl ? (
-              <a className="message-file-card" href={attachmentUrl} target="_blank" rel="noreferrer" download>
-                <FileOutlined />
-                <span>
-                  <strong>{msg.content || '文件'}</strong>
-                  <small>{formatFileSize(msg.file_size)}</small>
-                </span>
-              </a>
-            ) : (
-              <div className="message-text">{msg.content}</div>
-            )}
-            <div className="message-meta">
-              <span>{formatClock(msg.created_at)}</span>
-              <button type="button" onClick={() => void addFavoriteFromMessage(msg)}>
-                收藏
-              </button>
-              <button type="button" onClick={() => openShare(shareContent)}>
-                分享
-              </button>
+          <Dropdown trigger={['contextMenu']} menu={contextMenu} overlayClassName="message-context-menu">
+            <div className={`qq-bubble ${isMediaBubble ? 'media-bubble' : ''}`}>
+              {isAudioMessage(msg) ? (
+                <button
+                  type="button"
+                  className="voice-bubble voice-bubble-button"
+                  disabled={!attachmentUrl}
+                  onClick={() => {
+                    if (!attachmentUrl) return;
+                    void new Audio(attachmentUrl).play().catch(() => message.error('语音播放失败'));
+                  }}
+                >
+                  <span className="voice-play" />
+                  <span className="voice-bars" />
+                  <span>{msg.duration || 4}&quot;</span>
+                </button>
+              ) : isImageMessage(msg) && attachmentUrl ? (
+                <a className="message-image-link" href={attachmentUrl} target="_blank" rel="noreferrer">
+                  <img className="message-image" src={attachmentUrl} alt={msg.content || '图片'} />
+                </a>
+              ) : isVideoMessage(msg) && attachmentUrl ? (
+                <video className="message-video" src={attachmentUrl} controls playsInline />
+              ) : isFileMessage(msg) && attachmentUrl ? (
+                <a className="message-file-card" href={attachmentUrl} target="_blank" rel="noreferrer" download>
+                  <FileOutlined />
+                  <span>
+                    <strong>{msg.content || '文件'}</strong>
+                    <small>{formatFileSize(msg.file_size)}</small>
+                  </span>
+                </a>
+              ) : (
+                <div className="message-text">{msg.content}</div>
+              )}
+              <div className="message-meta">
+                <span>{formatClock(msg.created_at)}</span>
+                <button type="button" onClick={() => void addFavoriteFromMessage(msg)}>
+                  收藏
+                </button>
+                <button type="button" onClick={() => openForwardFromMessage(msg)}>
+                  转发
+                </button>
+              </div>
             </div>
-          </div>
+          </Dropdown>
           {isMine && (
             <Avatar size={36} src={getAvatarUrl(authStore.user?.avatar_path)}>
               {getInitial(currentUserName)}
@@ -4435,55 +4603,84 @@ const ChatPage = observer(() => {
     const sender = isMine
       ? (authStore.user as UserSummary | null)
       : (chatStore.contacts.find((contact) => contact.contact_user?.id === msg.senderId)?.contact_user as UserSummary | undefined);
+    const contextMenu: MenuProps = {
+      items: [
+        {
+          key: 'copy',
+          icon: <CopyOutlined />,
+          label: '复制',
+          disabled: !shareContent.trim(),
+        },
+        {
+          key: 'forward',
+          icon: <ShareAltOutlined />,
+          label: '转发',
+        },
+        {
+          key: 'favorite',
+          icon: <HeartOutlined />,
+          label: '收藏',
+        },
+      ],
+      onClick: ({ key }) => {
+        if (key === 'copy') {
+          void copyMessageContent(shareContent);
+        }
+        if (key === 'forward') openForwardFromGroupMessage(msg);
+        if (key === 'favorite') void addFavoriteFromGroupMessage(msg);
+      },
+    };
 
     return (
       <div key={msg.id} className="message-block">
         {showDate && <div className="message-date">{formatDateLabel(msg.createdAt)}</div>}
         <div className={`qq-message ${isMine ? 'sent' : 'received'}`}>
           {!isMine && renderUserAvatar(sender, 36)}
-          <div className={`qq-bubble ${isMediaBubble ? 'media-bubble' : ''}`}>
-            {!isMine && <div className="group-message-sender">{msg.senderName}</div>}
-            {messageType === 'audio' ? (
-              <button
-                type="button"
-                className="voice-bubble voice-bubble-button"
-                disabled={!attachmentUrl}
-                onClick={() => {
-                  if (!attachmentUrl) return;
-                  void new Audio(attachmentUrl).play().catch(() => message.error('语音播放失败'));
-                }}
-              >
-                <span className="voice-play" />
-                <span className="voice-bars" />
-                <span>{msg.duration || 4}&quot;</span>
-              </button>
-            ) : messageType === 'image' && attachmentUrl ? (
-              <a className="message-image-link" href={attachmentUrl} target="_blank" rel="noreferrer">
-                <img className="message-image" src={attachmentUrl} alt={msg.content || '图片'} />
-              </a>
-            ) : messageType === 'video' && attachmentUrl ? (
-              <video className="message-video" src={attachmentUrl} controls playsInline />
-            ) : messageType === 'file' && attachmentUrl ? (
-              <a className="message-file-card" href={attachmentUrl} target="_blank" rel="noreferrer" download>
-                <FileOutlined />
-                <span>
-                  <strong>{msg.content || '文件'}</strong>
-                  <small>{formatFileSize(msg.fileSize)}</small>
-                </span>
-              </a>
-            ) : (
-              <div className="message-text">{msg.content}</div>
-            )}
-            <div className="message-meta">
-              <span>{formatClock(msg.createdAt)}</span>
-              <button type="button" onClick={() => void addFavoriteFromGroupMessage(msg)}>
-                收藏
-              </button>
-              <button type="button" onClick={() => openShare(shareContent)}>
-                分享
-              </button>
+          <Dropdown trigger={['contextMenu']} menu={contextMenu} overlayClassName="message-context-menu">
+            <div className={`qq-bubble ${isMediaBubble ? 'media-bubble' : ''}`}>
+              {!isMine && <div className="group-message-sender">{msg.senderName}</div>}
+              {messageType === 'audio' ? (
+                <button
+                  type="button"
+                  className="voice-bubble voice-bubble-button"
+                  disabled={!attachmentUrl}
+                  onClick={() => {
+                    if (!attachmentUrl) return;
+                    void new Audio(attachmentUrl).play().catch(() => message.error('语音播放失败'));
+                  }}
+                >
+                  <span className="voice-play" />
+                  <span className="voice-bars" />
+                  <span>{msg.duration || 4}&quot;</span>
+                </button>
+              ) : messageType === 'image' && attachmentUrl ? (
+                <a className="message-image-link" href={attachmentUrl} target="_blank" rel="noreferrer">
+                  <img className="message-image" src={attachmentUrl} alt={msg.content || '图片'} />
+                </a>
+              ) : messageType === 'video' && attachmentUrl ? (
+                <video className="message-video" src={attachmentUrl} controls playsInline />
+              ) : messageType === 'file' && attachmentUrl ? (
+                <a className="message-file-card" href={attachmentUrl} target="_blank" rel="noreferrer" download>
+                  <FileOutlined />
+                  <span>
+                    <strong>{msg.content || '文件'}</strong>
+                    <small>{formatFileSize(msg.fileSize)}</small>
+                  </span>
+                </a>
+              ) : (
+                <div className="message-text">{msg.content}</div>
+              )}
+              <div className="message-meta">
+                <span>{formatClock(msg.createdAt)}</span>
+                <button type="button" onClick={() => void addFavoriteFromGroupMessage(msg)}>
+                  收藏
+                </button>
+                <button type="button" onClick={() => openForwardFromGroupMessage(msg)}>
+                  转发
+                </button>
+              </div>
             </div>
-          </div>
+          </Dropdown>
           {isMine && renderUserAvatar(authStore.user as UserSummary, 36)}
         </div>
       </div>
@@ -5459,6 +5656,7 @@ const ChatPage = observer(() => {
       <Modal
         title="编辑个性签名"
         open={signatureVisible}
+        className="limited-text-modal"
         onCancel={() => setSignatureVisible(false)}
         onOk={() => void handleSaveSignature()}
         okText="保存"
@@ -5466,10 +5664,11 @@ const ChatPage = observer(() => {
         confirmLoading={signatureSaving}
       >
         <TextArea
+          className="limited-textarea"
           value={signatureDraft}
           onChange={(event) => setSignatureDraft(event.target.value.slice(0, 100))}
           maxLength={100}
-          showCount
+          showCount={{ formatter: formatTextAreaCount }}
           autoSize={{ minRows: 3, maxRows: 5 }}
           placeholder="写一句个性签名，别人可以在你的资料卡看到"
         />
@@ -5613,6 +5812,7 @@ const ChatPage = observer(() => {
       <Modal
         title="创建笔记"
         open={favoriteNoteVisible}
+        className="limited-text-modal"
         onCancel={() => setFavoriteNoteVisible(false)}
         onOk={() => void addFavoriteNote()}
         okText="收藏"
@@ -5620,27 +5820,39 @@ const ChatPage = observer(() => {
         width={520}
       >
         <TextArea
+          className="limited-textarea"
           value={favoriteNoteDraft}
           onChange={(event) => setFavoriteNoteDraft(event.target.value)}
           autoSize={{ minRows: 5, maxRows: 9 }}
           maxLength={1000}
-          showCount
+          showCount={{ formatter: formatTextAreaCount }}
           placeholder="记录一条收藏笔记"
         />
       </Modal>
 
       <Modal
-        title="分享"
+        title={shareMode === 'forward' ? '转发' : '分享'}
         open={shareVisible}
-        onCancel={() => setShareVisible(false)}
+        onCancel={() => {
+          setShareVisible(false);
+          setForwardPayload(null);
+          setShareMode('share');
+        }}
         width={760}
         className="share-modal"
         footer={[
-          <Button key="cancel" onClick={() => setShareVisible(false)}>
+          <Button
+            key="cancel"
+            onClick={() => {
+              setShareVisible(false);
+              setForwardPayload(null);
+              setShareMode('share');
+            }}
+          >
             取消
           </Button>,
           <Button key="submit" type="primary" onClick={() => void confirmShare()}>
-            分享
+            {shareMode === 'forward' ? '转发' : '分享'}
           </Button>,
         ]}
       >
@@ -5653,13 +5865,15 @@ const ChatPage = observer(() => {
               placeholder="搜索好友或群聊"
               allowClear
             />
-            <div className="share-quick-actions">
+            <div className={`share-quick-actions ${shareMode === 'forward' ? 'forward-mode' : ''}`}>
               <Button icon={<TeamOutlined />} onClick={() => setCreateGroupVisible(true)}>
-                创建群聊
+                创建群聊并{shareMode === 'forward' ? '转发' : '分享'}
               </Button>
-              <Button icon={<ShareAltOutlined />} onClick={() => void handleNativeShare()}>
-                分享到微信
-              </Button>
+              {shareMode === 'share' && (
+                <Button icon={<ShareAltOutlined />} onClick={() => void handleNativeShare()}>
+                  分享到微信
+                </Button>
+              )}
             </div>
             <div className="share-target-list">
               {recentShareTargets.length === 0 ? (
@@ -5687,7 +5901,7 @@ const ChatPage = observer(() => {
             </div>
           </section>
           <section className="share-selection">
-            <h3>分享到</h3>
+            <h3>{shareMode === 'forward' ? '转发给' : '分享到'}</h3>
             <div className="share-selected-list">
               {selectedShareTargets.length === 0 ? (
                 <span className="share-selected-empty">请选择联系人或群聊</span>
@@ -5701,7 +5915,7 @@ const ChatPage = observer(() => {
               )}
             </div>
             <div className="share-preview">
-              <strong>分享内容</strong>
+              <strong>{shareMode === 'forward' ? '转发内容' : '分享内容'}</strong>
               <p>{sharePayload}</p>
             </div>
             <TextArea

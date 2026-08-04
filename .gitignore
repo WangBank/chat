@@ -168,6 +168,7 @@ coverage/
 .env.production.local
 
 # Local backend secrets and deploy-time overrides
+backend/appsettings.Development.json
 backend/appsettings.Local.json
 backend/appsettings.Production.json
 backend/appsettings.*.local.json

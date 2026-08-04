@@ -33,7 +33,7 @@ namespace VideoCallAPI.Models.DTOs
 
     public class UserLoginDto
     {
-        [Required(ErrorMessage = "用户名是必填的")]
+        [Required(ErrorMessage = "用户名或邮箱是必填的")]
         public string username { get; set; } = string.Empty;
         
         [Required(ErrorMessage = "密码是必填的")]
@@ -130,10 +130,61 @@ namespace VideoCallAPI.Models.DTOs
         public string new_password { get; set; } = string.Empty;
     }
 
+    public class ForgotPasswordDto
+    {
+        [Required(ErrorMessage = "邮箱是必填的")]
+        [EmailAddress(ErrorMessage = "邮箱格式不正确")]
+        public string email { get; set; } = string.Empty;
+    }
+
+    public class ResetPasswordDto
+    {
+        [Required(ErrorMessage = "重置令牌是必填的")]
+        public string token { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "新密码是必填的")]
+        [MinLength(6, ErrorMessage = "密码至少6位")]
+        public string new_password { get; set; } = string.Empty;
+    }
+
     public class AdminChangePasswordDto
     {
         public int user_id { get; set; }
         public string new_password { get; set; } = string.Empty;
+    }
+
+    public class AdminCreateUserDto
+    {
+        [Required(ErrorMessage = "用户名是必填的")]
+        [StringLength(50, MinimumLength = 3, ErrorMessage = "用户名长度必须为3到50位")]
+        public string username { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "邮箱是必填的")]
+        [EmailAddress(ErrorMessage = "邮箱格式不正确")]
+        [StringLength(100, ErrorMessage = "邮箱不能超过100个字符")]
+        public string email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "密码是必填的")]
+        [MinLength(6, ErrorMessage = "密码至少6位")]
+        public string password { get; set; } = string.Empty;
+
+        [StringLength(50, ErrorMessage = "昵称不能超过50个字符")]
+        public string? display_name { get; set; }
+    }
+
+    public class AdminUpdateUserDto
+    {
+        [Required(ErrorMessage = "用户名是必填的")]
+        [StringLength(50, MinimumLength = 3, ErrorMessage = "用户名长度必须为3到50位")]
+        public string username { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "邮箱是必填的")]
+        [EmailAddress(ErrorMessage = "邮箱格式不正确")]
+        [StringLength(100, ErrorMessage = "邮箱不能超过100个字符")]
+        public string email { get; set; } = string.Empty;
+
+        [StringLength(50, ErrorMessage = "昵称不能超过50个字符")]
+        public string? display_name { get; set; }
     }
 
     // 联系人相关 DTO

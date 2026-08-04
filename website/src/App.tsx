@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage';
 import ChatPage from './pages/ChatPage';
 import AdminPage from './pages/AdminPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import SettingsPage from './pages/SettingsPage';
 import ContactsPage from './pages/ContactsPage';
 import ChatHistoryPage from './pages/ChatHistoryPage';
@@ -30,6 +31,7 @@ const App = observer(() => {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/qq-callback" element={<LoginPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route
             path="/chat"
             element={

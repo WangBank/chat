@@ -36,10 +36,12 @@ import {
 import {
   AdminPanelSettings,
   Badge,
+  EditOutlined,
   InfoOutlined,
   KeyOutlined,
   Logout,
   PeopleAltOutlined,
+  PersonAddAltOutlined,
   Refresh,
   Search,
   WifiTethering,
@@ -50,9 +52,18 @@ import { adminStore, type User } from '../stores/admin.store';
 import { authStore } from '../stores/auth.store';
 import { APP_CONFIG } from '../config/app.config';
 import { apiService } from '../services/api.service';
+import { isAdminUser } from '../utils/admin.utils';
 import { formatFullTime, formatTime } from '../utils/time.utils';
 
 type AdminTab = 'all' | 'online';
+type UserDialogMode = 'create' | 'edit';
+type UserFormState = {
+  username: string;
+  email: string;
+  display_name: string;
+  password: string;
+};
+type UserFormErrors = Partial<Record<keyof UserFormState, string>>;
 type NoticeState = {
   open: boolean;
   severity: 'success' | 'info' | 'warning' | 'error';
@@ -64,6 +75,15 @@ const adminShell = {
   bgcolor: '#eef5fb',
   color: '#111820',
 };
+const emptyUserForm: UserFormState = {
+  username: '',
+  email: '',
+  display_name: '',
+  password: '',
+};
+const duplicateIdentityMessage = '当前用户名或者邮箱被使用请重新输入';
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const usernamePattern = /^[A-Za-z0-9_-]+$/;
 
 function getAvatarUrl(path?: string) {
   if (!path) return undefined;
@@ -86,12 +106,31 @@ function filterUsers(users: User[], searchText: string) {
   );
 }
 
+function getApiErrorMessage(error: unknown, fallback: string) {
+  const apiError = error as { response?: { data?: { message?: unknown; errors?: unknown[] } }; message?: unknown };
+  if (typeof apiError.response?.data?.message === 'string') {
+    return apiError.response.data.message;
+  }
+  if (Array.isArray(apiError.response?.data?.errors) && typeof apiError.response.data.errors[0] === 'string') {
+    return apiError.response.data.errors[0];
+  }
+  if (typeof apiError.message === 'string') {
+    return apiError.message;
+  }
+  return fallback;
+}
+
 const AdminPage = observer(() => {
   const navigate = useNavigate();
   const [searchText, setSearchText] = useState('');
   const [activeTab, setActiveTab] = useState<AdminTab>('all');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [detailUser, setDetailUser] = useState<User | null>(null);
+  const [userDialogMode, setUserDialogMode] = useState<UserDialogMode | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [userForm, setUserForm] = useState<UserFormState>(emptyUserForm);
+  const [userFormErrors, setUserFormErrors] = useState<UserFormErrors>({});
+  const [userSaving, setUserSaving] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordSaving, setPasswordSaving] = useState(false);
@@ -112,7 +151,7 @@ const AdminPage = observer(() => {
       return;
     }
 
-    if (authStore.user?.username !== APP_CONFIG.ADMIN_USERNAME) {
+    if (!isAdminUser(authStore.user)) {
       notify('当前账号没有管理员权限', 'warning');
       navigate('/chat');
       return;
@@ -142,9 +181,11 @@ const AdminPage = observer(() => {
     [adminStore.onlineUsers, searchText]
   );
   const visibleUsers = activeTab === 'online' ? filteredOnlineUsers : filteredAllUsers;
+  const isUserDialogOpen = Boolean(userDialogMode);
+  const isEditingAdmin = userDialogMode === 'edit' && isAdminUser(editingUser);
 
   const openPasswordDialog = (user: User) => {
-    if (user.username === APP_CONFIG.ADMIN_USERNAME) {
+    if (isAdminUser(user)) {
       notify('管理员账号不允许在这里修改密码', 'warning');
       return;
     }
@@ -152,6 +193,37 @@ const AdminPage = observer(() => {
     setSelectedUser(user);
     setNewPassword('');
     setConfirmPassword('');
+  };
+
+  const openCreateUserDialog = () => {
+    setUserDialogMode('create');
+    setEditingUser(null);
+    setUserForm(emptyUserForm);
+    setUserFormErrors({});
+  };
+
+  const openEditUserDialog = (user: User) => {
+    setUserDialogMode('edit');
+    setEditingUser(user);
+    setUserForm({
+      username: user.username,
+      email: user.email,
+      display_name: user.display_name || '',
+      password: '',
+    });
+    setUserFormErrors({});
+  };
+
+  const closeUserDialog = () => {
+    setUserDialogMode(null);
+    setEditingUser(null);
+    setUserForm(emptyUserForm);
+    setUserFormErrors({});
+  };
+
+  const updateUserForm = (field: keyof UserFormState, value: string) => {
+    setUserForm((current) => ({ ...current, [field]: value }));
+    setUserFormErrors((current) => ({ ...current, [field]: undefined }));
   };
 
   const handleRefresh = () => {
@@ -166,6 +238,89 @@ const AdminPage = observer(() => {
   const handleLogout = async () => {
     await authStore.logout();
     navigate('/');
+  };
+
+  const validateUserForm = () => {
+    const errors: UserFormErrors = {};
+    const username = userForm.username.trim();
+    const email = userForm.email.trim();
+
+    if (!username) {
+      errors.username = '请输入用户名';
+    } else if (username.length < 3) {
+      errors.username = '用户名至少 3 位';
+    } else if (username.length > 50) {
+      errors.username = '用户名不能超过 50 位';
+    } else if (!usernamePattern.test(username)) {
+      errors.username = '仅支持英文字母、数字、下划线或短横线';
+    }
+
+    if (!email) {
+      errors.email = '请输入邮箱';
+    } else if (email.length > 100) {
+      errors.email = '邮箱不能超过 100 个字符';
+    } else if (!emailPattern.test(email)) {
+      errors.email = '请输入有效邮箱';
+    }
+
+    if (userDialogMode === 'create' && userForm.password.length < 6) {
+      errors.password = '密码至少 6 位';
+    }
+
+    setUserFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const reloadUserData = async () => {
+    await Promise.all([
+      adminStore.loadAllUsers(adminStore.currentPage, { silent: true }),
+      adminStore.loadOnlineUsers({ silent: true }),
+    ]);
+  };
+
+  const handleSaveUser = async () => {
+    if (!userDialogMode || !validateUserForm()) return;
+
+    setUserSaving(true);
+    try {
+      const payload = {
+        username: userForm.username.trim(),
+        email: userForm.email.trim().toLowerCase(),
+        display_name: userForm.display_name.trim() || undefined,
+      };
+      const response =
+        userDialogMode === 'create'
+          ? await apiService.adminCreateUser({
+              ...payload,
+              password: userForm.password,
+            })
+          : editingUser
+            ? await apiService.adminUpdateUser(editingUser.id, payload)
+            : null;
+
+      if (!response) return;
+
+      if (response.success) {
+        notify(userDialogMode === 'create' ? '用户已创建' : '用户已更新', 'success');
+        closeUserDialog();
+        await reloadUserData();
+        return;
+      }
+
+      const message = response.message || (userDialogMode === 'create' ? '创建用户失败' : '修改用户失败');
+      if (message.includes('用户名') || message.includes('邮箱')) {
+        setUserFormErrors((current) => ({ ...current, username: message, email: message }));
+      }
+      notify(message, 'error');
+    } catch (error) {
+      const message = getApiErrorMessage(error, userDialogMode === 'create' ? '创建用户失败' : '修改用户失败');
+      if (message.includes('用户名') || message.includes('邮箱')) {
+        setUserFormErrors((current) => ({ ...current, username: message, email: message }));
+      }
+      notify(message, 'error');
+    } finally {
+      setUserSaving(false);
+    }
   };
 
   const handleChangePassword = async () => {
@@ -191,7 +346,7 @@ const AdminPage = observer(() => {
         notify(response.message || '修改密码失败', 'error');
       }
     } catch (error) {
-      notify(error instanceof Error ? error.message : '修改密码失败', 'error');
+      notify(getApiErrorMessage(error, '修改密码失败'), 'error');
     } finally {
       setPasswordSaving(false);
     }
@@ -300,27 +455,41 @@ const AdminPage = observer(() => {
                 <Typography variant="h6" sx={{ fontWeight: 900 }}>
                   用户管理
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  每 5 秒自动同步在线状态，可手动刷新或为普通账号重置密码。
-                </Typography>
-              </Box>
-              <TextField
-                value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
-                placeholder="搜索用户名、邮箱或昵称"
-                size="small"
-                sx={{ minWidth: { xs: '100%', md: 320 } }}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Search fontSize="small" />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
-            </Stack>
+	                <Typography variant="body2" color="text.secondary">
+	                  每 5 秒自动同步在线状态，可新建账号、编辑资料或为普通账号重置密码。
+	                </Typography>
+	              </Box>
+	              <Stack
+	                direction={{ xs: 'column', sm: 'row' }}
+	                spacing={1.25}
+	                sx={{ alignItems: { xs: 'stretch', sm: 'center' } }}
+	              >
+	                <Button
+	                  variant="contained"
+	                  startIcon={<PersonAddAltOutlined />}
+	                  onClick={openCreateUserDialog}
+	                  sx={{ bgcolor: '#12a8f4', boxShadow: 'none', '&:hover': { bgcolor: '#078fdb', boxShadow: 'none' } }}
+	                >
+	                  新建用户
+	                </Button>
+	                <TextField
+	                  value={searchText}
+	                  onChange={(event) => setSearchText(event.target.value)}
+	                  placeholder="搜索用户名、邮箱或昵称"
+	                  size="small"
+	                  sx={{ minWidth: { xs: '100%', md: 320 } }}
+	                  slotProps={{
+	                    input: {
+	                      startAdornment: (
+	                        <InputAdornment position="start">
+	                          <Search fontSize="small" />
+	                        </InputAdornment>
+	                      ),
+	                    },
+	                  }}
+	                />
+	              </Stack>
+	            </Stack>
 
             <Tabs
               value={activeTab}
@@ -403,15 +572,20 @@ const AdminPage = observer(() => {
                         <TableCell>{formatTime(user.created_at)}</TableCell>
                         <TableCell align="right">
                           <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
-                            <Tooltip title="查看资料">
-                              <IconButton size="small" onClick={() => setDetailUser(user)}>
-                                <InfoOutlined fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            {user.username !== APP_CONFIG.ADMIN_USERNAME && (
-                              <Tooltip title="修改密码">
-                                <IconButton size="small" onClick={() => openPasswordDialog(user)}>
-                                  <KeyOutlined fontSize="small" />
+	                            <Tooltip title="查看资料">
+	                              <IconButton size="small" onClick={() => setDetailUser(user)}>
+	                                <InfoOutlined fontSize="small" />
+	                              </IconButton>
+	                            </Tooltip>
+	                            <Tooltip title="编辑用户">
+	                              <IconButton size="small" onClick={() => openEditUserDialog(user)}>
+	                                <EditOutlined fontSize="small" />
+	                              </IconButton>
+	                            </Tooltip>
+	                            {!isAdminUser(user) && (
+	                              <Tooltip title="修改密码">
+	                                <IconButton size="small" onClick={() => openPasswordDialog(user)}>
+	                                  <KeyOutlined fontSize="small" />
                                 </IconButton>
                               </Tooltip>
                             )}
@@ -471,6 +645,81 @@ const AdminPage = observer(() => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDetailUser(null)}>关闭</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={isUserDialogOpen} onClose={closeUserDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
+            <Avatar sx={{ bgcolor: '#e8f6ff', color: '#078fdb', width: 34, height: 34 }}>
+              {userDialogMode === 'create' ? <PersonAddAltOutlined fontSize="small" /> : <EditOutlined fontSize="small" />}
+            </Avatar>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 900 }}>
+                {userDialogMode === 'create' ? '新建用户' : '编辑用户'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {userDialogMode === 'create' ? '创建可登录的聊天账号' : editingUser ? `正在编辑 @${editingUser.username}` : '编辑账号信息'}
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              label="用户名"
+              value={userForm.username}
+              onChange={(event) => updateUserForm('username', event.target.value)}
+              error={Boolean(userFormErrors.username)}
+              helperText={userFormErrors.username || '3-50 位，支持英文字母、数字、下划线或短横线'}
+              autoFocus
+              fullWidth
+            />
+            <TextField
+              label="邮箱"
+              value={userForm.email}
+              onChange={(event) => updateUserForm('email', event.target.value)}
+              error={Boolean(userFormErrors.email)}
+              helperText={
+                userFormErrors.email ||
+                (isEditingAdmin ? `管理员邮箱固定为 ${APP_CONFIG.ADMIN_EMAILS.join('、') || '配置的管理员邮箱'}` : '用于登录身份和管理员权限识别')
+              }
+              disabled={isEditingAdmin}
+              fullWidth
+            />
+            <TextField
+              label="昵称"
+              value={userForm.display_name}
+              onChange={(event) => updateUserForm('display_name', event.target.value)}
+              error={Boolean(userFormErrors.display_name)}
+              helperText={userFormErrors.display_name || '可留空'}
+              fullWidth
+            />
+            {userDialogMode === 'create' && (
+              <TextField
+                label="初始密码"
+                type="password"
+                value={userForm.password}
+                onChange={(event) => updateUserForm('password', event.target.value)}
+                error={Boolean(userFormErrors.password)}
+                helperText={userFormErrors.password || '至少 6 位'}
+                fullWidth
+              />
+            )}
+            {(userFormErrors.username === duplicateIdentityMessage || userFormErrors.email === duplicateIdentityMessage) && (
+              <Alert severity="warning" variant="outlined">
+                {duplicateIdentityMessage}
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={closeUserDialog} disabled={userSaving}>
+            取消
+          </Button>
+          <Button variant="contained" onClick={handleSaveUser} disabled={userSaving}>
+            {userSaving ? '保存中' : userDialogMode === 'create' ? '创建' : '保存'}
+          </Button>
         </DialogActions>
       </Dialog>
 

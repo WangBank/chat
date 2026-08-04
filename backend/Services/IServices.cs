@@ -26,6 +26,8 @@ namespace VideoCallAPI.Services
         Task<UserSearchResultDto> SearchUsersAsync(int currentUserId, SearchUsersDto searchDto);
         Task UpdateHeartbeatAsync(int userId);
         Task MarkOfflineAsync(int userId);
+        Task ForgotPasswordAsync(ForgotPasswordDto forgotPasswordDto);
+        Task ResetPasswordAsync(ResetPasswordDto resetPasswordDto);
     }
 
     public interface IQQAuthService
@@ -43,6 +45,12 @@ namespace VideoCallAPI.Services
         string? NormalizeOptionalText(string? value, string fieldName, int maxLength, bool filterSensitiveWords = true, bool rejectSensitiveWords = false);
         string? NormalizeStoredFilePath(string? value, string fieldName, params string[] allowedPrefixes);
         void EnsureNoSensitiveWords(string? value, string fieldName);
+    }
+
+    public interface IEmailService
+    {
+        void EnsureConfigured();
+        Task SendPasswordResetEmailAsync(string toEmail, string displayName, string resetUrl);
     }
 
     public interface IContactService

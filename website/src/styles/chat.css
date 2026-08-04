@@ -3324,6 +3324,42 @@ button.mac-dot {
   line-height: 1.5;
 }
 
+.limited-text-modal .limited-textarea.ant-input-textarea-show-count {
+  position: relative;
+  margin-bottom: 4px;
+}
+
+.limited-text-modal .limited-textarea textarea.ant-input {
+  padding: 10px 12px 32px;
+  border-color: #dfe5ea;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #111820;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+}
+
+.limited-text-modal .limited-textarea textarea.ant-input:focus {
+  border-color: var(--qq-blue);
+  box-shadow: 0 0 0 2px rgba(18, 168, 244, 0.14);
+}
+
+.limited-text-modal .limited-textarea .ant-input-data-count {
+  inset-inline-end: 10px;
+  bottom: 8px;
+  height: 18px;
+  border-radius: 9px;
+  background: rgba(248, 250, 252, 0.92);
+  padding: 0 6px;
+  color: var(--qq-muted);
+  font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+}
+
 .qq-search-placeholder {
   display: grid;
   place-items: center;
@@ -3754,6 +3790,10 @@ button.mac-dot {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 9px;
   margin: 12px 0;
+}
+
+.share-quick-actions.forward-mode {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .share-quick-actions .ant-btn {

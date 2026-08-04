@@ -495,6 +495,375 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _showMessageActions(ChatMessage message) async {
+    final selectedAction = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(top: 10, bottom: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD6DCE2),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy_outlined),
+              title: const Text('复制'),
+              onTap: () => Navigator.of(context).pop('copy'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.shortcut_outlined),
+              title: const Text('转发'),
+              onTap: () => Navigator.of(context).pop('forward'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selectedAction == 'copy') {
+      await _copyMessageContent(message);
+    } else if (selectedAction == 'forward') {
+      await _showForwardDialog(message);
+    }
+  }
+
+  Future<void> _copyMessageContent(ChatMessage message) async {
+    final mediaUrl = AppConfig.resolveMediaUrl(message.filePath);
+    final content = mediaUrl == null
+        ? message.content
+        : '${message.content.trim().isEmpty ? _messageTypeText(message.type) : message.content}\n$mediaUrl';
+    final trimmedContent = content.trim();
+    if (trimmedContent.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('没有可复制的内容')));
+      return;
+    }
+
+    await Clipboard.setData(ClipboardData(text: trimmedContent));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已复制')));
+  }
+
+  Future<void> _showForwardDialog(ChatMessage originalMessage) async {
+    late final List<Contact> contacts;
+    try {
+      contacts = await widget.apiService.getContacts();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('加载联系人失败: $e')));
+      return;
+    }
+
+    if (!mounted) return;
+
+    final selectedContactIds = <int>{};
+    final searchController = TextEditingController();
+    final noteController = TextEditingController();
+
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) {
+          var keyword = '';
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              final filteredContacts = contacts.where((contact) {
+                if (contact.isBlocked) return false;
+                final query = keyword.trim().toLowerCase();
+                if (query.isEmpty) return true;
+                return contact.displayNameOrUsername
+                        .toLowerCase()
+                        .contains(query) ||
+                    contact.contactUser.username.toLowerCase().contains(query);
+              }).toList();
+
+              return Dialog(
+                insetPadding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 620),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+                        child: Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                '转发给',
+                                style: TextStyle(
+                                  color: _qqText,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '已选 ${selectedContactIds.length}',
+                              style: const TextStyle(
+                                color: _qqMuted,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        child: TextField(
+                          controller: searchController,
+                          decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.search),
+                            hintText: '搜索联系人',
+                            fillColor: Color(0xFFF3F6F9),
+                          ),
+                          onChanged: (value) {
+                            setDialogState(() {
+                              keyword = value;
+                            });
+                          },
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF6F8FA),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            _forwardPreviewText(originalMessage),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: _qqText,
+                              fontSize: 13,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: filteredContacts.isEmpty
+                            ? const Center(
+                                child: Text(
+                                  '没有匹配联系人',
+                                  style: TextStyle(color: _qqMuted),
+                                ),
+                              )
+                            : ListView.builder(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 10),
+                                itemCount: filteredContacts.length,
+                                itemBuilder: (context, index) {
+                                  final contact = filteredContacts[index];
+                                  final selected =
+                                      selectedContactIds.contains(contact.id);
+                                  return CheckboxListTile(
+                                    value: selected,
+                                    onChanged: (_) {
+                                      setDialogState(() {
+                                        if (selected) {
+                                          selectedContactIds.remove(contact.id);
+                                        } else {
+                                          selectedContactIds.add(contact.id);
+                                        }
+                                      });
+                                    },
+                                    controlAffinity:
+                                        ListTileControlAffinity.leading,
+                                    secondary: _buildAvatar(
+                                      name: contact.displayNameOrUsername,
+                                      avatarPath:
+                                          contact.contactUser.avatarPath,
+                                      isOnline: contact.contactUser.isOnline,
+                                      radius: 18,
+                                    ),
+                                    title: Text(
+                                      contact.displayNameOrUsername,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      '@${contact.contactUser.username}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+                        child: TextField(
+                          controller: noteController,
+                          decoration: const InputDecoration(
+                            hintText: '留言',
+                            fillColor: Color(0xFFF3F6F9),
+                          ),
+                          maxLines: 1,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(false),
+                                child: const Text('取消'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: FilledButton(
+                                onPressed: selectedContactIds.isEmpty
+                                    ? null
+                                    : () => Navigator.of(context).pop(true),
+                                child: const Text('转发'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+
+      if (confirmed == true) {
+        await _forwardMessageToContacts(
+          originalMessage,
+          selectedContactIds,
+          noteController.text.trim(),
+          contacts,
+        );
+      }
+    } finally {
+      searchController.dispose();
+      noteController.dispose();
+    }
+  }
+
+  Future<void> _forwardMessageToContacts(
+    ChatMessage originalMessage,
+    Set<int> selectedContactIds,
+    String note,
+    List<Contact> contacts,
+  ) async {
+    if (selectedContactIds.isEmpty || _isSending) return;
+
+    setState(() {
+      _isSending = true;
+      _showEmojiPanel = false;
+    });
+
+    var successCount = 0;
+    try {
+      for (final contact in contacts) {
+        if (!selectedContactIds.contains(contact.id)) continue;
+
+        final forwardedMessage = await widget.apiService.sendMessage(
+          contact.contactUser.id,
+          _forwardContent(originalMessage),
+          originalMessage.type,
+          filePath: originalMessage.filePath,
+          fileSize: originalMessage.fileSize,
+          duration: originalMessage.duration,
+        );
+        successCount += 1;
+
+        if (contact.id == _contact.id) {
+          _upsertMessage(forwardedMessage);
+        }
+
+        if (note.isNotEmpty) {
+          final noteMessage = await widget.apiService.sendMessage(
+            contact.contactUser.id,
+            note,
+            MessageType.text,
+          );
+          if (contact.id == _contact.id) {
+            _upsertMessage(noteMessage);
+          }
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _isSending = false;
+      });
+      _scrollToBottom();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已转发给 $successCount 个联系人')));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isSending = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('转发失败: $e')));
+    }
+  }
+
+  String _forwardContent(ChatMessage message) {
+    final content = message.content.trim();
+    return content.isNotEmpty ? content : _messageTypeText(message.type);
+  }
+
+  String _forwardPreviewText(ChatMessage message) {
+    final content = _forwardContent(message);
+    if (message.filePath == null) return content;
+    return '$content\n${AppConfig.resolveMediaUrl(message.filePath) ?? message.filePath}';
+  }
+
+  String _messageTypeText(MessageType type) {
+    switch (type) {
+      case MessageType.image:
+        return '[图片]';
+      case MessageType.video:
+        return '[视频]';
+      case MessageType.audio:
+        return '[语音]';
+      case MessageType.file:
+        return '[文件]';
+      case MessageType.text:
+        return '';
+    }
+  }
+
   bool _isImageFileName(String name) {
     final lowerName = name.toLowerCase();
     return lowerName.endsWith('.jpg') ||
@@ -961,38 +1330,42 @@ class _ChatPageState extends State<ChatPage> {
               crossAxisAlignment:
                   isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
-                Container(
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.sizeOf(context).width * 0.68,
-                  ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: bubbleColor,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(14),
-                      topRight: const Radius.circular(14),
-                      bottomLeft: Radius.circular(isMe ? 14 : 4),
-                      bottomRight: Radius.circular(isMe ? 4 : 14),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onLongPress: () => _showMessageActions(message),
+                  child: Container(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.sizeOf(context).width * 0.68,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: bubbleColor,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(14),
+                        topRight: const Radius.circular(14),
+                        bottomLeft: Radius.circular(isMe ? 14 : 4),
+                        bottomRight: Radius.circular(isMe ? 4 : 14),
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildMessageContent(message, isMe),
-                      const SizedBox(height: 5),
-                      Text(
-                        _formatTime(message.timestamp),
-                        style: const TextStyle(color: _qqMuted, fontSize: 11),
-                      ),
-                    ],
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildMessageContent(message, isMe),
+                        const SizedBox(height: 5),
+                        Text(
+                          _formatTime(message.timestamp),
+                          style: const TextStyle(color: _qqMuted, fontSize: 11),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],

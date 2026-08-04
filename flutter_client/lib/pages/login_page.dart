@@ -44,7 +44,7 @@ class _LoginPageState extends State<LoginPage> {
     final email = _emailController.text.trim();
 
     print('🔐 开始${_isLogin ? '登录' : '注册'}流程...');
-    print(' 用户名: $username');
+    print(' 账号: $username');
     print('📧 邮箱: $email');
 
     if (username.isEmpty || password.isEmpty || (!_isLogin && email.isEmpty)) {
@@ -277,10 +277,13 @@ class _LoginPageState extends State<LoginPage> {
                           const SizedBox(height: 22),
                           TextField(
                             controller: _usernameController,
-                            decoration: const InputDecoration(
-                              labelText: '用户名',
-                              prefixIcon: Icon(Icons.person_outline),
+                            decoration: InputDecoration(
+                              labelText: _isLogin ? '用户名或邮箱' : '用户名',
+                              prefixIcon: const Icon(Icons.person_outline),
                             ),
+                            keyboardType: _isLogin
+                                ? TextInputType.emailAddress
+                                : TextInputType.text,
                           ),
                           const SizedBox(height: 14),
                           if (!_isLogin) ...[

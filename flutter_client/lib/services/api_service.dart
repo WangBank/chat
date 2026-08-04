@@ -713,6 +713,7 @@ class ApiService {
     MessageType type, {
     String? filePath,
     int? fileSize,
+    int? duration,
   }) async {
     try {
       print('📤 发送消息给: $receiverId');
@@ -747,6 +748,9 @@ class ApiService {
       }
       if (fileSize != null) {
         body['file_size'] = fileSize;
+      }
+      if (duration != null) {
+        body['duration'] = duration;
       }
 
       final response = await http.post(

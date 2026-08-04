@@ -45,6 +45,38 @@ ASPNETCORE_ENVIRONMENT=Development dotnet run
 
 服务默认监听 `http://localhost:17101`，Swagger UI 位于 `http://localhost:17101/swagger`。
 
+## QQ 邮箱发信配置
+
+忘记密码邮件配置和 QQ 登录配置一样放在 `appsettings*.json` 的顶层配置段，也可以用环境变量覆盖：
+
+```json
+"Email": {
+  "SmtpHost": "smtp.qq.com",
+  "SmtpPort": 587,
+  "EnableSsl": true,
+  "Username": "your-email@qq.com",
+  "Password": "QQ邮箱授权码",
+  "FromEmail": "your-email@qq.com",
+  "FromName": "Forever Love",
+  "PasswordResetBaseUrl": "http://localhost:5173/reset-password",
+  "PasswordResetTokenMinutes": 30
+}
+```
+
+对应环境变量示例：
+
+```bash
+Email__Username=your-email@qq.com
+Email__Password=your-qq-mail-authorization-code
+Email__FromEmail=your-email@qq.com
+Email__PasswordResetBaseUrl=http://localhost:5173/reset-password
+Email__PasswordResetTokenMinutes=30
+```
+
+`Email:Username` 填完整 QQ 邮箱地址，通常和 `Email:FromEmail` 一致；不要填昵称、应用名或 QQ 互联里的名称。`Email:Password` 使用 QQ 邮箱生成的授权码，不是 QQ 登录密码。
+
+QQ 邮箱授权码配置位置：PC 浏览器登录 QQ 邮箱网页版，点击右上角头像进入 `设置` -> `账号与安全` -> `安全设置`，在 `POP3/IMAP/SMTP/Exchange/CardDAV/CalDAV服务` 区域开启服务，然后点击 `生成授权码`。官方帮助页：https://help.mail.qq.com/detail/106/985
+
 ## Docker 一键部署
 
 仓库根目录提供 API Docker 部署脚本，会自动创建 Docker network、确认 PostgreSQL 容器、构建 API 镜像、停止旧 API 容器或占用 API 端口的本地服务，并启动新容器：
@@ -92,6 +124,8 @@ dotnet ef database update
 - `POST /api/auth/register` - 用户注册
 - `POST /api/auth/login` - 用户登录
 - `POST /api/auth/change-password` - 修改密码
+- `POST /api/auth/forgot-password` - 发送密码重置邮件
+- `POST /api/auth/reset-password` - 使用邮件 token 重置密码
 - `GET /api/auth/profile` - 获取用户信息
 - `GET /api/contacts` - 获取联系人列表
 - `POST /api/contacts` - 兼容旧客户端，发送好友申请，不直接添加联系人

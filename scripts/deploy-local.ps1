@@ -150,6 +150,8 @@ function Ensure-EnvFile {
             "QQ__ClientSecret=",
             "QQ__RedirectUri=https://chat.wangbank.top/qq-callback",
             "QQ__AllowMockLogin=false",
+            "ADMIN_EMAILS=",
+            "VITE_ADMIN_EMAILS=",
             "SWAGGER_ENABLED=false",
             "USE_HTTPS_REDIRECTION=false",
             "EXTRA_CORS_ORIGIN=https://chat.wangbank.top"
@@ -177,6 +179,16 @@ function Ensure-EnvFile {
     if (-not $values.ContainsKey("QQ__AllowMockLogin") -and [string]::IsNullOrWhiteSpace($env:QQ__AllowMockLogin)) {
         Add-DotEnvValue -Path $Path -Name "QQ__AllowMockLogin" -Value "false"
         Write-DeployLog "Added QQ__AllowMockLogin to .env."
+    }
+
+    if (-not $values.ContainsKey("ADMIN_EMAILS") -and [string]::IsNullOrWhiteSpace($env:ADMIN_EMAILS)) {
+        Add-DotEnvValue -Path $Path -Name "ADMIN_EMAILS" -Value ""
+        Write-DeployLog "Added ADMIN_EMAILS to .env."
+    }
+
+    if (-not $values.ContainsKey("VITE_ADMIN_EMAILS") -and [string]::IsNullOrWhiteSpace($env:VITE_ADMIN_EMAILS)) {
+        Add-DotEnvValue -Path $Path -Name "VITE_ADMIN_EMAILS" -Value ""
+        Write-DeployLog "Added VITE_ADMIN_EMAILS to .env."
     }
 
     Update-LegacyDefaultPort -Path $Path -Values $values -Name "POSTGRES_PORT" -OldValue "54329" -NewValue "17132"

@@ -5,8 +5,24 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { observer } from 'mobx-react-lite';
 import { authStore } from '../stores/auth.store';
 import { apiService } from '../services/api.service';
-import { APP_CONFIG } from '../config/app.config';
+import { isAdminUser } from '../utils/admin.utils';
 import '../styles/common.css';
+
+interface LoginFormValues {
+  username: string;
+  password: string;
+}
+
+interface RegisterFormValues extends LoginFormValues {
+  email: string;
+}
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  const apiError = error as { response?: { data?: { message?: unknown } }; message?: unknown };
+  if (typeof apiError.response?.data?.message === 'string') return apiError.response.data.message;
+  if (typeof apiError.message === 'string') return apiError.message;
+  return fallback;
+}
 
 const LoginPage = observer(() => {
   const [form] = Form.useForm();
@@ -21,7 +37,7 @@ const LoginPage = observer(() => {
 
     // If already logged in, redirect by user type
     if (authStore.isAuthenticated && !hasQQCallback) {
-      if (authStore.user?.username === APP_CONFIG.ADMIN_USERNAME) {
+      if (isAdminUser(authStore.user)) {
         navigate('/admin');
       } else {
         navigate('/chat');
@@ -47,13 +63,13 @@ const LoginPage = observer(() => {
             authStore.user = response.data;
             localStorage.setItem('user', JSON.stringify(response.data));
             message.success('QQ绑定成功');
-            navigate('/chat', { replace: true });
+            navigate(isAdminUser(response.data) ? '/admin' : '/chat', { replace: true });
             return;
           }
 
           message.error(response.message || 'QQ绑定失败');
-        } catch (error: any) {
-          message.error(error.response?.data?.message || 'QQ绑定失败');
+        } catch (error: unknown) {
+          message.error(getApiErrorMessage(error, 'QQ绑定失败'));
         }
         navigate('/login', { replace: true });
         return;
@@ -67,18 +83,17 @@ const LoginPage = observer(() => {
       }
 
       message.success('QQ登录成功');
-      navigate('/chat', { replace: true });
+      navigate(isAdminUser(authStore.user) ? '/admin' : '/chat', { replace: true });
     };
 
     void completeQQCallback();
   }, [location.search, navigate]);
 
-  const onLogin = async (values: any) => {
+  const onLogin = async (values: LoginFormValues) => {
     const result = await authStore.login(values.username, values.password);
     if (result.success) {
       message.success('登录成功');
-      // Redirect admin to admin page; others to chat
-      if (authStore.user?.username === APP_CONFIG.ADMIN_USERNAME) {
+      if (isAdminUser(authStore.user)) {
         navigate('/admin');
       } else {
         navigate('/chat');
@@ -88,11 +103,11 @@ const LoginPage = observer(() => {
     }
   };
 
-  const onRegister = async (values: any) => {
+  const onRegister = async (values: RegisterFormValues) => {
     const result = await authStore.register(values.username, values.email, values.password);
     if (result.success) {
       message.success('注册成功');
-      navigate('/chat');
+      navigate(isAdminUser(authStore.user) ? '/admin' : '/chat');
     } else {
       message.error(result.message || '注册失败');
     }
@@ -121,7 +136,7 @@ const LoginPage = observer(() => {
         const result = await authStore.loginWithQQDev();
         if (result.success) {
           message.success('QQ测试登录成功');
-          navigate('/chat');
+          navigate(isAdminUser(authStore.user) ? '/admin' : '/chat');
         } else {
           message.error(result.message || 'QQ测试登录失败');
         }
@@ -129,8 +144,8 @@ const LoginPage = observer(() => {
       }
 
       message.warning(response.message || 'QQ登录尚未配置');
-    } catch (error: any) {
-      message.error(error.response?.data?.message || 'QQ登录失败');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'QQ登录失败'));
     }
   };
 
@@ -159,15 +174,15 @@ const LoginPage = observer(() => {
               label: '登录',
               children: (
                 <Form form={form} onFinish={onLogin} layout="vertical">
-                  <Form.Item
-                    name="username"
-                    rules={[{ required: true, message: '请输入用户名' }]}
-                  >
-                    <Input
-                      prefix={<UserOutlined />}
-                      placeholder="用户名"
-                      size="large"
-                    />
+	                  <Form.Item
+	                    name="username"
+	                    rules={[{ required: true, message: '请输入用户名或邮箱' }]}
+	                  >
+	                    <Input
+	                      prefix={<UserOutlined />}
+	                      placeholder="用户名或邮箱"
+	                      size="large"
+	                    />
                   </Form.Item>
                   <Form.Item
                     name="password"

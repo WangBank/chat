@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using System.ComponentModel.DataAnnotations;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using VideoCallAPI.Data;
 using VideoCallAPI.Models;
@@ -16,17 +18,73 @@ namespace VideoCallAPI.Services
         private readonly IJwtService _jwtService;
         private readonly ILogger<UserService> _logger;
         private readonly IContentSecurityService _contentSecurity;
+        private readonly IConfiguration _configuration;
+        private readonly IEmailService _emailService;
 
         public UserService(
             VideoCallDbContext context,
             IJwtService jwtService,
             ILogger<UserService> logger,
-            IContentSecurityService contentSecurity)
+            IContentSecurityService contentSecurity,
+            IConfiguration configuration,
+            IEmailService emailService)
         {
             _context = context;
             _jwtService = jwtService;
             _logger = logger;
             _contentSecurity = contentSecurity;
+            _configuration = configuration;
+            _emailService = emailService;
+        }
+
+        private string NormalizeEmail(string? value)
+        {
+            var email = _contentSecurity
+                .NormalizeRequiredText(value, "邮箱", 100, filterSensitiveWords: false)
+                .ToLowerInvariant();
+
+            if (!new EmailAddressAttribute().IsValid(email))
+                throw new ArgumentException("邮箱格式不正确");
+
+            return email;
+        }
+
+        private static void EnsureValidUsername(string username)
+        {
+            if (username.Length < 3)
+                throw new ArgumentException("用户名至少3位");
+
+            if (!username.All(IsAllowedUsernameCharacter))
+                throw new ArgumentException("用户名只能包含英文字母、数字、下划线或短横线");
+        }
+
+        private static bool IsAllowedUsernameCharacter(char value)
+        {
+            return (value >= 'a' && value <= 'z') ||
+                   (value >= 'A' && value <= 'Z') ||
+                   (value >= '0' && value <= '9') ||
+                   value == '_' ||
+                   value == '-';
+        }
+
+        private Task<bool> IsUsernameOrEmailUsedAsync(string username, string email, int? excludedUserId = null)
+        {
+            var normalizedUsername = username.ToLowerInvariant();
+            var normalizedEmail = email.ToLowerInvariant();
+
+            return _context.users.AnyAsync(user =>
+                (!excludedUserId.HasValue || user.id != excludedUserId.Value) &&
+                (user.username.ToLower() == normalizedUsername || user.email.ToLower() == normalizedEmail));
+        }
+
+        private static bool IsUniqueUserConflict(DbUpdateException exception)
+        {
+            var message = exception.InnerException?.Message ?? exception.Message;
+            return message.Contains("users_username", StringComparison.OrdinalIgnoreCase) ||
+                   message.Contains("users_email", StringComparison.OrdinalIgnoreCase) ||
+                   message.Contains("IX_users_username", StringComparison.OrdinalIgnoreCase) ||
+                   message.Contains("IX_users_email", StringComparison.OrdinalIgnoreCase) ||
+                   message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase);
         }
 
         public async Task<UserResponseDto> RegisterAsync(UserRegistrationDto registrationDto)
@@ -37,20 +95,13 @@ namespace VideoCallAPI.Services
                 50,
                 filterSensitiveWords: false,
                 rejectSensitiveWords: true);
-            var email = _contentSecurity.NormalizeRequiredText(registrationDto.email, "邮箱", 100, filterSensitiveWords: false);
+            EnsureValidUsername(username);
+            var email = NormalizeEmail(registrationDto.email);
 
-            // 检查用户名是否已存在
-            if (await _context.users.AnyAsync(u => u.username == username))
+            if (await IsUsernameOrEmailUsedAsync(username, email))
             {
-                _logger.LogWarning("注册失败，用户名已存在: {Username}", username);
-                throw new InvalidOperationException("用户名已存在");
-            }
-
-            // 检查邮箱是否已存在
-            if (await _context.users.AnyAsync(u => u.email == email))
-            {
-                _logger.LogWarning("注册失败，邮箱已存在: {Email}", email);
-                throw new InvalidOperationException("邮箱已存在");
+                _logger.LogWarning("注册失败，用户名或邮箱已存在: {Username}, {Email}", username, email);
+                throw new InvalidOperationException("当前用户名或者邮箱被使用请重新输入");
             }
 
             var user = new User
@@ -62,7 +113,15 @@ namespace VideoCallAPI.Services
             };
 
             _context.users.Add(user);
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (IsUniqueUserConflict(ex))
+            {
+                _logger.LogWarning(ex, "注册失败，唯一索引冲突: {Username}, {Email}", username, email);
+                throw new InvalidOperationException("当前用户名或者邮箱被使用请重新输入", ex);
+            }
 
             _logger.LogInformation("用户注册成功: UserId={UserId}, Username={Username}", user.id, user.username);
             return MapToUserResponse(user);
@@ -70,12 +129,16 @@ namespace VideoCallAPI.Services
 
         public async Task<string> LoginAsync(UserLoginDto loginDto)
         {
-            var username = _contentSecurity.NormalizeRequiredText(loginDto.username, "用户名", 50, filterSensitiveWords: false);
-            var user = await _context.users.FirstOrDefaultAsync(u => u.username == username);
+            var loginIdentity = _contentSecurity
+                .NormalizeRequiredText(loginDto.username, "用户名或邮箱", 100, filterSensitiveWords: false)
+                .ToLowerInvariant();
+            var user = await _context.users.FirstOrDefaultAsync(u =>
+                u.username.ToLower() == loginIdentity ||
+                u.email.ToLower() == loginIdentity);
             if (user == null || !BCrypt.Net.BCrypt.Verify(loginDto.password, user.password_hash))
             {
-                _logger.LogWarning("登录失败，用户名或密码错误: {Username}", username);
-                throw new UnauthorizedAccessException("用户名或密码错误");
+                _logger.LogWarning("登录失败，用户名/邮箱或密码错误: {LoginIdentity}", loginIdentity);
+                throw new UnauthorizedAccessException("用户名/邮箱或密码错误");
             }
 
             var now = DateTime.UtcNow;
@@ -86,7 +149,7 @@ namespace VideoCallAPI.Services
             user.is_online = true;
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("用户登录成功: UserId={UserId}, Username={Username}", user.id, user.username);
+            _logger.LogInformation("用户登录成功: UserId={UserId}, LoginIdentity={LoginIdentity}", user.id, loginIdentity);
             return _jwtService.GenerateToken(user);
         }
 
@@ -112,6 +175,86 @@ namespace VideoCallAPI.Services
             await _context.SaveChangesAsync();
 
             return true;
+        }
+
+        public async Task ForgotPasswordAsync(ForgotPasswordDto forgotPasswordDto)
+        {
+            var email = NormalizeEmail(forgotPasswordDto.email);
+            var user = await _context.users.FirstOrDefaultAsync(u => u.email.ToLower() == email);
+
+            if (user == null)
+            {
+                _logger.LogInformation("密码重置请求未匹配到用户邮箱: {Email}", email);
+                return;
+            }
+
+            _emailService.EnsureConfigured();
+
+            var now = DateTime.UtcNow;
+            var token = GeneratePasswordResetToken();
+            var tokenHash = HashPasswordResetToken(token);
+            var tokenMinutes = Math.Clamp(_configuration.GetValue<int?>("Email:PasswordResetTokenMinutes") ?? 30, 5, 1440);
+
+            var activeTokens = await _context.PasswordResetTokens
+                .Where(resetToken => resetToken.user_id == user.id && !resetToken.is_used && resetToken.expires_at > now)
+                .ToListAsync();
+            foreach (var activeToken in activeTokens)
+            {
+                activeToken.is_used = true;
+                activeToken.used_at = now;
+            }
+
+            _context.PasswordResetTokens.Add(new PasswordResetToken
+            {
+                user_id = user.id,
+                token_hash = tokenHash,
+                expires_at = now.AddMinutes(tokenMinutes),
+                created_at = now
+            });
+
+            await _context.SaveChangesAsync();
+
+            var resetUrl = BuildPasswordResetUrl(token);
+            await _emailService.SendPasswordResetEmailAsync(user.email, GetDisplayName(user), resetUrl);
+            _logger.LogInformation("密码重置邮件已发送: UserId={UserId}, Email={Email}", user.id, user.email);
+        }
+
+        public async Task ResetPasswordAsync(ResetPasswordDto resetPasswordDto)
+        {
+            var token = _contentSecurity.NormalizeRequiredText(
+                resetPasswordDto.token,
+                "重置令牌",
+                500,
+                filterSensitiveWords: false);
+
+            if (string.IsNullOrWhiteSpace(resetPasswordDto.new_password) || resetPasswordDto.new_password.Length < 6)
+                throw new ArgumentException("密码至少6位");
+
+            var tokenHash = HashPasswordResetToken(token);
+            var now = DateTime.UtcNow;
+            var resetToken = await _context.PasswordResetTokens
+                .Include(item => item.user)
+                .FirstOrDefaultAsync(item => item.token_hash == tokenHash && !item.is_used);
+
+            if (resetToken == null || resetToken.expires_at <= now)
+                throw new InvalidOperationException("重置链接无效或已过期");
+
+            resetToken.is_used = true;
+            resetToken.used_at = now;
+            resetToken.user.password_hash = BCrypt.Net.BCrypt.HashPassword(resetPasswordDto.new_password);
+            resetToken.user.updated_at = now;
+
+            var remainingTokens = await _context.PasswordResetTokens
+                .Where(item => item.user_id == resetToken.user_id && item.id != resetToken.id && !item.is_used)
+                .ToListAsync();
+            foreach (var remainingToken in remainingTokens)
+            {
+                remainingToken.is_used = true;
+                remainingToken.used_at = now;
+            }
+
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("密码重置成功: UserId={UserId}", resetToken.user_id);
         }
 
         public async Task<UserResponseDto> UpdateProfileAsync(int userId, UpdateProfileDto updateProfileDto)
@@ -235,6 +378,36 @@ namespace VideoCallAPI.Services
             };
         }
 
+        private string BuildPasswordResetUrl(string token)
+        {
+            var baseUrl = _configuration["Email:PasswordResetBaseUrl"];
+            if (string.IsNullOrWhiteSpace(baseUrl))
+                baseUrl = "http://localhost:5173/reset-password";
+
+            var separator = baseUrl.Contains('?') ? "&" : "?";
+            return $"{baseUrl}{separator}token={Uri.EscapeDataString(token)}";
+        }
+
+        private static string GeneratePasswordResetToken()
+        {
+            var bytes = RandomNumberGenerator.GetBytes(32);
+            return Convert.ToBase64String(bytes)
+                .TrimEnd('=')
+                .Replace('+', '-')
+                .Replace('/', '_');
+        }
+
+        private static string HashPasswordResetToken(string token)
+        {
+            var hash = SHA256.HashData(Encoding.UTF8.GetBytes(token));
+            return Convert.ToHexString(hash).ToLowerInvariant();
+        }
+
+        private static string GetDisplayName(User user)
+        {
+            return string.IsNullOrWhiteSpace(user.display_name) ? user.username : user.display_name;
+        }
+
         public async Task UpdateHeartbeatAsync(int userId)
         {
             var user = await _context.users.FindAsync(userId);
@@ -264,7 +437,9 @@ namespace VideoCallAPI.Services
 
             // 排除当前用户
             query = query.Where(u => u.id != currentUserId);
-            query = query.Where(u => u.username.ToLower() != "admin");
+            var adminEmails = AdminIdentityPolicy.GetAdminEmails(_configuration);
+            if (adminEmails.Count > 0)
+                query = query.Where(u => !adminEmails.Contains(u.email.ToLower()));
 
             // 排除已经是联系人的用户
             var existingContactIds = await _context.Contacts
@@ -314,15 +489,18 @@ namespace VideoCallAPI.Services
         private readonly VideoCallDbContext _context;
         private readonly ILogger<ContactService> _logger;
         private readonly IContentSecurityService _contentSecurity;
+        private readonly IConfiguration _configuration;
 
         public ContactService(
             VideoCallDbContext context,
             ILogger<ContactService> logger,
-            IContentSecurityService contentSecurity)
+            IContentSecurityService contentSecurity,
+            IConfiguration configuration)
         {
             _context = context;
             _logger = logger;
             _contentSecurity = contentSecurity;
+            _configuration = configuration;
         }
 
         public async Task<FriendRequestResponseDto> CreateFriendRequestAsync(int userId, CreateFriendRequestDto requestDto)
@@ -342,7 +520,7 @@ namespace VideoCallAPI.Services
             if (receiver == null)
                 throw new ArgumentException("用户不存在");
 
-            if (string.Equals(receiver.username, "admin", StringComparison.OrdinalIgnoreCase))
+            if (AdminIdentityPolicy.IsAdminEmail(receiver.email, _configuration))
                 throw new InvalidOperationException("管理员账号不支持添加为好友");
 
             if (receiver.id == userId)

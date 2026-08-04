@@ -33,6 +33,8 @@ jobs:
       QQ__ClientSecret: ${{ secrets.QQ_CLIENT_SECRET }}
       QQ__RedirectUri: ${{ vars.QQ_REDIRECT_URI || 'https://chat.wangbank.top/qq-callback' }}
       QQ__AllowMockLogin: ${{ vars.QQ_ALLOW_MOCK_LOGIN || 'false' }}
+      ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
+      VITE_ADMIN_EMAILS: ${{ vars.VITE_ADMIN_EMAILS || vars.ADMIN_EMAILS }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
 

@@ -214,6 +214,8 @@ class ChatStore {
           const nextCurrentContact = response.data.find((contact) => contact.id === this.currentContact?.id);
           if (nextCurrentContact) {
             this.currentContact = nextCurrentContact;
+          } else {
+            this.setCurrentContact(null);
           }
         }
       }

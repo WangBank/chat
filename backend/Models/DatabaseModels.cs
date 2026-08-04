@@ -82,6 +82,32 @@ namespace VideoCallAPI.Models
         public virtual ICollection<ChatGroupMember> ChatGroupMembers { get; set; } = new List<ChatGroupMember>();
         public virtual ICollection<GroupChatMessage> SentGroupMessages { get; set; } = new List<GroupChatMessage>();
         public virtual ICollection<FavoriteItem> FavoriteItems { get; set; } = new List<FavoriteItem>();
+        public virtual ICollection<PasswordResetToken> PasswordResetTokens { get; set; } = new List<PasswordResetToken>();
+    }
+
+    // 密码重置令牌表
+    public class PasswordResetToken
+    {
+        [Key]
+        public int id { get; set; }
+
+        [Required]
+        public int user_id { get; set; }
+
+        [Required]
+        [StringLength(64)]
+        public string token_hash { get; set; } = string.Empty;
+
+        public DateTime expires_at { get; set; }
+
+        public bool is_used { get; set; } = false;
+
+        public DateTime? used_at { get; set; }
+
+        public DateTime created_at { get; set; } = DateTime.UtcNow;
+
+        [ForeignKey("user_id")]
+        public virtual User user { get; set; } = null!;
     }
 
     // 联系人表

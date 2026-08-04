@@ -71,7 +71,8 @@ Windows runner registered to this repository with the label `local-docker`.
 Recommended GitHub repository settings:
 
 - Secrets: `JWT_SECRET`, `POSTGRES_PASSWORD`, `QQ_CLIENT_ID`, `QQ_CLIENT_SECRET`
-- Variables: `API_PUBLIC_URL`, `WEB_PUBLIC_URL`, `SIGNALR_PUBLIC_URL`, `QQ_REDIRECT_URI`
+- Variables: `API_PUBLIC_URL`, `WEB_PUBLIC_URL`, `SIGNALR_PUBLIC_URL`, `QQ_REDIRECT_URI`,
+  `ADMIN_EMAILS`, `VITE_ADMIN_EMAILS`
 - Optional variables: `POSTGRES_PORT`, `API_PORT`, `WEB_PORT`, `EXTRA_CORS_ORIGIN`,
   `QQ_ALLOW_MOCK_LOGIN`, `SWAGGER_ENABLED`, `USE_HTTPS_REDIRECTION`
 
@@ -92,6 +93,8 @@ QQ__ClientId=QQ_APP_ID
 QQ__ClientSecret=QQ_APP_KEY
 QQ__RedirectUri=https://chat.wangbank.top/qq-callback
 QQ__AllowMockLogin=false
+ADMIN_EMAILS=1224327326@qq.com
+VITE_ADMIN_EMAILS=1224327326@qq.com
 ```
 
 ## Register the local runner

@@ -140,6 +140,7 @@ builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddScoped<ICallService, CallService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IContentSecurityService, ContentSecurityService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<IQQAuthService, QQAuthService>();
 builder.Services.AddSingleton<IWebRTCService, WebRTCService>();
@@ -189,34 +190,11 @@ var appVersion = app.Configuration["App:Version"]
     ?? System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString()
     ?? "0.0.0";
 
-// 初始化数据库和admin账号
+// 初始化数据库
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<VideoCallDbContext>();
     await context.Database.MigrateAsync();
-    
-    // 检查admin账号是否存在
-    var adminUser = await context.users.FirstOrDefaultAsync(u => u.username == "admin");
-    if (adminUser == null)
-    {
-        // 创建admin账号
-        var adminPassword = "$2a$11$Vvta7xJz8GWPPrc8MR0CiuivCNGw4vEWtla9PIcKsXJ1Okkvl/E5W";
-        var adminEmail = builder.Configuration["Admin:Email"] ?? "admin@example.com";
-        
-        adminUser = new User
-        {
-            username = "admin",
-            email = adminEmail,
-            password_hash = adminPassword,
-            created_at = DateTime.UtcNow,
-            updated_at = DateTime.UtcNow,
-            is_online = false
-        };
-        
-        context.users.Add(adminUser);
-        await context.SaveChangesAsync();
-        Console.WriteLine("Admin账号已创建: admin / " + adminPassword);
-    }
 
     if (builder.Configuration.GetValue<bool>("DemoSeed:Enabled"))
     {
@@ -397,7 +375,10 @@ static async Task SeedDemoChatDataAsync(VideoCallDbContext context, IConfigurati
         await EnsureContactPairAsync(context, owner.id, friend.id, null, now);
     }
 
-    var admin = await context.users.FirstOrDefaultAsync(item => item.username == "admin");
+    var adminEmails = AdminIdentityPolicy.GetAdminEmails(configuration);
+    var admin = adminEmails.Count == 0
+        ? null
+        : await context.users.FirstOrDefaultAsync(item => adminEmails.Contains(item.email.ToLower()));
     if (admin != null)
     {
         foreach (var testUser in testUsers)

@@ -20,6 +20,7 @@ namespace VideoCallAPI.Data
         public DbSet<ChatGroupMember> ChatGroupMembers { get; set; }
         public DbSet<GroupChatMessage> GroupChatMessages { get; set; }
         public DbSet<FavoriteItem> FavoriteItems { get; set; }
+        public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -36,6 +37,19 @@ namespace VideoCallAPI.Data
                 entity.HasIndex(e => e.qq_union_id)
                     .IsUnique()
                     .HasFilter("\"qq_union_id\" IS NOT NULL");
+            });
+
+            // PasswordResetToken 表配置
+            modelBuilder.Entity<PasswordResetToken>(entity =>
+            {
+                entity.HasIndex(e => e.token_hash).IsUnique();
+                entity.HasIndex(e => new { e.user_id, e.expires_at });
+                entity.HasIndex(e => new { e.is_used, e.expires_at });
+
+                entity.HasOne(d => d.user)
+                    .WithMany(p => p.PasswordResetTokens)
+                    .HasForeignKey(d => d.user_id)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             // Contact 表配置

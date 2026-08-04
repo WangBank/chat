@@ -1,5 +1,3 @@
-import { decryptConfig } from '../utils/encryption.utils';
-
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
 
 const getCurrentOrigin = () => {
@@ -51,6 +49,16 @@ const resolveSignalRHubUrl = () => {
   }
 };
 
+const parseAdminEmails = (): string[] => {
+  const configuredValue = (import.meta.env.VITE_ADMIN_EMAILS as string | undefined)?.trim();
+  if (!configuredValue) return [];
+
+  return configuredValue
+    .split(/[,\n;\s]+/)
+    .map((email: string) => email.trim().toLowerCase())
+    .filter(Boolean);
+};
+
 // App configuration
 export const APP_CONFIG = {
   // API base URL
@@ -68,5 +76,5 @@ export const APP_CONFIG = {
   // APK download URL
   APK_DOWNLOAD_URL: '/archives/andriod/app-release.apk',
 
-  ADMIN_USERNAME: decryptConfig('YWRtaW4=')
+  ADMIN_EMAILS: parseAdminEmails()
 };

@@ -3,9 +3,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using VideoCallAPI.Models.DTOs;
 using VideoCallAPI.Services;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using VideoCallAPI.Models;
-using System.Text.Json;
 using VideoCallAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using VideoCallAPI.Hubs;
@@ -106,13 +106,13 @@ namespace VideoCallAPI.Controllers
         {
             try
             {
-                _logger.LogInformation("用户登录请求: {Username}", loginDto.username);
+                _logger.LogInformation("用户登录请求: {LoginIdentity}", loginDto.username);
                 var token = await _userService.LoginAsync(loginDto);
                 var userId = _jwtService.GetUserIdFromToken(token);
                 
                 if (userId == null)
                 {
-                    _logger.LogWarning("登录失败，无法从Token中获取用户ID: {Username}", loginDto.username);
+                    _logger.LogWarning("登录失败，无法从Token中获取用户ID: {LoginIdentity}", loginDto.username);
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
@@ -122,7 +122,7 @@ namespace VideoCallAPI.Controllers
                 }
                 
                 var user = await _userService.GetUserByIdAsync(userId.Value);
-                _logger.LogInformation("用户登录成功: UserId={UserId}, Username={Username}", userId.Value, loginDto.username);
+                _logger.LogInformation("用户登录成功: UserId={UserId}, LoginIdentity={LoginIdentity}", userId.Value, loginDto.username);
 
                 return Ok(new ApiResponse<object>
                 {
@@ -137,7 +137,7 @@ namespace VideoCallAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "用户登录失败: Username={Username}", loginDto.username);
+                _logger.LogError(ex, "用户登录失败: LoginIdentity={LoginIdentity}", loginDto.username);
                 return BadRequest(new ApiResponse<object>
                 {
                     Success = false,
@@ -316,6 +316,54 @@ namespace VideoCallAPI.Controllers
                 {
                     Success = false,
                     Message = "密码修改失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("forgot-password")]
+        public async Task<ActionResult<ApiResponse>> ForgotPassword(ForgotPasswordDto forgotPasswordDto)
+        {
+            try
+            {
+                await _userService.ForgotPasswordAsync(forgotPasswordDto);
+                return Ok(new ApiResponse
+                {
+                    Success = true,
+                    Message = "如果邮箱存在，重置邮件已发送，请检查邮箱"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "发送密码重置邮件失败: Email={Email}", forgotPasswordDto.email);
+                return BadRequest(new ApiResponse
+                {
+                    Success = false,
+                    Message = ApiErrorMessage.ForClient(ex, "发送重置邮件失败"),
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<ActionResult<ApiResponse>> ResetPassword(ResetPasswordDto resetPasswordDto)
+        {
+            try
+            {
+                await _userService.ResetPasswordAsync(resetPasswordDto);
+                return Ok(new ApiResponse
+                {
+                    Success = true,
+                    Message = "密码重置成功，请重新登录"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "密码重置失败");
+                return BadRequest(new ApiResponse
+                {
+                    Success = false,
+                    Message = ApiErrorMessage.ForClient(ex, "密码重置失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }
@@ -532,7 +580,6 @@ namespace VideoCallAPI.Controllers
             {
                 var userId = GetUserId();
                 var contacts = await _contactService.GetContactsAsync(userId);
-                System.Console.WriteLine(JsonSerializer.Serialize(contacts));
                 return Ok(new ApiResponse<List<ContactResponseDto>>
                 {
                     Success = true,
@@ -542,7 +589,6 @@ namespace VideoCallAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "获取联系人列表失败: UserId={UserId}", GetUserId());
-                Console.WriteLine(ex.Message);
                 return BadRequest(new ApiResponse<List<ContactResponseDto>>
                 {
                     Success = false,
@@ -1831,12 +1877,117 @@ namespace VideoCallAPI.Controllers
         private readonly IUserService _userService;
         private readonly VideoCallDbContext _context;
         private readonly ILogger<AdminController> _logger;
+        private readonly IContentSecurityService _contentSecurity;
+        private readonly IConfiguration _configuration;
 
-        public AdminController(IUserService userService, VideoCallDbContext context, ILogger<AdminController> logger)
+        public AdminController(
+            IUserService userService,
+            VideoCallDbContext context,
+            ILogger<AdminController> logger,
+            IContentSecurityService contentSecurity,
+            IConfiguration configuration)
         {
             _userService = userService;
             _context = context;
             _logger = logger;
+            _contentSecurity = contentSecurity;
+            _configuration = configuration;
+        }
+
+        private string NormalizeUsername(string? username)
+        {
+            var normalized = _contentSecurity.NormalizeRequiredText(
+                username,
+                "用户名",
+                50,
+                filterSensitiveWords: false,
+                rejectSensitiveWords: true);
+
+            if (normalized.Length < 3)
+                throw new ArgumentException("用户名至少3位");
+
+            if (!normalized.All(IsAllowedUsernameCharacter))
+                throw new ArgumentException("用户名只能包含英文字母、数字、下划线或短横线");
+
+            return normalized;
+        }
+
+        private string NormalizeEmail(string? email)
+        {
+            var normalized = _contentSecurity
+                .NormalizeRequiredText(email, "邮箱", 100, filterSensitiveWords: false)
+                .ToLowerInvariant();
+
+            if (!new EmailAddressAttribute().IsValid(normalized))
+                throw new ArgumentException("邮箱格式不正确");
+
+            return normalized;
+        }
+
+        private string? NormalizeDisplayName(string? displayName)
+        {
+            return _contentSecurity.NormalizeOptionalText(
+                displayName,
+                "昵称",
+                50,
+                rejectSensitiveWords: true);
+        }
+
+        private static bool IsAllowedUsernameCharacter(char value)
+        {
+            return (value >= 'a' && value <= 'z') ||
+                   (value >= 'A' && value <= 'Z') ||
+                   (value >= '0' && value <= '9') ||
+                   value == '_' ||
+                   value == '-';
+        }
+
+        private async Task EnsureUsernameOrEmailAvailableAsync(string username, string email, int? excludedUserId = null)
+        {
+            var normalizedUsername = username.ToLowerInvariant();
+            var normalizedEmail = email.ToLowerInvariant();
+            var exists = await _context.users.AnyAsync(user =>
+                (!excludedUserId.HasValue || user.id != excludedUserId.Value) &&
+                (user.username.ToLower() == normalizedUsername || user.email.ToLower() == normalizedEmail));
+
+            if (exists)
+                throw new InvalidOperationException("当前用户名或者邮箱被使用请重新输入");
+        }
+
+        private static bool IsUniqueUserConflict(DbUpdateException exception)
+        {
+            var message = exception.InnerException?.Message ?? exception.Message;
+            return message.Contains("users_username", StringComparison.OrdinalIgnoreCase) ||
+                   message.Contains("users_email", StringComparison.OrdinalIgnoreCase) ||
+                   message.Contains("IX_users_username", StringComparison.OrdinalIgnoreCase) ||
+                   message.Contains("IX_users_email", StringComparison.OrdinalIgnoreCase) ||
+                   message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static UserResponseDto MapToUserResponse(User user)
+        {
+            return new UserResponseDto
+            {
+                id = user.id,
+                username = user.username,
+                email = user.email,
+                display_name = user.display_name,
+                signature = user.signature,
+                gender = user.gender,
+                birthday = user.birthday,
+                country = user.country,
+                province = user.province,
+                region = user.region,
+                avatar_path = user.avatar_path,
+                qq_bound = !string.IsNullOrWhiteSpace(user.qq_open_id),
+                qq_nickname = user.qq_nickname,
+                qq_avatar_url = user.qq_avatar_url,
+                qq_bound_at = user.qq_bound_at,
+                is_online = OnlineStatusPolicy.IsOnline(user),
+                last_login_at = user.last_login_at,
+                created_at = user.created_at,
+                updated_at = user.updated_at
+            };
         }
 
         [HttpGet("online-users")]
@@ -1844,10 +1995,9 @@ namespace VideoCallAPI.Controllers
         {
             try
             {
-                // 检查是否是管理员
                 var userId = GetUserId();
                 var user = await _userService.GetUserByIdAsync(userId);
-                if (user == null || user.username != "admin")
+                if (!AdminIdentityPolicy.IsAdminEmail(user.email, _configuration))
                 {
                     _logger.LogWarning("非管理员尝试访问在线用户列表: UserId={UserId}", userId);
                     return Unauthorized(new ApiResponse<List<UserResponseDto>>
@@ -1910,10 +2060,9 @@ namespace VideoCallAPI.Controllers
         {
             try
             {
-                // 检查是否是管理员
                 var userId = GetUserId();
                 var user = await _userService.GetUserByIdAsync(userId);
-                if (user == null || user.username != "admin")
+                if (!AdminIdentityPolicy.IsAdminEmail(user.email, _configuration))
                 {
                     return Unauthorized(new ApiResponse<object>
                     {
@@ -1982,15 +2131,145 @@ namespace VideoCallAPI.Controllers
             }
         }
 
+        [HttpPost("users")]
+        public async Task<ActionResult<ApiResponse<UserResponseDto>>> CreateUser([FromBody] AdminCreateUserDto dto)
+        {
+            try
+            {
+                var adminUserId = GetUserId();
+                var adminUser = await _userService.GetUserByIdAsync(adminUserId);
+                if (!AdminIdentityPolicy.IsAdminEmail(adminUser.email, _configuration))
+                {
+                    _logger.LogWarning("非管理员尝试创建用户: AdminUserId={AdminUserId}", adminUserId);
+                    return Unauthorized(new ApiResponse<UserResponseDto>
+                    {
+                        Success = false,
+                        Message = "无权访问"
+                    });
+                }
+
+                var username = NormalizeUsername(dto.username);
+                var email = NormalizeEmail(dto.email);
+                if (string.IsNullOrWhiteSpace(dto.password) || dto.password.Length < 6)
+                    throw new ArgumentException("密码至少6位");
+
+                await EnsureUsernameOrEmailAvailableAsync(username, email);
+
+                var now = DateTime.UtcNow;
+                var user = new User
+                {
+                    username = username,
+                    email = email,
+                    display_name = NormalizeDisplayName(dto.display_name),
+                    password_hash = BCrypt.Net.BCrypt.HashPassword(dto.password),
+                    created_at = now,
+                    updated_at = now,
+                    is_online = false
+                };
+
+                _context.users.Add(user);
+                try
+                {
+                    await _context.SaveChangesAsync();
+                }
+                catch (DbUpdateException ex) when (IsUniqueUserConflict(ex))
+                {
+                    throw new InvalidOperationException("当前用户名或者邮箱被使用请重新输入", ex);
+                }
+
+                _logger.LogInformation("管理员创建用户成功: AdminUserId={AdminUserId}, TargetUserId={TargetUserId}", adminUserId, user.id);
+                return Ok(new ApiResponse<UserResponseDto>
+                {
+                    Success = true,
+                    Message = "用户已创建",
+                    Data = MapToUserResponse(user)
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "管理员创建用户失败: AdminUserId={AdminUserId}", GetUserId());
+                return BadRequest(new ApiResponse<UserResponseDto>
+                {
+                    Success = false,
+                    Message = ApiErrorMessage.ForClient(ex, "创建用户失败"),
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPut("users/{userId:int}")]
+        public async Task<ActionResult<ApiResponse<UserResponseDto>>> UpdateUser(int userId, [FromBody] AdminUpdateUserDto dto)
+        {
+            try
+            {
+                var adminUserId = GetUserId();
+                var adminUser = await _userService.GetUserByIdAsync(adminUserId);
+                if (!AdminIdentityPolicy.IsAdminEmail(adminUser.email, _configuration))
+                {
+                    _logger.LogWarning("非管理员尝试修改用户: AdminUserId={AdminUserId}, TargetUserId={TargetUserId}", adminUserId, userId);
+                    return Unauthorized(new ApiResponse<UserResponseDto>
+                    {
+                        Success = false,
+                        Message = "无权访问"
+                    });
+                }
+
+                var targetUser = await _context.users.FindAsync(userId);
+                if (targetUser == null)
+                    throw new ArgumentException("用户不存在");
+
+                var username = NormalizeUsername(dto.username);
+                var email = NormalizeEmail(dto.email);
+                if (AdminIdentityPolicy.IsAdminEmail(targetUser.email, _configuration) &&
+                    !AdminIdentityPolicy.IsAdminEmail(email, _configuration))
+                {
+                    throw new InvalidOperationException("管理员邮箱不允许修改");
+                }
+
+                await EnsureUsernameOrEmailAvailableAsync(username, email, userId);
+
+                targetUser.username = username;
+                targetUser.email = email;
+                targetUser.display_name = NormalizeDisplayName(dto.display_name);
+                targetUser.updated_at = DateTime.UtcNow;
+
+                try
+                {
+                    await _context.SaveChangesAsync();
+                }
+                catch (DbUpdateException ex) when (IsUniqueUserConflict(ex))
+                {
+                    throw new InvalidOperationException("当前用户名或者邮箱被使用请重新输入", ex);
+                }
+
+                _logger.LogInformation("管理员修改用户成功: AdminUserId={AdminUserId}, TargetUserId={TargetUserId}", adminUserId, userId);
+                return Ok(new ApiResponse<UserResponseDto>
+                {
+                    Success = true,
+                    Message = "用户已更新",
+                    Data = MapToUserResponse(targetUser)
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "管理员修改用户失败: AdminUserId={AdminUserId}, TargetUserId={TargetUserId}", GetUserId(), userId);
+                return BadRequest(new ApiResponse<UserResponseDto>
+                {
+                    Success = false,
+                    Message = ApiErrorMessage.ForClient(ex, "修改用户失败"),
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
         [HttpPost("change-user-password")]
         public async Task<ActionResult<ApiResponse>> ChangeUserPassword([FromBody] AdminChangePasswordDto dto)
         {
             try
             {
-                // 检查是否是管理员
                 var adminUserId = GetUserId();
                 var adminUser = await _userService.GetUserByIdAsync(adminUserId);
-                if (adminUser == null || adminUser.username != "admin")
+                if (!AdminIdentityPolicy.IsAdminEmail(adminUser.email, _configuration))
                 {
                     _logger.LogWarning("非管理员尝试修改用户密码: AdminUserId={AdminUserId}, TargetUserId={TargetUserId}", adminUserId, dto.user_id);
                     return Unauthorized(new ApiResponse
@@ -2012,14 +2291,13 @@ namespace VideoCallAPI.Controllers
                     });
                 }
 
-                // 不允许修改admin用户的密码
-                if (targetUser.username == "admin")
+                if (AdminIdentityPolicy.IsAdminEmail(targetUser.email, _configuration))
                 {
                     _logger.LogWarning("尝试修改管理员密码: AdminUserId={AdminUserId}", adminUserId);
                     return BadRequest(new ApiResponse
                     {
                         Success = false,
-                        Message = "不允许修改管理员密码"
+                        Message = "管理员账号不允许在这里修改密码"
                     });
                 }
 
@@ -2044,7 +2322,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse
                 {
                     Success = false,
-                    Message = "密码修改失败",
+                    Message = ApiErrorMessage.ForClient(ex, "密码修改失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }

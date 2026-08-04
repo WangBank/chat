@@ -239,6 +239,16 @@ class ApiService {
     return response.data;
   }
 
+  async forgotPassword(data: { email: string }) {
+    const response = await this.api.post<ApiResponse>('/api/auth/forgot-password', data);
+    return response.data;
+  }
+
+  async resetPassword(data: { token: string; new_password: string }) {
+    const response = await this.api.post<ApiResponse>('/api/auth/reset-password', data);
+    return response.data;
+  }
+
   async getProfile() {
     const response = await this.api.get<ApiResponse<UserApiResponse>>('/api/auth/profile');
     return response.data;
@@ -417,6 +427,25 @@ class ApiService {
     const response = await this.api.get<ApiResponse<UserSearchApiResponse>>('/api/admin/users', {
       params: { page, page_size: pageSize },
     });
+    return response.data;
+  }
+
+  async adminCreateUser(data: {
+    username: string;
+    email: string;
+    display_name?: string;
+    password: string;
+  }) {
+    const response = await this.api.post<ApiResponse<UserApiResponse>>('/api/admin/users', data);
+    return response.data;
+  }
+
+  async adminUpdateUser(userId: number, data: {
+    username: string;
+    email: string;
+    display_name?: string;
+  }) {
+    const response = await this.api.put<ApiResponse<UserApiResponse>>(`/api/admin/users/${userId}`, data);
     return response.data;
   }
 
