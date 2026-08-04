@@ -3104,6 +3104,14 @@ button.mac-dot {
   border-radius: 8px;
 }
 
+.qq-search-note-row > span {
+  overflow: hidden;
+  color: var(--qq-muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .qq-recommend-tabs {
   display: inline-grid;
   grid-auto-flow: column;
@@ -3174,6 +3182,11 @@ button.mac-dot {
   background: #f7fbfe;
 }
 
+.add-contact-user-card .avatar-shell > i,
+.friend-request-target .avatar-shell > i {
+  border-color: #fff;
+}
+
 .add-contact-user-copy {
   min-width: 0;
 }
@@ -3222,10 +3235,93 @@ button.mac-dot {
   line-height: 1.2;
 }
 
+.add-contact-user-tags em.status {
+  position: relative;
+  padding-left: 16px;
+}
+
+.add-contact-user-tags em.status::before {
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--qq-offline);
+  content: '';
+  transform: translateY(-50%);
+}
+
+.add-contact-user-tags em.status.online {
+  background: #e8f8ef;
+  color: #12935a;
+}
+
+.add-contact-user-tags em.status.online::before {
+  background: var(--qq-online);
+}
+
+.add-contact-user-tags em.status.offline {
+  background: #f1f4f7;
+  color: #8b96a3;
+}
+
 .add-contact-action {
   justify-self: end;
   min-width: 64px;
   border-radius: 999px;
+}
+
+.friend-request-modal .ant-modal-content {
+  border-radius: 10px;
+  padding: 18px;
+}
+
+.friend-request-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.friend-request-target {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f7fbfe;
+}
+
+.friend-request-target strong,
+.friend-request-target span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friend-request-target strong {
+  color: #111820;
+  font-size: 16px;
+}
+
+.friend-request-target span {
+  margin-top: 3px;
+  color: var(--qq-muted);
+  font-size: 12px;
+}
+
+.friend-request-note-label {
+  color: #111820;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.friend-request-note-hint {
+  margin: -6px 0 0;
+  color: var(--qq-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .qq-search-placeholder {

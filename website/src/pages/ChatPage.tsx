@@ -82,6 +82,7 @@ type ContactPanel = 'friends' | 'groups';
 type ContactContent = 'profile' | 'requests' | 'groupProfile' | 'groupNotices';
 type RequestStatus = 'pending' | 'accepted' | 'rejected';
 type RequestDirection = 'incoming' | 'outgoing';
+type RequestViewStatus = RequestStatus | 'waiting';
 type FavoriteFilter = 'all' | 'chat' | 'media' | 'file' | 'link' | 'note';
 type ChatKind = 'contact' | 'group';
 type HistoryFilter = 'all' | 'image' | 'emoji' | 'file' | 'link';
@@ -212,6 +213,12 @@ interface UserSummary {
   region?: string;
   avatar_path?: string;
   is_online?: boolean;
+}
+
+interface AddContactTarget {
+  username: string;
+  source: string;
+  user?: UserSummary | null;
 }
 
 interface WeatherState {
@@ -706,6 +713,15 @@ function isMessageFromCurrentUser(msg: ChatMessage, currentUserId: number) {
   return msg.sender_id === currentUserId;
 }
 
+function isMessageInContactConversation(msg: ChatMessage, currentUserId: number, peerUserId?: number) {
+  if (!currentUserId || typeof peerUserId !== 'number') return false;
+
+  return (
+    (msg.sender_id === currentUserId && msg.receiver_id === peerUserId) ||
+    (msg.sender_id === peerUserId && msg.receiver_id === currentUserId)
+  );
+}
+
 function getErrorMessage(error: unknown, fallback: string) {
   const maybeError = error as { response?: { data?: { message?: unknown } } };
   return typeof maybeError.response?.data?.message === 'string'
@@ -825,13 +841,43 @@ function formatLocation(user?: UserSummary | null) {
   return parts.length > 0 ? `现居 ${parts.join('·')}` : '现居 未填写';
 }
 
-function getFriendRequestPeer(request: FriendRequest) {
-  return request.direction === 'incoming' ? request.requester : request.receiver;
+function getFriendRequestDirection(request: FriendRequest, currentUserId?: number): RequestDirection | null {
+  const requesterId = request.requester?.id;
+  const receiverId = request.receiver?.id;
+
+  if (typeof requesterId === 'number' && typeof receiverId === 'number' && requesterId === receiverId) {
+    return null;
+  }
+
+  if (currentUserId) {
+    if (requesterId === currentUserId && receiverId !== currentUserId) return 'outgoing';
+    if (receiverId === currentUserId && requesterId !== currentUserId) return 'incoming';
+  }
+
+  return request.direction;
 }
 
-function getFriendRequestStatus(request: FriendRequest) {
-  if (request.status === 'pending' && request.direction === 'outgoing') return 'waiting';
+function getFriendRequestPeer(request: FriendRequest, currentUserId?: number) {
+  const direction = getFriendRequestDirection(request, currentUserId);
+  if (direction === 'incoming') return request.requester;
+  if (direction === 'outgoing') return request.receiver;
+  return null;
+}
+
+function shouldShowFriendRequest(request: FriendRequest, currentUserId?: number) {
+  const peer = getFriendRequestPeer(request, currentUserId);
+  return Boolean(peer && (!currentUserId || peer.id !== currentUserId));
+}
+
+function getFriendRequestStatus(request: FriendRequest, currentUserId?: number): RequestViewStatus {
+  if (request.status === 'pending' && getFriendRequestDirection(request, currentUserId) === 'outgoing') return 'waiting';
   return request.status;
+}
+
+function getFriendRequestActionText(request: FriendRequest, currentUserId?: number) {
+  return request.status === 'pending' && getFriendRequestDirection(request, currentUserId) === 'outgoing'
+    ? '正在验证你的邀请'
+    : '请求加为好友';
 }
 
 function getWeatherLabel(code: number) {
@@ -1026,6 +1072,9 @@ const ChatPage = observer(() => {
   const [contactGroupDraft, setContactGroupDraft] = useState('');
   const [contactUsername, setContactUsername] = useState('');
   const [contactNote, setContactNote] = useState('');
+  const [addContactRequestVisible, setAddContactRequestVisible] = useState(false);
+  const [addContactTarget, setAddContactTarget] = useState<AddContactTarget | null>(null);
+  const [addContactSubmitting, setAddContactSubmitting] = useState(false);
   const [searchUsersLoading, setSearchUsersLoading] = useState(false);
   const [recommendationLoading, setRecommendationLoading] = useState(false);
   const [lastUserSearchQuery, setLastUserSearchQuery] = useState('');
@@ -1458,7 +1507,10 @@ const ChatPage = observer(() => {
     return name.includes(keyword) || username.includes(keyword);
   });
 
-  const pendingRequestCount = friendRequests.filter((item) => item.status === 'pending' && item.direction === 'incoming').length;
+  const visibleFriendRequests = friendRequests.filter((request) => shouldShowFriendRequest(request, currentUserId));
+  const pendingRequestCount = visibleFriendRequests.filter(
+    (item) => item.status === 'pending' && getFriendRequestDirection(item, currentUserId) === 'incoming'
+  ).length;
   const activeGroup = localGroups.find((group) => group.id === activeGroupId) || null;
   const activeGroupMessages = activeGroup
     ? localGroupMessages.filter((msg) => msg.groupId === activeGroup.id)
@@ -1510,13 +1562,13 @@ const ChatPage = observer(() => {
     },
     { all: 0, chat: 0, media: 0, file: 0, link: 0, note: 0 }
   );
-  const incomingPendingRequests = friendRequests.filter(
-    (request) => request.status === 'pending' && request.direction === 'incoming'
+  const incomingPendingRequests = visibleFriendRequests.filter(
+    (request) => request.status === 'pending' && getFriendRequestDirection(request, currentUserId) === 'incoming'
   );
-  const outgoingPendingRequests = friendRequests.filter(
-    (request) => request.status === 'pending' && request.direction === 'outgoing'
+  const outgoingPendingRequests = visibleFriendRequests.filter(
+    (request) => request.status === 'pending' && getFriendRequestDirection(request, currentUserId) === 'outgoing'
   );
-  const handledRequests = friendRequests.filter((request) => request.status !== 'pending');
+  const handledRequests = visibleFriendRequests.filter((request) => request.status !== 'pending');
   const friendRequestSections = [
     {
       key: 'friend-request-pending',
@@ -1565,9 +1617,10 @@ const ChatPage = observer(() => {
     .reduce((total, section) => total + section.count, 0);
   const totalGroupNoticeCount = groupNoticeSections.reduce((total, section) => total + section.count, 0);
   const friendRequestUsernameMap = new Map(
-    friendRequests
+    visibleFriendRequests
       .map((request) => {
-        const username = normalizeUsername(getFriendRequestPeer(request).username);
+        const peer = getFriendRequestPeer(request, currentUserId);
+        const username = normalizeUsername(peer?.username);
         return username ? [username, request] as const : null;
       })
       .filter((item): item is readonly [string, FriendRequest] => Boolean(item))
@@ -2557,7 +2610,12 @@ const ChatPage = observer(() => {
     }
   };
 
-  const handleAddContact = async (username = contactUsername, source = '账号搜索') => {
+  const getDefaultFriendRequestNote = () => {
+    const accountName = authStore.user?.display_name?.trim() || authStore.user?.username?.trim() || currentUserName;
+    return `我是${accountName}，请求添加你为好友`;
+  };
+
+  const openAddContactRequest = (username = contactUsername, source = '账号搜索', user?: UserSummary | null) => {
     const targetUsername = username.trim();
     if (!targetUsername) {
       message.warning('请输入用户名');
@@ -2568,11 +2626,29 @@ const ChatPage = observer(() => {
       return;
     }
 
+    setAddContactTarget({ username: targetUsername, source, user });
+    setContactNote(getDefaultFriendRequestNote());
+    setAddContactRequestVisible(true);
+  };
+
+  const handleAddContact = async () => {
+    const target = addContactTarget;
+    const targetUsername = target?.username.trim() || contactUsername.trim();
+    if (!targetUsername) {
+      message.warning('请输入用户名');
+      return;
+    }
+    if (normalizeUsername(targetUsername) === ADMIN_USERNAME) {
+      message.warning('管理员账号不支持添加为好友');
+      return;
+    }
+
+    setAddContactSubmitting(true);
     try {
       const response = await apiService.createFriendRequest({
         username: targetUsername,
         note: contactNote.trim() || undefined,
-        source,
+        source: target?.source || '账号搜索',
       });
 
       if (!response.success) {
@@ -2581,6 +2657,8 @@ const ChatPage = observer(() => {
       }
 
       message.success(response.message || '好友申请已发送');
+      setAddContactRequestVisible(false);
+      setAddContactTarget(null);
       await loadFriendRequests();
       setContactNote('');
       void loadRecommendedUsers();
@@ -2590,6 +2668,8 @@ const ChatPage = observer(() => {
       }
     } catch (error: unknown) {
       message.error(getErrorMessage(error, '发送好友申请失败'));
+    } finally {
+      setAddContactSubmitting(false);
     }
   };
 
@@ -3297,8 +3377,11 @@ const ChatPage = observer(() => {
     const username = user.username || '';
     const normalizedUsername = normalizeUsername(username);
     const peerRequest = normalizedUsername ? friendRequestUsernameMap.get(normalizedUsername) : undefined;
-    const requestStatus = peerRequest ? getFriendRequestStatus(peerRequest) : null;
-    const incomingPending = peerRequest?.direction === 'incoming' && peerRequest.status === 'pending';
+    const requestStatus = peerRequest ? getFriendRequestStatus(peerRequest, currentUserId) : null;
+    const incomingPending =
+      peerRequest &&
+      getFriendRequestDirection(peerRequest, currentUserId) === 'incoming' &&
+      peerRequest.status === 'pending';
     const disabled = requestStatus === 'waiting' || requestStatus === 'accepted' || !username;
     const actionLabel = incomingPending
       ? '去处理'
@@ -3312,15 +3395,15 @@ const ChatPage = observer(() => {
 
     return (
       <div key={user.id || username} className="add-contact-user-card">
-        <Avatar size={46} src={getAvatarUrl(user.avatar_path)} icon={<UserOutlined />}>
-          {getInitial(getUserName(user))}
-        </Avatar>
+        {renderUserAvatar(user, 46)}
         <div className="add-contact-user-copy">
           <strong>{getUserName(user)}</strong>
           <span>@{username || 'unknown'}</span>
           <p>{user.signature?.trim() || '还没有填写个性签名'}</p>
           <div className="add-contact-user-tags">
-            <em>{user.is_online ? '在线' : '离线'}</em>
+            <em className={user.is_online ? 'status online' : 'status offline'}>
+              {user.is_online ? '在线' : '离线'}
+            </em>
             {(user.province || user.region) && <em>{[user.province, user.region].filter(Boolean).join('·')}</em>}
             {peerRequest && <em>{peerRequest.source || '账号搜索'}</em>}
           </div>
@@ -3337,7 +3420,7 @@ const ChatPage = observer(() => {
               setContactContent('requests');
               return;
             }
-            void handleAddContact(username, source);
+            openAddContactRequest(username, source, user);
           }}
         >
           {actionLabel}
@@ -3346,9 +3429,9 @@ const ChatPage = observer(() => {
     );
   };
 
-  const renderMessage = (msg: ChatMessage, index: number) => {
+  const renderMessage = (msg: ChatMessage, index: number, conversationMessages: ChatMessage[] = chatStore.messages) => {
     const isMine = isMessageFromCurrentUser(msg, currentUserId);
-    const previous = chatStore.messages[index - 1];
+    const previous = conversationMessages[index - 1];
     const currentDate = formatHistoryDate(msg.created_at);
     const previousDate = previous ? formatHistoryDate(previous.created_at) : '';
     const showDate = index === 0 || currentDate !== previousDate;
@@ -3947,9 +4030,12 @@ const ChatPage = observer(() => {
                           <div className="request-section-empty">{section.emptyText}</div>
                         ) : (
                           section.requests.map((request) => {
-                            const peer = getFriendRequestPeer(request);
+                            const peer = getFriendRequestPeer(request, currentUserId);
+                            const requestDirection = getFriendRequestDirection(request, currentUserId);
+                            if (!peer || !requestDirection) return null;
+
                             const peerName = getUserName(peer);
-                            const requestStatus = getFriendRequestStatus(request);
+                            const requestStatus = getFriendRequestStatus(request, currentUserId);
                             return (
                               <div key={request.id} className="request-card">
                                 <Avatar size={48} src={getAvatarUrl(peer.avatar_path)} icon={<UserOutlined />}>
@@ -3958,13 +4044,13 @@ const ChatPage = observer(() => {
                                 <div className="request-copy">
                                   <div className="request-title">
                                     <strong>{peerName}</strong>
-                                    <span>{request.direction === 'incoming' ? '请求加为好友' : '正在验证你的邀请'}</span>
+                                    <span>{getFriendRequestActionText(request, currentUserId)}</span>
                                     <time>{formatHistoryDate(request.created_at)}</time>
                                   </div>
                                   <p>留言：{request.note || '请求添加为好友'}</p>
                                   <p>来源：{request.source || '账号搜索'}</p>
                                 </div>
-                                {requestStatus === 'pending' ? (
+                                {requestStatus === 'pending' && requestDirection === 'incoming' ? (
                                   <Space>
                                     <Button
                                       icon={<CheckOutlined />}
@@ -4634,6 +4720,9 @@ const ChatPage = observer(() => {
         </div>
       );
     }
+    const contactMessages = chatStore.messages.filter((msg) =>
+      isMessageInContactConversation(msg, currentUserId, contact.contact_user?.id)
+    );
 
     return (
       <div className="chat-panel">
@@ -4667,13 +4756,13 @@ const ChatPage = observer(() => {
           </Space>
         </div>
         <div className="messages-container">
-          {chatStore.messages.length === 0 ? (
+          {contactMessages.length === 0 ? (
             <div className="empty-messages">
               <div className="qq-watermark" />
               <span>暂无聊天记录</span>
             </div>
           ) : (
-            chatStore.messages.map(renderMessage)
+            contactMessages.map(renderMessage)
           )}
           <div ref={messagesEndRef} />
         </div>
@@ -5042,7 +5131,12 @@ const ChatPage = observer(() => {
         centered
         open={addContactVisible}
         className="qq-search-modal"
-        onCancel={() => setAddContactVisible(false)}
+        onCancel={() => {
+          setAddContactVisible(false);
+          setAddContactRequestVisible(false);
+          setAddContactTarget(null);
+          setContactNote('');
+        }}
       >
         <div className="qq-search-window">
           <div className="qq-search-titlebar">
@@ -5083,14 +5177,8 @@ const ChatPage = observer(() => {
             {addContactTab === 'all' || addContactTab === 'user' ? (
               <>
                 <div className="qq-search-note-row">
-                  <Input
-                    value={contactNote}
-                    onChange={(event) => setContactNote(event.target.value)}
-                    placeholder="验证消息：我是..."
-                    maxLength={50}
-                    showCount
-                  />
-                  <Button icon={<UserAddOutlined />} onClick={() => void handleAddContact(contactUsername, '账号搜索')}>
+                  <span>搜索后选择用户，或直接向输入的账号发送申请</span>
+                  <Button icon={<UserAddOutlined />} onClick={() => openAddContactRequest(contactUsername, '账号搜索')}>
                     直接申请
                   </Button>
                 </div>
@@ -5144,6 +5232,73 @@ const ChatPage = observer(() => {
               </div>
             )}
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        title={null}
+        width={460}
+        centered
+        open={addContactRequestVisible}
+        className="friend-request-modal"
+        onCancel={() => {
+          if (addContactSubmitting) return;
+          setAddContactRequestVisible(false);
+          setAddContactTarget(null);
+          setContactNote('');
+        }}
+        footer={[
+          <Button
+            key="cancel"
+            onClick={() => {
+              setAddContactRequestVisible(false);
+              setAddContactTarget(null);
+              setContactNote('');
+            }}
+            disabled={addContactSubmitting}
+          >
+            取消
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            icon={<UserAddOutlined />}
+            loading={addContactSubmitting}
+            onClick={() => void handleAddContact()}
+          >
+            发送申请
+          </Button>,
+        ]}
+      >
+        <div className="friend-request-panel">
+          <div className="friend-request-target">
+            {addContactTarget?.user ? (
+              renderUserAvatar(addContactTarget.user, 48)
+            ) : (
+              <Avatar size={48} icon={<UserOutlined />}>
+                {getInitial(addContactTarget?.username || '')}
+              </Avatar>
+            )}
+            <div>
+              <strong>
+                {addContactTarget?.user ? getUserName(addContactTarget.user) : addContactTarget?.username || '添加好友'}
+              </strong>
+              <span>@{addContactTarget?.username || contactUsername || 'unknown'}</span>
+            </div>
+          </div>
+          <label className="friend-request-note-label" htmlFor="friend-request-note">
+            验证消息 / 备注
+          </label>
+          <TextArea
+            id="friend-request-note"
+            value={contactNote}
+            onChange={(event) => setContactNote(event.target.value)}
+            maxLength={100}
+            showCount
+            autoSize={{ minRows: 3, maxRows: 5 }}
+            placeholder={getDefaultFriendRequestNote()}
+          />
+          <p className="friend-request-note-hint">对方会在好友通知里看到这条消息，用来确认是谁发起的申请。</p>
         </div>
       </Modal>
 

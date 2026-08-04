@@ -42,9 +42,38 @@ class FriendRequest {
     );
   }
 
+  String directionForUser(int? currentUserId) {
+    if (requester.id == receiver.id) return 'invalid';
+    if (currentUserId != null && currentUserId > 0) {
+      if (requester.id == currentUserId && receiver.id != currentUserId) {
+        return 'outgoing';
+      }
+      if (receiver.id == currentUserId && requester.id != currentUserId) {
+        return 'incoming';
+      }
+    }
+    return direction;
+  }
+
+  User? peerForUser(int? currentUserId) {
+    final viewDirection = directionForUser(currentUserId);
+    if (viewDirection == 'incoming') return requester;
+    if (viewDirection == 'outgoing') return receiver;
+    return null;
+  }
+
+  bool isVisibleForUser(int? currentUserId) {
+    final requestPeer = peerForUser(currentUserId);
+    return requestPeer != null && requestPeer.id != currentUserId;
+  }
+
   User get peer => direction == 'incoming' ? requester : receiver;
   bool get isIncoming => direction == 'incoming';
   bool get isOutgoing => direction == 'outgoing';
+  bool isIncomingForUser(int? currentUserId) =>
+      directionForUser(currentUserId) == 'incoming';
+  bool isOutgoingForUser(int? currentUserId) =>
+      directionForUser(currentUserId) == 'outgoing';
   bool get isPending => status == 'pending';
   bool get isAccepted => status == 'accepted';
   bool get isRejected => status == 'rejected';

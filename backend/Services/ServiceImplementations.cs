@@ -334,6 +334,10 @@ namespace VideoCallAPI.Services
                 filterSensitiveWords: false,
                 rejectSensitiveWords: true);
 
+            var requester = await _context.users.FindAsync(userId);
+            if (requester == null)
+                throw new ArgumentException("用户不存在");
+
             var receiver = await _context.users.FirstOrDefaultAsync(u => u.username == targetUsername);
             if (receiver == null)
                 throw new ArgumentException("用户不存在");
@@ -363,7 +367,8 @@ namespace VideoCallAPI.Services
                 requestDto.note,
                 "验证消息",
                 100,
-                rejectSensitiveWords: true);
+                rejectSensitiveWords: true)
+                ?? BuildDefaultFriendRequestNote(requester);
             var source = _contentSecurity.NormalizeOptionalText(
                 requestDto.source,
                 "好友来源",
@@ -413,7 +418,9 @@ namespace VideoCallAPI.Services
             var requests = await _context.FriendRequests
                 .Include(r => r.requester)
                 .Include(r => r.receiver)
-                .Where(r => r.requester_id == userId || r.receiver_id == userId)
+                .Where(r =>
+                    r.requester_id != r.receiver_id &&
+                    (r.requester_id == userId || r.receiver_id == userId))
                 .OrderByDescending(r => r.updated_at)
                 .ThenByDescending(r => r.created_at)
                 .ToListAsync();
@@ -615,6 +622,14 @@ namespace VideoCallAPI.Services
             return MapToContactResponse(contact);
         }
 
+        private static string BuildDefaultFriendRequestNote(User requester)
+        {
+            var name = string.IsNullOrWhiteSpace(requester.display_name)
+                ? requester.username
+                : requester.display_name.Trim();
+            return $"我是{name}，请求添加你为好友";
+        }
+
         private static ContactResponseDto MapToContactResponse(Contact contact)
         {
             return new ContactResponseDto
@@ -644,7 +659,7 @@ namespace VideoCallAPI.Services
                     FriendRequestStatus.Rejected => "rejected",
                     _ => "pending"
                 },
-                direction = request.receiver_id == currentUserId ? "incoming" : "outgoing",
+                direction = request.requester_id == currentUserId ? "outgoing" : "incoming",
                 created_at = request.created_at,
                 updated_at = request.updated_at
             };

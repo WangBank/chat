@@ -173,15 +173,24 @@ class _ContactsPageState extends State<ContactsPage> {
   }
 
   Future<void> _addContact(User user) async {
+    final note = await _showFriendRequestNoteDialog(user);
+    if (note == null) return;
+
     try {
-      final request =
-          await widget.apiService.addContact(username: user.username);
+      final request = await widget.apiService.createFriendRequest(
+        username: user.username,
+        note: note.trim().isEmpty ? null : note.trim(),
+        source: '账号搜索',
+      );
       if (!mounted) return;
 
+      final currentUserId = widget.apiService.currentUser?.id;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            request.isIncoming ? '对方已向你发送申请，请在好友通知中处理' : '好友申请已发送，等待对方同意',
+            request.isIncomingForUser(currentUserId)
+                ? '对方已向你发送申请，请在好友通知中处理'
+                : '好友申请已发送，等待对方同意',
           ),
         ),
       );
@@ -193,6 +202,58 @@ class _ContactsPageState extends State<ContactsPage> {
         ).showSnackBar(SnackBar(content: Text('添加联系人失败: $e')));
       }
     }
+  }
+
+  Future<String?> _showFriendRequestNoteDialog(User user) async {
+    final controller = TextEditingController(
+      text: _buildDefaultFriendRequestNote(),
+    );
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('添加 ${_displayUserName(user)}'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 100,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: '验证消息 / 备注',
+              helperText: '对方会在好友通知里看到这条消息',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(controller.text),
+              child: const Text('发送申请'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+
+  String _buildDefaultFriendRequestNote() {
+    final currentUser = widget.apiService.currentUser;
+    final name = currentUser?.display_name?.trim().isNotEmpty == true
+        ? currentUser!.display_name!.trim()
+        : currentUser?.username ?? '我';
+    return '我是$name，请求添加你为好友';
+  }
+
+  String _displayUserName(User user) {
+    if (user.display_name?.trim().isNotEmpty == true) {
+      return user.display_name!.trim();
+    }
+    return user.username;
   }
 
   Future<void> _deleteContact(Contact contact) async {
@@ -912,7 +973,9 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
   String _statusText(FriendRequest request) {
     if (request.isAccepted) return '已同意';
     if (request.isRejected) return '已拒绝';
-    return request.isIncoming ? '待你处理' : '等待对方同意';
+    return request.isIncomingForUser(widget.apiService.currentUser?.id)
+        ? '待你处理'
+        : '等待验证';
   }
 
   Color _statusColor(FriendRequest request) {
@@ -950,7 +1013,10 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
   }
 
   Widget _buildRequestCard(FriendRequest request) {
-    final peer = request.peer;
+    final currentUserId = widget.apiService.currentUser?.id;
+    final peer = request.peerForUser(currentUserId);
+    if (peer == null) return const SizedBox.shrink();
+
     final note = request.note?.trim();
 
     return Container(
@@ -1022,7 +1088,8 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
                         style: const TextStyle(color: _qqMuted, fontSize: 12),
                       ),
                     ],
-                    if (request.isIncoming && request.isPending) ...[
+                    if (request.isIncomingForUser(currentUserId) &&
+                        request.isPending) ...[
                       const SizedBox(height: 10),
                       Row(
                         children: [
@@ -1054,13 +1121,24 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final incomingPending = _requests
-        .where((request) => request.isIncoming && request.isPending)
+    final currentUserId = widget.apiService.currentUser?.id;
+    final visibleRequests = _requests
+        .where((request) => request.isVisibleForUser(currentUserId))
         .toList();
-    final outgoingPending = _requests
-        .where((request) => request.isOutgoing && request.isPending)
+    final incomingPending = visibleRequests
+        .where(
+          (request) =>
+              request.isIncomingForUser(currentUserId) && request.isPending,
+        )
         .toList();
-    final handled = _requests.where((request) => !request.isPending).toList();
+    final outgoingPending = visibleRequests
+        .where(
+          (request) =>
+              request.isOutgoingForUser(currentUserId) && request.isPending,
+        )
+        .toList();
+    final handled =
+        visibleRequests.where((request) => !request.isPending).toList();
 
     return Scaffold(
       appBar: AppBar(
