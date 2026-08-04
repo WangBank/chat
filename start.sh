@@ -316,6 +316,13 @@ ensure_postgres() {
       -d "$POSTGRES_IMAGE" >/dev/null
   fi
 
+  local mapped_port
+  mapped_port="$(docker inspect -f '{{with index .NetworkSettings.Ports "5432/tcp"}}{{(index . 0).HostPort}}{{end}}' "$POSTGRES_CONTAINER" 2>/dev/null || true)"
+  if [[ -n "$mapped_port" && "$mapped_port" != "$POSTGRES_PORT" ]]; then
+    log "Detected PostgreSQL host port from Docker: localhost:$mapped_port"
+    POSTGRES_PORT="$mapped_port"
+  fi
+
   log "Waiting for PostgreSQL to accept connections"
   for _ in $(seq 1 60); do
     if docker exec "$POSTGRES_CONTAINER" pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
@@ -326,6 +333,21 @@ ensure_postgres() {
   done
 
   die "PostgreSQL did not become ready"
+}
+
+backend_connection_string() {
+  if [[ -n "${BACKEND_CONNECTION_STRING:-}" ]]; then
+    printf '%s' "$BACKEND_CONNECTION_STRING"
+    return 0
+  fi
+
+  if [[ -n "${ConnectionStrings__DefaultConnection:-}" ]]; then
+    printf '%s' "$ConnectionStrings__DefaultConnection"
+    return 0
+  fi
+
+  printf 'Host=localhost;Port=%s;Database=%s;Username=%s;Password=%s' \
+    "$POSTGRES_PORT" "$POSTGRES_DB" "$POSTGRES_USER" "$POSTGRES_PASSWORD"
 }
 
 install_dependencies() {
@@ -355,10 +377,14 @@ install_dependencies() {
 start_backend() {
   wait_for_port_free "$BACKEND_PORT" "backend API"
 
+  local connection_string
+  connection_string="$(backend_connection_string)"
+
   log "Starting backend API: $BACKEND_URL"
   (
     cd "$BACKEND_DIR"
     ASPNETCORE_ENVIRONMENT=Development \
+    ConnectionStrings__DefaultConnection="$connection_string" \
     dotnet run --no-launch-profile --urls "$BACKEND_URL"
   ) &
   BACKEND_PID=$!

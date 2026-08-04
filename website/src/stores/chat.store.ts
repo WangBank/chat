@@ -43,6 +43,7 @@ class ChatStore {
   currentContact: Contact | null = null;
   messages: ChatMessage[] = [];
   isLoading: boolean = false;
+  private messageLoadRequestId = 0;
 
   constructor() {
     makeAutoObservable(this);
@@ -57,22 +58,23 @@ class ChatStore {
     signalRService.onNewMessage = (message: ChatMessage) => {
       const currentUserId = authStore.user?.id;
       const peerUserId = this.getPeerUserId(message, currentUserId);
+      if (peerUserId === undefined) {
+        return;
+      }
+
       const contact = this.findContactByPeerId(peerUserId);
       const isIncomingMessage = currentUserId !== undefined && message.receiver_id === currentUserId;
-      const isCurrentContactMessage = Boolean(contact && this.currentContact?.id === contact.id);
+      const isCurrentContactMessage = Boolean(
+        contact &&
+        this.currentContact?.id === contact.id &&
+        this.isMessageForPeer(message, peerUserId, currentUserId)
+      );
       const visibleMessage = isIncomingMessage && isCurrentContactMessage
         ? { ...message, is_read: true }
         : message;
 
       if (isCurrentContactMessage) {
-        // Avoid adding duplicate messages
-        if (!this.messages.find(m => m.id === message.id)) {
-          this.messages.push(visibleMessage);
-          // Keep only the most recent 100 messages
-          if (this.messages.length > 100) {
-            this.messages = this.messages.slice(-100);
-          }
-        }
+        this.appendMessageToCurrentConversation(visibleMessage, peerUserId, currentUserId);
       }
 
       if (contact) {
@@ -98,12 +100,32 @@ class ChatStore {
       if (message.sender_id === currentUserId) return message.receiver_id;
       if (message.receiver_id === currentUserId) return message.sender_id;
     }
-    return message.sender_id;
+    return undefined;
   }
 
   private findContactByPeerId(peerUserId?: number) {
     if (peerUserId === undefined) return undefined;
     return this.contacts.find((contact) => contact.contact_user?.id === peerUserId);
+  }
+
+  private isMessageForPeer(message: ChatMessage, peerUserId: number, currentUserId?: number) {
+    if (currentUserId === undefined) return false;
+
+    return (
+      (message.sender_id === currentUserId && message.receiver_id === peerUserId) ||
+      (message.sender_id === peerUserId && message.receiver_id === currentUserId)
+    );
+  }
+
+  private appendMessageToCurrentConversation(message: ChatMessage, peerUserId: number, currentUserId?: number) {
+    if (this.currentContact?.contact_user?.id !== peerUserId) return;
+    if (!this.isMessageForPeer(message, peerUserId, currentUserId)) return;
+    if (this.messages.find(m => m.id === message.id)) return;
+
+    this.messages.push(message);
+    if (this.messages.length > 100) {
+      this.messages = this.messages.slice(-100);
+    }
   }
 
   private updateContactForMessage(contactId: number, message: ChatMessage, incrementUnread: boolean) {
@@ -205,14 +227,24 @@ class ChatStore {
   }
 
   async loadMessages(contactId: number) {
+    const requestId = ++this.messageLoadRequestId;
     this.isLoading = true;
     this.markContactAsRead(contactId);
     try {
       const response = await apiService.getChatHistory(contactId);
+      if (requestId !== this.messageLoadRequestId || this.currentContact?.id !== contactId) {
+        return;
+      }
+
       if (response.success && response.data) {
+        const currentUserId = authStore.user?.id;
+        const peerUserId = this.currentContact?.contact_user?.id;
         // Keep only recent 100 messages and ensure unique IDs
         const messages = response.data || [];
-        const uniqueMessages = messages.slice(-100).reduce((acc: ChatMessage[], msg) => {
+        const currentContactMessages = peerUserId === undefined
+          ? []
+          : messages.filter((msg) => this.isMessageForPeer(msg, peerUserId, currentUserId));
+        const uniqueMessages = currentContactMessages.slice(-100).reduce((acc: ChatMessage[], msg) => {
           if (!acc.find(m => m.id === msg.id)) {
             acc.push(msg);
           }
@@ -223,10 +255,14 @@ class ChatStore {
         void this.loadContacts(false);
       }
     } catch (error) {
-      console.error('Failed to load messages:', error);
-      void this.loadContacts(false);
+      if (requestId === this.messageLoadRequestId) {
+        console.error('Failed to load messages:', error);
+        void this.loadContacts(false);
+      }
     } finally {
-      this.isLoading = false;
+      if (requestId === this.messageLoadRequestId) {
+        this.isLoading = false;
+      }
     }
   }
 
@@ -246,15 +282,13 @@ class ChatStore {
       });
       if (response.success && response.data) {
         const sentMessage = response.data;
-        // Avoid adding duplicate messages (also received from SignalR)
-        if (!this.messages.find(m => m.id === sentMessage.id)) {
-          this.messages.push(sentMessage);
-          // Keep only the most recent 100 messages
-          if (this.messages.length > 100) {
-            this.messages = this.messages.slice(-100);
-          }
+        const currentUserId = authStore.user?.id;
+        const contact = this.findContactByPeerId(receiverId);
+        this.appendMessageToCurrentConversation(sentMessage, receiverId, currentUserId);
+        if (contact) {
+          this.updateContactForMessage(contact.id, sentMessage, false);
         }
-        return { success: true };
+        return { success: true, data: sentMessage };
       } else {
         return { success: false, message: response.message || 'Failed to send message' };
       }
@@ -269,6 +303,8 @@ class ChatStore {
       this.markContactAsRead(contact.id);
       void this.loadMessages(contact.id);
     } else {
+      this.messageLoadRequestId++;
+      this.isLoading = false;
       this.messages = [];
     }
   }
