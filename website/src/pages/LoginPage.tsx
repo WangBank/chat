@@ -1,14 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Form, Input, Button, message, Card, Tabs } from 'antd';
-import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
+import { Form, Input, Button, message, Card, Tabs, Tooltip } from 'antd';
+import { UserOutlined, LockOutlined, MailOutlined, QqOutlined } from '@ant-design/icons';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { observer } from 'mobx-react-lite';
 import { authStore } from '../stores/auth.store';
 import { apiService } from '../services/api.service';
 import { APP_CONFIG } from '../config/app.config';
 import '../styles/common.css';
-
-const QQ_LOGIN_BUTTON_SRC = '/assets/qq-connect/bt_blue_76X24.png';
 
 const LoginPage = observer(() => {
   const [form] = Form.useForm();
@@ -31,20 +29,6 @@ const LoginPage = observer(() => {
     }
   }, [location.search, navigate]);
 
-  const finishQQFlow = (targetPath: '/chat' | '/admin') => {
-    if (window.opener && !window.opener.closed) {
-      try {
-        window.opener.location.assign(targetPath);
-        window.close();
-        return;
-      } catch {
-        // Fall back to in-window navigation if the browser blocks opener access.
-      }
-    }
-
-    navigate(targetPath, { replace: true });
-  };
-
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const code = params.get('code') || params.get('qq_code');
@@ -63,7 +47,7 @@ const LoginPage = observer(() => {
             authStore.user = response.data;
             localStorage.setItem('user', JSON.stringify(response.data));
             message.success('QQ绑定成功');
-            finishQQFlow('/chat');
+            navigate('/chat', { replace: true });
             return;
           }
 
@@ -83,7 +67,7 @@ const LoginPage = observer(() => {
       }
 
       message.success('QQ登录成功');
-      finishQQFlow('/chat');
+      navigate('/chat', { replace: true });
     };
 
     void completeQQCallback();
@@ -129,14 +113,7 @@ const LoginPage = observer(() => {
       const loginUrl = response.data;
 
       if (response.success && loginUrl?.configured && loginUrl.auth_url) {
-        const popup = window.open(
-          loginUrl.auth_url,
-          'foreverlove_qq_login',
-          'width=780,height=640,top=80,left=120,menubar=no,toolbar=no,status=no,resizable=yes,scrollbars=yes'
-        );
-        if (!popup) {
-          window.location.assign(loginUrl.auth_url);
-        }
+        window.location.assign(loginUrl.auth_url);
         return;
       }
 
@@ -286,19 +263,20 @@ const LoginPage = observer(() => {
           ]}
         />
           <div className="qq-login-divider">
-            <span>第三方账号登录</span>
+            <span>其他登录方式</span>
           </div>
           <div className="qq-third-party-row">
-            <button
-              type="button"
-              className="qq-connect-login-button"
-              onClick={() => void handleQQLogin()}
-              disabled={authStore.isLoading}
-              aria-label="使用QQ账号登录"
-            >
-              <img src={QQ_LOGIN_BUTTON_SRC} alt="QQ登录" width={76} height={24} />
-            </button>
-            <span>使用QQ账号登录</span>
+            <Tooltip title="QQ 登录">
+              <Button
+                className="qq-social-button qq"
+                shape="circle"
+                icon={<QqOutlined />}
+                loading={authStore.isLoading}
+                onClick={() => void handleQQLogin()}
+                aria-label="QQ 登录"
+              />
+            </Tooltip>
+            <span>QQ</span>
           </div>
         </Card>
       </section>
