@@ -31,7 +31,12 @@ namespace VideoCallAPI.Services
 
         public async Task<UserResponseDto> RegisterAsync(UserRegistrationDto registrationDto)
         {
-            var username = _contentSecurity.NormalizeRequiredText(registrationDto.username, "用户名", 50, filterSensitiveWords: false);
+            var username = _contentSecurity.NormalizeRequiredText(
+                registrationDto.username,
+                "用户名",
+                50,
+                filterSensitiveWords: false,
+                rejectSensitiveWords: true);
             var email = _contentSecurity.NormalizeRequiredText(registrationDto.email, "邮箱", 100, filterSensitiveWords: false);
 
             // 检查用户名是否已存在
@@ -117,7 +122,11 @@ namespace VideoCallAPI.Services
 
             if (updateProfileDto.display_name != null)
             {
-                var displayName = _contentSecurity.NormalizeOptionalText(updateProfileDto.display_name, "昵称", 50);
+                var displayName = _contentSecurity.NormalizeOptionalText(
+                    updateProfileDto.display_name,
+                    "昵称",
+                    50,
+                    rejectSensitiveWords: true);
                 if (displayName != null)
                     user.display_name = displayName;
             }
@@ -130,7 +139,11 @@ namespace VideoCallAPI.Services
             }
 
             if (updateProfileDto.signature != null)
-                user.signature = _contentSecurity.NormalizeOptionalText(updateProfileDto.signature, "个性签名", 100);
+                user.signature = _contentSecurity.NormalizeOptionalText(
+                    updateProfileDto.signature,
+                    "个性签名",
+                    100,
+                    rejectSensitiveWords: true);
 
             if (updateProfileDto.gender != null)
                 user.gender = _contentSecurity.NormalizeOptionalText(updateProfileDto.gender, "性别", 10);
@@ -139,13 +152,25 @@ namespace VideoCallAPI.Services
                 user.birthday = _contentSecurity.NormalizeOptionalText(updateProfileDto.birthday, "生日", 10, filterSensitiveWords: false);
 
             if (updateProfileDto.country != null)
-                user.country = _contentSecurity.NormalizeOptionalText(updateProfileDto.country, "国家", 50);
+                user.country = _contentSecurity.NormalizeOptionalText(
+                    updateProfileDto.country,
+                    "国家",
+                    50,
+                    rejectSensitiveWords: true);
 
             if (updateProfileDto.province != null)
-                user.province = _contentSecurity.NormalizeOptionalText(updateProfileDto.province, "省份", 50);
+                user.province = _contentSecurity.NormalizeOptionalText(
+                    updateProfileDto.province,
+                    "省份",
+                    50,
+                    rejectSensitiveWords: true);
 
             if (updateProfileDto.region != null)
-                user.region = _contentSecurity.NormalizeOptionalText(updateProfileDto.region, "地区", 50);
+                user.region = _contentSecurity.NormalizeOptionalText(
+                    updateProfileDto.region,
+                    "地区",
+                    50,
+                    rejectSensitiveWords: true);
 
             user.updated_at = DateTime.UtcNow;
             await _context.SaveChangesAsync();
@@ -302,7 +327,12 @@ namespace VideoCallAPI.Services
 
         public async Task<FriendRequestResponseDto> CreateFriendRequestAsync(int userId, CreateFriendRequestDto requestDto)
         {
-            var targetUsername = _contentSecurity.NormalizeRequiredText(requestDto.username, "用户名", 50, filterSensitiveWords: false);
+            var targetUsername = _contentSecurity.NormalizeRequiredText(
+                requestDto.username,
+                "用户名",
+                50,
+                filterSensitiveWords: false,
+                rejectSensitiveWords: true);
 
             var receiver = await _context.users.FirstOrDefaultAsync(u => u.username == targetUsername);
             if (receiver == null)
@@ -329,8 +359,16 @@ namespace VideoCallAPI.Services
                 return MapToFriendRequestResponse(reversePendingRequest, userId);
 
             var now = DateTime.UtcNow;
-            var note = _contentSecurity.NormalizeOptionalText(requestDto.note, "验证消息", 100);
-            var source = _contentSecurity.NormalizeOptionalText(requestDto.source, "好友来源", 50) ?? "账号搜索";
+            var note = _contentSecurity.NormalizeOptionalText(
+                requestDto.note,
+                "验证消息",
+                100,
+                rejectSensitiveWords: true);
+            var source = _contentSecurity.NormalizeOptionalText(
+                requestDto.source,
+                "好友来源",
+                50,
+                rejectSensitiveWords: true) ?? "账号搜索";
 
             var existingRequest = await _context.FriendRequests
                 .Include(r => r.requester)
@@ -519,7 +557,11 @@ namespace VideoCallAPI.Services
             if (contact == null)
                 throw new ArgumentException("联系人不存在");
 
-            contact.display_name = _contentSecurity.NormalizeOptionalText(displayName, "联系人备注", 50);
+            contact.display_name = _contentSecurity.NormalizeOptionalText(
+                displayName,
+                "联系人备注",
+                50,
+                rejectSensitiveWords: true);
             await _context.SaveChangesAsync();
 
             return new ContactResponseDto
@@ -751,7 +793,11 @@ public async Task<ChatMessageDto> SendMessageAsync(int senderId, SendMessageDto 
     if (senderContact.is_blocked)
         throw new InvalidOperationException("该联系人已被屏蔽，无法发送消息");
 
-    var content = _contentSecurity.NormalizeRequiredText(sendMessageDto.content, "消息内容", 1000);
+    var content = _contentSecurity.NormalizeRequiredText(
+        sendMessageDto.content,
+        "消息内容",
+        1000,
+        rejectSensitiveWords: true);
     var filePath = _contentSecurity.NormalizeStoredFilePath(sendMessageDto.file_path, "文件路径", "/chat-files/");
     var duration = sendMessageDto.duration;
     if (duration.HasValue && (duration.Value < 0 || duration.Value > 3600))

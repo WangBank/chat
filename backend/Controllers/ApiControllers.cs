@@ -13,6 +13,16 @@ using BCrypt.Net;
 
 namespace VideoCallAPI.Controllers
 {
+    internal static class ApiErrorMessage
+    {
+        public static string ForClient(Exception exception, string fallback)
+        {
+            return exception is ArgumentException or InvalidOperationException or UnauthorizedAccessException
+                ? exception.Message
+                : fallback;
+        }
+    }
+
     [ApiController]
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
@@ -62,7 +72,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse<UserResponseDto>
                 {
                     Success = false,
-                    Message = "注册失败",
+                    Message = ApiErrorMessage.ForClient(ex, "注册失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }
@@ -338,7 +348,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse<UserResponseDto>
                 {
                     Success = false,
-                    Message = "更新失败",
+                    Message = ApiErrorMessage.ForClient(ex, "更新失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }
@@ -583,7 +593,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse<FriendRequestResponseDto>
                 {
                     Success = false,
-                    Message = "发送好友申请失败",
+                    Message = ApiErrorMessage.ForClient(ex, "发送好友申请失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }
@@ -651,7 +661,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse<FriendRequestResponseDto>
                 {
                     Success = false,
-                    Message = "发送好友申请失败",
+                    Message = ApiErrorMessage.ForClient(ex, "发送好友申请失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }
@@ -782,7 +792,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse<ContactResponseDto>
                 {
                     Success = false,
-                    Message = "修改备注失败",
+                    Message = ApiErrorMessage.ForClient(ex, "修改备注失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }
@@ -874,7 +884,8 @@ namespace VideoCallAPI.Controllers
                     Path.GetFileName(file.FileName),
                     "文件名",
                     150,
-                    filterSensitiveWords: false);
+                    filterSensitiveWords: false,
+                    rejectSensitiveWords: true);
                 var fileExtension = Path.GetExtension(originalFileName);
                 if (BlockedUploadExtensions.Contains(fileExtension) ||
                     BlockedUploadContentTypes.Contains(NormalizeContentType(file.ContentType)))
@@ -929,7 +940,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse<ChatUploadResponseDto>
                 {
                     Success = false,
-                    Message = "文件上传失败",
+                    Message = ApiErrorMessage.ForClient(ex, "文件上传失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }
@@ -978,7 +989,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse<ChatMessageDto>
                 {
                     Success = false,
-                    Message = "发送消息失败",
+                    Message = ApiErrorMessage.ForClient(ex, "发送消息失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }
@@ -1216,8 +1227,16 @@ namespace VideoCallAPI.Controllers
                 var now = DateTime.UtcNow;
                 var group = new ChatGroup
                 {
-                    name = _contentSecurity.NormalizeOptionalText(createDto.name, "群聊名称", 80) ?? "未命名的群聊",
-                    category = _contentSecurity.NormalizeOptionalText(createDto.category, "群聊分类", 50) ?? "我创建的群聊",
+                    name = _contentSecurity.NormalizeOptionalText(
+                        createDto.name,
+                        "群聊名称",
+                        80,
+                        rejectSensitiveWords: true) ?? "未命名的群聊",
+                    category = _contentSecurity.NormalizeOptionalText(
+                        createDto.category,
+                        "群聊分类",
+                        50,
+                        rejectSensitiveWords: true) ?? "我创建的群聊",
                     owner_id = userId,
                     pinned = createDto.pinned,
                     created_at = now,
@@ -1264,7 +1283,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse<ChatGroupResponseDto>
                 {
                     Success = false,
-                    Message = "创建群聊失败",
+                    Message = ApiErrorMessage.ForClient(ex, "创建群聊失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }
@@ -1333,7 +1352,11 @@ namespace VideoCallAPI.Controllers
                 }
 
                 var now = DateTime.UtcNow;
-                var content = _contentSecurity.NormalizeRequiredText(messageDto.content, "消息内容", 1000);
+                var content = _contentSecurity.NormalizeRequiredText(
+                    messageDto.content,
+                    "消息内容",
+                    1000,
+                    rejectSensitiveWords: true);
                 var filePath = _contentSecurity.NormalizeStoredFilePath(messageDto.file_path, "文件路径", "/chat-files/");
                 var duration = messageDto.duration;
                 if (duration.HasValue && (duration.Value < 0 || duration.Value > 3600))
@@ -1378,7 +1401,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse<GroupChatMessageDto>
                 {
                     Success = false,
-                    Message = "发送群聊消息失败",
+                    Message = ApiErrorMessage.ForClient(ex, "发送群聊消息失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }
@@ -1574,8 +1597,16 @@ namespace VideoCallAPI.Controllers
                     });
                 }
 
-                var content = _contentSecurity.NormalizeRequiredText(createDto.content, "收藏内容", 1000);
-                var sourceName = _contentSecurity.NormalizeOptionalText(createDto.source_name, "来源名称", 100) ?? "我的账号";
+                var content = _contentSecurity.NormalizeRequiredText(
+                    createDto.content,
+                    "收藏内容",
+                    1000,
+                    rejectSensitiveWords: true);
+                var sourceName = _contentSecurity.NormalizeOptionalText(
+                    createDto.source_name,
+                    "来源名称",
+                    100,
+                    rejectSensitiveWords: true) ?? "我的账号";
                 var filePath = _contentSecurity.NormalizeStoredFilePath(createDto.file_path, "文件路径", "/chat-files/");
 
                 var exists = await _context.FavoriteItems.AnyAsync(item =>
@@ -1621,7 +1652,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse<FavoriteItemResponseDto>
                 {
                     Success = false,
-                    Message = "创建收藏失败",
+                    Message = ApiErrorMessage.ForClient(ex, "创建收藏失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }
@@ -1752,7 +1783,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse<RoomResponseDto>
                 {
                     Success = false,
-                    Message = "房间创建失败",
+                    Message = ApiErrorMessage.ForClient(ex, "房间创建失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }

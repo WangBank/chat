@@ -39,9 +39,10 @@ namespace VideoCallAPI.Services
 
     public interface IContentSecurityService
     {
-        string NormalizeRequiredText(string? value, string fieldName, int maxLength, bool filterSensitiveWords = true);
-        string? NormalizeOptionalText(string? value, string fieldName, int maxLength, bool filterSensitiveWords = true);
+        string NormalizeRequiredText(string? value, string fieldName, int maxLength, bool filterSensitiveWords = true, bool rejectSensitiveWords = false);
+        string? NormalizeOptionalText(string? value, string fieldName, int maxLength, bool filterSensitiveWords = true, bool rejectSensitiveWords = false);
         string? NormalizeStoredFilePath(string? value, string fieldName, params string[] allowedPrefixes);
+        void EnsureNoSensitiveWords(string? value, string fieldName);
     }
 
     public interface IContactService

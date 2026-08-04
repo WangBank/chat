@@ -175,7 +175,11 @@ namespace VideoCallAPI.Services
 
         public async Task<RoomResponseDto> CreateRoomAsync(int userId, CreateRoomDto createRoomDto)
         {
-            var roomName = _contentSecurity.NormalizeRequiredText(createRoomDto.room_name, "房间名称", 100);
+            var roomName = _contentSecurity.NormalizeRequiredText(
+                createRoomDto.room_name,
+                "房间名称",
+                100,
+                rejectSensitiveWords: true);
 
             var room = new Room
             {
