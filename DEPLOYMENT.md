@@ -16,6 +16,13 @@ All checkouts and the self-hosted runner reuse that file, so the Docker database
 password stays stable across deployments. Override the location with
 `FOREVERLOVE_CHAT_ENV_FILE` when needed.
 
+Uploaded avatars, chat images, and chat files should be kept outside the GitHub
+Actions checkout directory. The default local env file points them at
+`%USERPROFILE%\.foreverlove-chat\storage`, so `actions/checkout` cannot delete
+user uploads during CI deploys. The website container also proxies `/avatar/*`
+and `/chat-files/*` to the API container, so media files still load when those
+paths are routed to the website service by a tunnel or reverse proxy.
+
 The script builds both images, starts Docker Compose, waits for health checks,
 and prints the URLs to use from the website and Flutter.
 
@@ -97,6 +104,9 @@ QQ__ClientId=QQ_APP_ID
 QQ__ClientSecret=QQ_APP_KEY
 QQ__RedirectUri=https://chat.wangbank.top/qq-callback
 QQ__AllowMockLogin=false
+API_LOGS_DIR=C:\Users\YOUR_USER\.foreverlove-chat\storage\logs
+API_AVATAR_DIR=C:\Users\YOUR_USER\.foreverlove-chat\storage\avatar
+API_CHAT_FILES_DIR=C:\Users\YOUR_USER\.foreverlove-chat\storage\chat-files
 ADMIN_EMAILS=1224327326@qq.com
 VITE_ADMIN_EMAILS=1224327326@qq.com
 Email__SmtpHost=smtp.qq.com

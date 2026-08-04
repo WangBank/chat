@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const port = Number.parseInt(process.env.PORT || '8080', 10);
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
+const apiProxyTarget = (process.env.API_PROXY_TARGET || 'http://api:17101').replace(/\/+$/, '');
 
 const contentTypes = new Map([
   ['.css', 'text/css; charset=utf-8'],
@@ -41,6 +42,41 @@ function resolveRequestPath(requestUrl) {
   return path.join(root, normalizedPath);
 }
 
+function shouldProxyMedia(requestUrl) {
+  const { pathname } = new URL(requestUrl, 'http://localhost');
+  return pathname.startsWith('/avatar/') || pathname.startsWith('/chat-files/');
+}
+
+async function proxyToApi(request, response) {
+  const sourceUrl = new URL(request.url || '/', 'http://localhost');
+  const targetUrl = new URL(`${sourceUrl.pathname}${sourceUrl.search}`, apiProxyTarget);
+
+  const proxyResponse = await fetch(targetUrl, {
+    method: request.method,
+    headers: {
+      Accept: request.headers.accept || '*/*',
+      'User-Agent': request.headers['user-agent'] || 'foreverlove-chat-web'
+    }
+  });
+
+  applySecurityHeaders(response);
+  for (const header of ['cache-control', 'content-disposition', 'content-length', 'content-type', 'last-modified', 'etag']) {
+    const value = proxyResponse.headers.get(header);
+    if (value) {
+      response.setHeader(header, value);
+    }
+  }
+
+  response.writeHead(proxyResponse.status);
+  if (request.method === 'HEAD') {
+    response.end();
+    return;
+  }
+
+  const body = Buffer.from(await proxyResponse.arrayBuffer());
+  response.end(body);
+}
+
 async function sendFile(response, filePath) {
   const extension = path.extname(filePath).toLowerCase();
   const contentType = contentTypes.get(extension) || 'application/octet-stream';
@@ -61,6 +97,16 @@ async function sendFile(response, filePath) {
 createServer(async (request, response) => {
   if (request.url === '/health') {
     send(response, 200, 'ok\n');
+    return;
+  }
+
+  if ((request.method === 'GET' || request.method === 'HEAD') && shouldProxyMedia(request.url || '/')) {
+    try {
+      await proxyToApi(request, response);
+    }
+    catch {
+      send(response, 502, 'bad gateway\n');
+    }
     return;
   }
 

@@ -18,6 +18,10 @@ $RootDir = Split-Path -Parent $ScriptDir
 $LocalEnvFile = Join-Path $RootDir ".env"
 $DefaultEnvDir = Join-Path $env:USERPROFILE ".foreverlove-chat"
 $DefaultEnvFile = Join-Path $DefaultEnvDir "foreverlove-chat.env"
+$DefaultStorageDir = Join-Path $DefaultEnvDir "storage"
+$DefaultLogsDir = Join-Path $DefaultStorageDir "logs"
+$DefaultAvatarDir = Join-Path $DefaultStorageDir "avatar"
+$DefaultChatFilesDir = Join-Path $DefaultStorageDir "chat-files"
 $EnvFile = if (-not [string]::IsNullOrWhiteSpace($env:FOREVERLOVE_CHAT_ENV_FILE)) {
     $env:FOREVERLOVE_CHAT_ENV_FILE
 }
@@ -141,6 +145,9 @@ function Ensure-EnvFile {
             "API_ENVIRONMENT=Production",
             "API_PORT=17101",
             "API_BIND_HOST=0.0.0.0",
+            "API_LOGS_DIR=$DefaultLogsDir",
+            "API_AVATAR_DIR=$DefaultAvatarDir",
+            "API_CHAT_FILES_DIR=$DefaultChatFilesDir",
             "WEB_PORT=17102",
             "WEB_BIND_HOST=0.0.0.0",
             "JWT_SECRET=$initialSecret",
@@ -188,6 +195,20 @@ function Ensure-EnvFile {
     if (-not $values.ContainsKey("QQ__AllowMockLogin") -and [string]::IsNullOrWhiteSpace($env:QQ__AllowMockLogin)) {
         Add-DotEnvValue -Path $Path -Name "QQ__AllowMockLogin" -Value "false"
         Write-DeployLog "Added QQ__AllowMockLogin to .env."
+    }
+
+    $storageDefaults = [ordered]@{
+        "API_LOGS_DIR" = $DefaultLogsDir
+        "API_AVATAR_DIR" = $DefaultAvatarDir
+        "API_CHAT_FILES_DIR" = $DefaultChatFilesDir
+    }
+
+    foreach ($storageDefault in $storageDefaults.GetEnumerator()) {
+        if (-not $values.ContainsKey($storageDefault.Key) -and
+            [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($storageDefault.Key))) {
+            Add-DotEnvValue -Path $Path -Name $storageDefault.Key -Value $storageDefault.Value
+            Write-DeployLog "Added $($storageDefault.Key) to .env."
+        }
     }
 
     if (-not $values.ContainsKey("ADMIN_EMAILS") -and [string]::IsNullOrWhiteSpace($env:ADMIN_EMAILS)) {
@@ -352,6 +373,37 @@ function Export-GitHubEnv {
     }
 }
 
+function Copy-LegacyStorageFiles {
+    param(
+        [string]$Source,
+        [string]$Destination
+    )
+
+    if (-not (Test-Path -LiteralPath $Source)) {
+        return
+    }
+
+    $files = @(Get-ChildItem -LiteralPath $Source -Recurse -File -ErrorAction SilentlyContinue)
+    if ($files.Count -eq 0) {
+        return
+    }
+
+    foreach ($file in $files) {
+        $relativePath = [System.IO.Path]::GetRelativePath($Source, $file.FullName)
+        $targetPath = Join-Path $Destination $relativePath
+        $targetDir = Split-Path -Parent $targetPath
+        if (-not [string]::IsNullOrWhiteSpace($targetDir)) {
+            New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+        }
+
+        if (-not (Test-Path -LiteralPath $targetPath)) {
+            Copy-Item -LiteralPath $file.FullName -Destination $targetPath
+        }
+    }
+
+    Write-DeployLog "Migrated $($files.Count) file(s) from $Source to $Destination."
+}
+
 Set-Location -LiteralPath $RootDir
 
 if (-not (Test-Path -LiteralPath $EnvFile) -and
@@ -406,6 +458,16 @@ if ([string]::IsNullOrWhiteSpace($ImageTag)) {
 $PostgresPort = Resolve-Setting -ExplicitValue $PostgresPort -EnvName "POSTGRES_PORT" -DotEnv $DotEnv -DefaultValue "17132"
 $ApiPort = Resolve-Setting -ExplicitValue $ApiPort -EnvName "API_PORT" -DotEnv $DotEnv -DefaultValue "17101"
 $WebPort = Resolve-Setting -ExplicitValue $WebPort -EnvName "WEB_PORT" -DotEnv $DotEnv -DefaultValue "17102"
+$ApiLogsDir = Resolve-Setting -ExplicitValue "" -EnvName "API_LOGS_DIR" -DotEnv $DotEnv -DefaultValue $DefaultLogsDir
+$ApiAvatarDir = Resolve-Setting -ExplicitValue "" -EnvName "API_AVATAR_DIR" -DotEnv $DotEnv -DefaultValue $DefaultAvatarDir
+$ApiChatFilesDir = Resolve-Setting -ExplicitValue "" -EnvName "API_CHAT_FILES_DIR" -DotEnv $DotEnv -DefaultValue $DefaultChatFilesDir
+
+foreach ($storageDir in @($ApiLogsDir, $ApiAvatarDir, $ApiChatFilesDir)) {
+    New-Item -ItemType Directory -Force -Path $storageDir | Out-Null
+}
+
+Copy-LegacyStorageFiles -Source (Join-Path $RootDir ".docker\api\avatar") -Destination $ApiAvatarDir
+Copy-LegacyStorageFiles -Source (Join-Path $RootDir ".docker\api\chat-files") -Destination $ApiChatFilesDir
 
 $hostAddress = Get-LanAddress
 if ([string]::IsNullOrWhiteSpace($ApiPublicUrl)) {
@@ -428,6 +490,9 @@ Set-Env -Name "VCS_REF" -Value $vcsRef
 Set-Env -Name "POSTGRES_PORT" -Value $PostgresPort
 Set-Env -Name "API_PORT" -Value $ApiPort
 Set-Env -Name "WEB_PORT" -Value $WebPort
+Set-Env -Name "API_LOGS_DIR" -Value $ApiLogsDir
+Set-Env -Name "API_AVATAR_DIR" -Value $ApiAvatarDir
+Set-Env -Name "API_CHAT_FILES_DIR" -Value $ApiChatFilesDir
 Set-Env -Name "API_PUBLIC_URL" -Value $ApiPublicUrl
 Set-Env -Name "WEB_PUBLIC_URL" -Value $WebPublicUrl
 Set-Env -Name "SIGNALR_PUBLIC_URL" -Value $SignalRPublicUrl

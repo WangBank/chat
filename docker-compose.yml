@@ -65,9 +65,15 @@ services:
     ports:
       - "${API_BIND_HOST:-0.0.0.0}:${API_PORT:-17101}:17101"
     volumes:
-      - ./.docker/api/logs:/app/logs
-      - ./.docker/api/avatar:/app/avatar
-      - ./.docker/api/chat-files:/app/chat-files
+      - type: bind
+        source: ${API_LOGS_DIR:-./.docker/api/logs}
+        target: /app/logs
+      - type: bind
+        source: ${API_AVATAR_DIR:-./.docker/api/avatar}
+        target: /app/avatar
+      - type: bind
+        source: ${API_CHAT_FILES_DIR:-./.docker/api/chat-files}
+        target: /app/chat-files
     networks:
       - chat
 
@@ -84,6 +90,8 @@ services:
     image: ${WEB_IMAGE:-foreverlove-chat-web}:${IMAGE_TAG:-local}
     container_name: ${WEB_CONTAINER:-foreverlove-chat-web}
     restart: unless-stopped
+    environment:
+      API_PROXY_TARGET: ${API_PROXY_TARGET:-http://api:17101}
     depends_on:
       - api
     ports:
