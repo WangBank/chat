@@ -1430,6 +1430,7 @@ namespace VideoCallAPI.Controllers
                 var duration = messageDto.duration;
                 if (duration.HasValue && (duration.Value < 0 || duration.Value > 3600))
                     throw new ArgumentException("消息时长不合法");
+                var replySnapshot = await GetGroupReplySnapshotAsync(groupId, messageDto.reply_to_message_id);
                 var message = new GroupChatMessage
                 {
                     group_id = groupId,
@@ -1439,6 +1440,11 @@ namespace VideoCallAPI.Controllers
                     file_path = filePath,
                     file_size = messageDto.file_size,
                     duration = duration,
+                    reply_to_message_id = replySnapshot?.id,
+                    reply_to_sender_name = replySnapshot?.sender_name,
+                    reply_to_content = replySnapshot?.content,
+                    reply_to_type = replySnapshot?.type,
+                    reply_to_file_path = replySnapshot?.file_path,
                     timestamp = now,
                     created_at = now
                 };
@@ -1520,8 +1526,88 @@ namespace VideoCallAPI.Controllers
                 file_path = message.file_path,
                 file_size = message.file_size,
                 duration = message.duration,
+                reply_to_message_id = message.reply_to_message_id,
+                reply_to = CreateReplySnapshot(
+                    message.reply_to_message_id,
+                    message.reply_to_sender_name,
+                    message.reply_to_content,
+                    message.reply_to_type,
+                    message.reply_to_file_path),
                 created_at = message.created_at,
                 sender = MapToUserResponse(message.sender)
+            };
+        }
+
+        private async Task<ReplyMessageSnapshotDto?> GetGroupReplySnapshotAsync(int groupId, int? replyToMessageId)
+        {
+            if (!replyToMessageId.HasValue)
+                return null;
+
+            var replyMessage = await _context.GroupChatMessages
+                .Include(m => m.sender)
+                .FirstOrDefaultAsync(m => m.id == replyToMessageId.Value && m.group_id == groupId);
+
+            if (replyMessage == null)
+                throw new ArgumentException("引用消息不存在");
+
+            return new ReplyMessageSnapshotDto
+            {
+                id = replyMessage.id,
+                sender_name = GetDisplayName(replyMessage.sender),
+                content = BuildReplyPreview(replyMessage.content, replyMessage.type),
+                type = replyMessage.type,
+                file_path = replyMessage.file_path
+            };
+        }
+
+        private static ReplyMessageSnapshotDto? CreateReplySnapshot(
+            int? id,
+            string? senderName,
+            string? content,
+            MessageType? type,
+            string? filePath)
+        {
+            if (!id.HasValue || string.IsNullOrWhiteSpace(senderName) || string.IsNullOrWhiteSpace(content))
+                return null;
+
+            return new ReplyMessageSnapshotDto
+            {
+                id = id,
+                sender_name = senderName,
+                content = content,
+                type = type ?? MessageType.Text,
+                file_path = filePath
+            };
+        }
+
+        private static string BuildReplyPreview(string? content, MessageType type)
+        {
+            var text = content?.Trim() ?? string.Empty;
+            var value = type switch
+            {
+                MessageType.Image => "[图片]",
+                MessageType.Video => "[视频]",
+                MessageType.Audio => string.IsNullOrWhiteSpace(text)
+                    ? GetMessageTypeLabel(type)
+                    : text.StartsWith("[语音]") ? text : $"[语音] {text}",
+                MessageType.File => string.IsNullOrWhiteSpace(text)
+                    ? GetMessageTypeLabel(type)
+                    : text.StartsWith("[文件]") ? text : $"[文件] {text}",
+                MessageType.Text => string.IsNullOrWhiteSpace(text) ? GetMessageTypeLabel(type) : text,
+                _ => string.IsNullOrWhiteSpace(text) ? GetMessageTypeLabel(type) : text
+            };
+            return value.Length > 300 ? value[..300] : value;
+        }
+
+        private static string GetMessageTypeLabel(MessageType type)
+        {
+            return type switch
+            {
+                MessageType.Image => "[图片]",
+                MessageType.Video => "[视频]",
+                MessageType.Audio => "[语音]",
+                MessageType.File => "[文件]",
+                _ => "[消息]"
             };
         }
 

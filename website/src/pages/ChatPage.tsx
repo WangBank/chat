@@ -22,6 +22,7 @@ import {
   BellOutlined,
   CheckOutlined,
   ClockCircleOutlined,
+  CloseOutlined,
   CloudOutlined,
   CopyOutlined,
   DeleteOutlined,
@@ -38,6 +39,7 @@ import {
   PhoneOutlined,
   PictureOutlined,
   PlusOutlined,
+  RollbackOutlined,
   ScissorOutlined,
   SearchOutlined,
   SendOutlined,
@@ -61,6 +63,7 @@ import {
   type ChatGroupApiResponse,
   type FavoriteItemApiResponse,
   type GroupMessageApiResponse,
+  type ReplyMessageSnapshotResponse,
 } from '../services/api.service';
 import { CallType } from '../services/webrtc.service';
 import { signalRService } from '../services/signalr.service';
@@ -165,6 +168,8 @@ interface LocalGroupMessage {
   filePath?: string;
   fileSize?: number;
   duration?: number;
+  replyToMessageId?: number;
+  replyTo?: ReplyMessageSnapshotResponse;
   createdAt: string;
 }
 
@@ -201,6 +206,8 @@ interface GroupMessageSendDraft {
   file_path?: string;
   file_size?: number;
   duration?: number;
+  reply_to_message_id?: number;
+  reply_to?: ReplyMessageSnapshotResponse;
 }
 
 interface ForwardMessagePayload {
@@ -210,6 +217,13 @@ interface ForwardMessagePayload {
   file_size?: number;
   duration?: number;
   preview: string;
+}
+
+interface ReplyDraft {
+  kind: ChatKind;
+  messageId?: number;
+  groupMessageId?: string;
+  snapshot: ReplyMessageSnapshotResponse;
 }
 
 interface UserSummary {
@@ -771,6 +785,16 @@ function getForwardPreview(payload: Pick<ForwardMessagePayload, 'content' | 'typ
   return payload.content;
 }
 
+function getReplyPreview(payload: { content?: string; type?: number | string; file_path?: string }) {
+  const normalizedType = normalizeMessageType(payload.type);
+  const content = (payload.content || '').trim();
+  if (normalizedType === 'image') return content.startsWith('[图片]') ? content : '[图片]';
+  if (normalizedType === 'video') return content.startsWith('[视频]') ? content : '[视频]';
+  if (normalizedType === 'audio') return content.startsWith('[语音]') ? content : content ? `[语音] ${content}` : '[语音]';
+  if (normalizedType === 'file') return content.startsWith('[文件]') ? content : content ? `[文件] ${content}` : '[文件]';
+  return content || '[消息]';
+}
+
 function isImageMessage(msg: { type?: number | string }) {
   return normalizeMessageType(msg.type) === 'image';
 }
@@ -1048,6 +1072,8 @@ function mapApiGroupMessage(message: GroupMessageApiResponse): LocalGroupMessage
     filePath: message.file_path,
     fileSize: message.file_size,
     duration: message.duration,
+    replyToMessageId: message.reply_to_message_id,
+    replyTo: message.reply_to,
     createdAt: message.created_at || message.timestamp || new Date().toISOString(),
   };
 }
@@ -1099,6 +1125,7 @@ const ChatPage = observer(() => {
   const [shareMode, setShareMode] = useState<ShareMode>('share');
   const [sharePayload, setSharePayload] = useState('');
   const [forwardPayload, setForwardPayload] = useState<ForwardMessagePayload | null>(null);
+  const [replyDraft, setReplyDraft] = useState<ReplyDraft | null>(null);
   const [shareSearchText, setShareSearchText] = useState('');
   const [shareNote, setShareNote] = useState('');
   const [selectedShareTargetIds, setSelectedShareTargetIds] = useState<string[]>([]);
@@ -1325,6 +1352,11 @@ const ChatPage = observer(() => {
   const currentUserName = authStore.user?.display_name || authStore.user?.username || '我的账号';
   const currentUsername = normalizeUsername(authStore.user?.username);
   const currentSignature = getDisplaySignature(authStore.user);
+  const currentContactId = chatStore.currentContact?.id;
+
+  useEffect(() => {
+    setReplyDraft(null);
+  }, [activeChatKind, activeGroupId, currentContactId]);
 
   useEffect(() => {
     const nextContactGroupAssignments = readLocalJson<Record<string, string>>(
@@ -1862,6 +1894,8 @@ const ChatPage = observer(() => {
     filePath: draft.file_path,
     fileSize: draft.file_size,
     duration: draft.duration,
+    replyToMessageId: draft.reply_to_message_id,
+    replyTo: draft.reply_to,
     createdAt: new Date().toISOString(),
   });
 
@@ -1882,6 +1916,7 @@ const ChatPage = observer(() => {
           file_path: draft.file_path,
           file_size: draft.file_size,
           duration: draft.duration,
+          reply_to_message_id: draft.reply_to_message_id,
         });
 
         if (!response.success || !response.data) {
@@ -1919,10 +1954,14 @@ const ChatPage = observer(() => {
     const text = messageText.trim();
     if (!text || !chatStore.currentContact) return;
 
-    const result = await chatStore.sendMessage(chatStore.currentContact.contact_user.id, text);
+    const activeReply = replyDraft?.kind === 'contact' ? replyDraft : null;
+    const result = await chatStore.sendMessage(chatStore.currentContact.contact_user.id, text, {
+      reply_to_message_id: activeReply?.messageId,
+    });
     if (result.success) {
       setMessageText('');
       setEmojiOpen(false);
+      if (activeReply) setReplyDraft(null);
       void chatStore.loadContacts();
     } else {
       message.error(result.message || '发送失败');
@@ -1956,6 +1995,12 @@ const ChatPage = observer(() => {
       const content = options?.content || uploadResponse.data.file_name || file.name;
       const filePath = uploadResponse.data.file_path;
       const fileSize = Number(uploadResponse.data.file_size || file.size);
+      const attachmentReply =
+        target.kind === 'group' && replyDraft?.kind === 'group' && target.group?.id === activeGroupId
+          ? replyDraft
+          : target.kind === 'contact' && replyDraft?.kind === 'contact' && target.contact?.id === currentContactId
+            ? replyDraft
+            : null;
       let result: { success: boolean; message?: string };
 
       if (target.kind === 'group' && target.group) {
@@ -1965,9 +2010,12 @@ const ChatPage = observer(() => {
           file_path: filePath,
           file_size: fileSize,
           duration: options?.duration,
+          reply_to_message_id: attachmentReply?.messageId,
+          reply_to: attachmentReply?.snapshot,
         });
         if (sent) {
           message.success(options?.successText || (type === MESSAGE_TYPES.Image ? '图片已发送' : '文件已发送'));
+          if (attachmentReply) setReplyDraft(null);
         }
         return;
       } else if (target.contact && target.contact.id !== chatStore.currentContact?.id) {
@@ -1978,6 +2026,7 @@ const ChatPage = observer(() => {
           file_path: filePath,
           file_size: fileSize,
           duration: options?.duration,
+          reply_to_message_id: attachmentReply?.messageId,
         });
         result = { success: response.success, message: response.message };
       } else if (target.contact) {
@@ -1986,6 +2035,7 @@ const ChatPage = observer(() => {
           file_path: filePath,
           file_size: fileSize,
           duration: options?.duration,
+          reply_to_message_id: attachmentReply?.messageId,
         });
       } else {
         result = { success: false, message: '请先选择一个会话' };
@@ -1993,6 +2043,7 @@ const ChatPage = observer(() => {
 
       if (result.success) {
         message.success(options?.successText || (type === MESSAGE_TYPES.Image ? '图片已发送' : '文件已发送'));
+        if (attachmentReply) setReplyDraft(null);
         void chatStore.loadContacts();
       } else {
         message.error(result.message || '发送失败');
@@ -3157,13 +3208,17 @@ const ChatPage = observer(() => {
     const content = groupMessageText.trim();
     if (!content) return;
 
+    const activeReply = replyDraft?.kind === 'group' ? replyDraft : null;
     const sent = await sendGroupMessagePayload(activeGroup, {
       content,
       type: MESSAGE_TYPES.Text,
+      reply_to_message_id: activeReply?.messageId,
+      reply_to: activeReply?.snapshot,
     });
     if (sent) {
       setGroupMessageText('');
       setEmojiOpen(false);
+      if (activeReply) setReplyDraft(null);
     }
   };
 
@@ -3343,6 +3398,60 @@ const ChatPage = observer(() => {
       duration: msg.duration,
       preview: getForwardPreview({ content, type, file_path: msg.filePath }),
     });
+  };
+
+  const openReplyFromMessage = (msg: ChatMessage) => {
+    const isMine = isMessageFromCurrentUser(msg, currentUserId);
+    setReplyDraft({
+      kind: 'contact',
+      messageId: msg.id,
+      snapshot: {
+        id: msg.id,
+        sender_name: isMine ? currentUserName : getContactName(chatStore.currentContact),
+        content: getReplyPreview({ content: msg.content, type: msg.type, file_path: msg.file_path }),
+        type: getMessageTypeValue(msg.type),
+        file_path: msg.file_path,
+      },
+    });
+    setEmojiOpen(false);
+  };
+
+  const openReplyFromGroupMessage = (msg: LocalGroupMessage) => {
+    const numericMessageId = isBackendId(msg.id) ? Number(msg.id) : undefined;
+    setReplyDraft({
+      kind: 'group',
+      messageId: numericMessageId,
+      groupMessageId: msg.id,
+      snapshot: {
+        id: numericMessageId,
+        sender_name: msg.senderId === currentUserId ? currentUserName : msg.senderName,
+        content: getReplyPreview({ content: msg.content, type: msg.type, file_path: msg.filePath }),
+        type: getMessageTypeValue(msg.type),
+        file_path: msg.filePath,
+      },
+    });
+    setEmojiOpen(false);
+  };
+
+  const renderReplyCard = (
+    snapshot?: ReplyMessageSnapshotResponse | null,
+    options?: { composer?: boolean; onClose?: () => void }
+  ) => {
+    if (!snapshot) return null;
+
+    return (
+      <div className={`message-reply-card ${options?.composer ? 'composer-reply-card' : ''}`}>
+        <div>
+          <strong>{snapshot.sender_name || '未知用户'}</strong>
+          <span>{getReplyPreview(snapshot)}</span>
+        </div>
+        {options?.onClose && (
+          <button type="button" aria-label="取消引用" onClick={options.onClose}>
+            <CloseOutlined />
+          </button>
+        )}
+      </div>
+    );
   };
 
   const toggleShareTarget = (targetId: string) => {
@@ -3591,6 +3700,11 @@ const ChatPage = observer(() => {
           label: '转发',
         },
         {
+          key: 'reply',
+          icon: <RollbackOutlined />,
+          label: '引用',
+        },
+        {
           key: 'favorite',
           icon: <HeartOutlined />,
           label: '收藏',
@@ -3601,6 +3715,7 @@ const ChatPage = observer(() => {
           void copyMessageContent(shareContent);
         }
         if (key === 'forward') openForwardFromMessage(msg);
+        if (key === 'reply') openReplyFromMessage(msg);
         if (key === 'favorite') void addFavoriteFromMessage(msg);
       },
     };
@@ -3611,7 +3726,8 @@ const ChatPage = observer(() => {
         <div className={`qq-message ${isMine ? 'sent' : 'received'}`}>
           {!isMine && renderAvatar(chatStore.currentContact, 36)}
           <Dropdown trigger={['contextMenu']} menu={contextMenu} overlayClassName="message-context-menu">
-            <div className={`qq-bubble ${isMediaBubble ? 'media-bubble' : ''}`}>
+            <div className={`qq-bubble ${isMediaBubble ? 'media-bubble' : ''} ${msg.reply_to ? 'has-reply' : ''}`}>
+              {renderReplyCard(msg.reply_to)}
               {isAudioMessage(msg) ? (
                 <button
                   type="button"
@@ -3650,6 +3766,9 @@ const ChatPage = observer(() => {
                 </button>
                 <button type="button" onClick={() => openForwardFromMessage(msg)}>
                   转发
+                </button>
+                <button type="button" onClick={() => openReplyFromMessage(msg)}>
+                  引用
                 </button>
               </div>
             </div>
@@ -4617,6 +4736,11 @@ const ChatPage = observer(() => {
           label: '转发',
         },
         {
+          key: 'reply',
+          icon: <RollbackOutlined />,
+          label: '引用',
+        },
+        {
           key: 'favorite',
           icon: <HeartOutlined />,
           label: '收藏',
@@ -4627,6 +4751,7 @@ const ChatPage = observer(() => {
           void copyMessageContent(shareContent);
         }
         if (key === 'forward') openForwardFromGroupMessage(msg);
+        if (key === 'reply') openReplyFromGroupMessage(msg);
         if (key === 'favorite') void addFavoriteFromGroupMessage(msg);
       },
     };
@@ -4637,8 +4762,9 @@ const ChatPage = observer(() => {
         <div className={`qq-message ${isMine ? 'sent' : 'received'}`}>
           {!isMine && renderUserAvatar(sender, 36)}
           <Dropdown trigger={['contextMenu']} menu={contextMenu} overlayClassName="message-context-menu">
-            <div className={`qq-bubble ${isMediaBubble ? 'media-bubble' : ''}`}>
+            <div className={`qq-bubble ${isMediaBubble ? 'media-bubble' : ''} ${msg.replyTo ? 'has-reply' : ''}`}>
               {!isMine && <div className="group-message-sender">{msg.senderName}</div>}
+              {renderReplyCard(msg.replyTo)}
               {messageType === 'audio' ? (
                 <button
                   type="button"
@@ -4677,6 +4803,9 @@ const ChatPage = observer(() => {
                 </button>
                 <button type="button" onClick={() => openForwardFromGroupMessage(msg)}>
                   转发
+                </button>
+                <button type="button" onClick={() => openReplyFromGroupMessage(msg)}>
+                  引用
                 </button>
               </div>
             </div>
@@ -4829,6 +4958,8 @@ const ChatPage = observer(() => {
                   </Button>
                 </div>
               )}
+              {replyDraft?.kind === 'group' &&
+                renderReplyCard(replyDraft.snapshot, { composer: true, onClose: () => setReplyDraft(null) })}
               <div className="composer-input">
                 <TextArea
                   value={groupMessageText}
@@ -5027,6 +5158,8 @@ const ChatPage = observer(() => {
               </Button>
             </div>
           )}
+          {replyDraft?.kind === 'contact' &&
+            renderReplyCard(replyDraft.snapshot, { composer: true, onClose: () => setReplyDraft(null) })}
           <div className="composer-input">
             <TextArea
               value={messageText}

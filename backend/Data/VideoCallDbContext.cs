@@ -157,12 +157,17 @@ namespace VideoCallAPI.Data
                 // 为消息查询创建索引
                 entity.HasIndex(e => new { e.sender_id, e.receiver_id, e.timestamp });
                 entity.HasIndex(e => new { e.receiver_id, e.sender_id, e.timestamp });
+                entity.HasIndex(e => e.reply_to_message_id);
             });
 
             // 枚举配置
             modelBuilder.Entity<ChatMessage>()
                 .Property(e => e.type)
                 .HasConversion<int>();
+
+            modelBuilder.Entity<ChatMessage>()
+                .Property(e => e.reply_to_type)
+                .HasConversion<int?>();
 
             // ChatGroup 表配置
             modelBuilder.Entity<ChatGroup>(entity =>
@@ -206,11 +211,16 @@ namespace VideoCallAPI.Data
                     .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasIndex(e => new { e.group_id, e.created_at });
+                entity.HasIndex(e => e.reply_to_message_id);
             });
 
             modelBuilder.Entity<GroupChatMessage>()
                 .Property(e => e.type)
                 .HasConversion<int>();
+
+            modelBuilder.Entity<GroupChatMessage>()
+                .Property(e => e.reply_to_type)
+                .HasConversion<int?>();
 
             // FavoriteItem 表配置
             modelBuilder.Entity<FavoriteItem>(entity =>

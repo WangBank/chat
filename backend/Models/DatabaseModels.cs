@@ -202,6 +202,19 @@ namespace VideoCallAPI.Models
         public int? file_size { get; set; } // 文件大小
         
         public int? duration { get; set; } // 语音/视频时长（秒）
+
+        public int? reply_to_message_id { get; set; }
+
+        [StringLength(100)]
+        public string? reply_to_sender_name { get; set; }
+
+        [StringLength(300)]
+        public string? reply_to_content { get; set; }
+
+        public MessageType? reply_to_type { get; set; }
+
+        [StringLength(255)]
+        public string? reply_to_file_path { get; set; }
         
         public DateTime created_at { get; set; } = DateTime.UtcNow;
         
@@ -301,6 +314,19 @@ namespace VideoCallAPI.Models
         public int? file_size { get; set; }
 
         public int? duration { get; set; }
+
+        public int? reply_to_message_id { get; set; }
+
+        [StringLength(100)]
+        public string? reply_to_sender_name { get; set; }
+
+        [StringLength(300)]
+        public string? reply_to_content { get; set; }
+
+        public MessageType? reply_to_type { get; set; }
+
+        [StringLength(255)]
+        public string? reply_to_file_path { get; set; }
 
         public DateTime created_at { get; set; } = DateTime.UtcNow;
 

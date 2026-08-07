@@ -87,6 +87,14 @@ export interface ContactApiResponse {
   unread_count: number;
 }
 
+export interface ReplyMessageSnapshotResponse {
+  id?: number;
+  sender_name: string;
+  content: string;
+  type?: number | string;
+  file_path?: string;
+}
+
 export interface ChatMessageApiResponse {
   id: number;
   sender_id: number;
@@ -98,6 +106,8 @@ export interface ChatMessageApiResponse {
   file_path?: string;
   file_size?: number;
   duration?: number;
+  reply_to_message_id?: number;
+  reply_to?: ReplyMessageSnapshotResponse;
   created_at: string;
   sender: UserApiResponse;
   receiver: UserApiResponse;
@@ -136,6 +146,8 @@ export interface GroupMessageApiResponse {
   file_path?: string;
   file_size?: number;
   duration?: number;
+  reply_to_message_id?: number;
+  reply_to?: ReplyMessageSnapshotResponse;
   created_at: string;
   sender?: UserSummaryResponse;
 }
@@ -332,6 +344,7 @@ class ApiService {
     file_path?: string;
     file_size?: number;
     duration?: number;
+    reply_to_message_id?: number;
   }) {
     const response = await this.api.post<ApiResponse<ChatMessageApiResponse>>('/api/chat/send', data);
     return response.data;
@@ -388,6 +401,7 @@ class ApiService {
     file_path?: string;
     file_size?: number;
     duration?: number;
+    reply_to_message_id?: number;
   }) {
     const response = await this.api.post<ApiResponse<GroupMessageApiResponse>>(`/api/groups/${groupId}/messages`, data);
     return response.data;

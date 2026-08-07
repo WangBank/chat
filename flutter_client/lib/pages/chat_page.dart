@@ -49,6 +49,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _isSending = false;
   bool _isUploading = false;
   bool _showEmojiPanel = false;
+  ChatMessage? _replyingToMessage;
   late Contact _contact;
   OnUserOnlineStatusChangedCallback? _onlineStatusListener;
   String? _lastInsertedEmoji;
@@ -470,17 +471,22 @@ class _ChatPageState extends State<ChatPage> {
       final content = preferredName.trim().isNotEmpty
           ? preferredName.trim()
           : upload.fileName;
+      final replyToMessageId = _replyingToMessage == null
+          ? null
+          : int.tryParse(_replyingToMessage!.id);
       final newMessage = await widget.apiService.sendMessage(
         _contact.contactUser.id,
         content,
         messageType,
         filePath: upload.filePath,
         fileSize: upload.fileSize,
+        replyToMessageId: replyToMessageId,
       );
 
       if (!mounted) return;
       setState(() {
         _upsertMessage(newMessage);
+        _replyingToMessage = null;
         _isUploading = false;
       });
       _scrollToBottom();
@@ -525,6 +531,11 @@ class _ChatPageState extends State<ChatPage> {
               title: const Text('转发'),
               onTap: () => Navigator.of(context).pop('forward'),
             ),
+            ListTile(
+              leading: const Icon(Icons.reply_outlined),
+              title: const Text('引用'),
+              onTap: () => Navigator.of(context).pop('reply'),
+            ),
           ],
         ),
       ),
@@ -534,6 +545,8 @@ class _ChatPageState extends State<ChatPage> {
       await _copyMessageContent(message);
     } else if (selectedAction == 'forward') {
       await _showForwardDialog(message);
+    } else if (selectedAction == 'reply') {
+      _startReply(message);
     }
   }
 
@@ -556,6 +569,57 @@ class _ChatPageState extends State<ChatPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('已复制')));
+  }
+
+  void _startReply(ChatMessage message) {
+    setState(() {
+      _replyingToMessage = message;
+      _showEmojiPanel = false;
+    });
+  }
+
+  ReplyMessageSnapshot _replySnapshotForMessage(ChatMessage message) {
+    return ReplyMessageSnapshot(
+      id: int.tryParse(message.id),
+      senderName: _messageSenderName(message),
+      content: _replyPreviewText(message.content, message.type),
+      type: message.type,
+      filePath: message.filePath,
+    );
+  }
+
+  String _messageSenderName(ChatMessage message) {
+    final currentUser = widget.apiService.currentUser;
+    if (message.senderId == currentUser?.id) {
+      return currentUser?.display_name?.isNotEmpty == true
+          ? currentUser!.display_name!
+          : currentUser?.username ?? '我';
+    }
+    return _displayName();
+  }
+
+  String _replyPreviewText(String content, MessageType type) {
+    final value = content.trim();
+    switch (type) {
+      case MessageType.image:
+        return value.startsWith('[图片]') ? value : '[图片]';
+      case MessageType.video:
+        return value.startsWith('[视频]') ? value : '[视频]';
+      case MessageType.audio:
+        return value.startsWith('[语音]')
+            ? value
+            : value.isNotEmpty
+                ? '[语音] $value'
+                : '[语音]';
+      case MessageType.file:
+        return value.startsWith('[文件]')
+            ? value
+            : value.isNotEmpty
+                ? '[文件] $value'
+                : '[文件]';
+      case MessageType.text:
+        return value.isNotEmpty ? value : '[消息]';
+    }
   }
 
   Future<void> _showForwardDialog(ChatMessage originalMessage) async {
@@ -880,7 +944,8 @@ class _ChatPageState extends State<ChatPage> {
     final message = _messageController.text.trim();
     if (message.isEmpty) return;
 
-    final sendSignature = '${_contact.contactUser.id}|text|$message';
+    final sendSignature =
+        '${_contact.contactUser.id}|text|${_replyingToMessage?.id ?? ''}|$message';
     final now = DateTime.now();
     final lastSendStartedAt = _lastSendStartedAt;
     if (_lastSendSignature == sendSignature &&
@@ -898,10 +963,14 @@ class _ChatPageState extends State<ChatPage> {
 
     try {
       print('📤 发送消息: $message 给用户: ${_contact.contactUser.id}');
+      final replyToMessageId = _replyingToMessage == null
+          ? null
+          : int.tryParse(_replyingToMessage!.id);
       final newMessage = await widget.apiService.sendMessage(
         _contact.contactUser.id,
         message,
         MessageType.text,
+        replyToMessageId: replyToMessageId,
       );
 
       print(
@@ -911,6 +980,7 @@ class _ChatPageState extends State<ChatPage> {
       if (!mounted) return;
       setState(() {
         _upsertMessage(newMessage);
+        _replyingToMessage = null;
         _isSending = false;
       });
 
@@ -1013,6 +1083,74 @@ class _ChatPageState extends State<ChatPage> {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
+      ),
+    );
+  }
+
+  Widget _buildReplyCard(
+    ReplyMessageSnapshot snapshot, {
+    bool composer = false,
+    VoidCallback? onClose,
+  }) {
+    return Container(
+      width: double.infinity,
+      margin: EdgeInsets.only(bottom: composer ? 8 : 7),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: composer
+            ? const Color(0xFFF3F7FA)
+            : Colors.white.withValues(alpha: 0.54),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 34,
+            decoration: BoxDecoration(
+              color: _qqBlue,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  snapshot.senderName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF176B9F),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _replyPreviewText(snapshot.content, snapshot.type),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(color: Color(0xFF5F6975), fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          if (onClose != null)
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: IconButton(
+                tooltip: '取消引用',
+                onPressed: onClose,
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.close, size: 16),
+                color: _qqMuted,
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1168,6 +1306,16 @@ class _ChatPageState extends State<ChatPage> {
                       const Padding(
                         padding: EdgeInsets.only(bottom: 8),
                         child: LinearProgressIndicator(minHeight: 2),
+                      ),
+                    if (_replyingToMessage != null)
+                      _buildReplyCard(
+                        _replySnapshotForMessage(_replyingToMessage!),
+                        composer: true,
+                        onClose: () {
+                          setState(() {
+                            _replyingToMessage = null;
+                          });
+                        },
                       ),
                     Row(
                       children: [
@@ -1358,6 +1506,8 @@ class _ChatPageState extends State<ChatPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (message.replyTo != null)
+                          _buildReplyCard(message.replyTo!),
                         _buildMessageContent(message, isMe),
                         const SizedBox(height: 5),
                         Text(

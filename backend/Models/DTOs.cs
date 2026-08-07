@@ -253,6 +253,17 @@ namespace VideoCallAPI.Models.DTOs
         public int? file_size { get; set; }
 
         public int? duration { get; set; }
+
+        public int? reply_to_message_id { get; set; }
+    }
+
+    public class ReplyMessageSnapshotDto
+    {
+        public int? id { get; set; }
+        public string sender_name { get; set; } = string.Empty;
+        public string content { get; set; } = string.Empty;
+        public MessageType type { get; set; } = MessageType.Text;
+        public string? file_path { get; set; }
     }
 
     public class ChatUploadResponseDto
@@ -281,6 +292,8 @@ namespace VideoCallAPI.Models.DTOs
         public string? file_path { get; set; }
         public int? file_size { get; set; }
         public int? duration { get; set; }
+        public int? reply_to_message_id { get; set; }
+        public ReplyMessageSnapshotDto? reply_to { get; set; }
         public DateTime created_at { get; set; }
         public UserResponseDto sender { get; set; } = null!;
         public UserResponseDto receiver { get; set; } = null!;
@@ -342,6 +355,8 @@ namespace VideoCallAPI.Models.DTOs
         public int? file_size { get; set; }
 
         public int? duration { get; set; }
+
+        public int? reply_to_message_id { get; set; }
     }
 
     public class GroupChatMessageDto
@@ -356,6 +371,8 @@ namespace VideoCallAPI.Models.DTOs
         public string? file_path { get; set; }
         public int? file_size { get; set; }
         public int? duration { get; set; }
+        public int? reply_to_message_id { get; set; }
+        public ReplyMessageSnapshotDto? reply_to { get; set; }
         public DateTime created_at { get; set; }
         public UserResponseDto sender { get; set; } = null!;
     }

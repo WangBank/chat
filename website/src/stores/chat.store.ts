@@ -1,9 +1,10 @@
 import { makeAutoObservable } from 'mobx';
-import { apiService, type UserSummaryResponse } from '../services/api.service';
+import { apiService, type ReplyMessageSnapshotResponse, type UserSummaryResponse } from '../services/api.service';
 import { signalRService } from '../services/signalr.service';
 import { authStore } from './auth.store';
 
 type ChatUserSummary = UserSummaryResponse & { id: number };
+export type ReplyMessageSnapshot = ReplyMessageSnapshotResponse;
 
 export interface ChatMessage {
   id: number;
@@ -16,6 +17,8 @@ export interface ChatMessage {
   file_path?: string;
   file_size?: number;
   duration?: number;
+  reply_to_message_id?: number;
+  reply_to?: ReplyMessageSnapshot;
   created_at: string;
   sender: ChatUserSummary;
   receiver: ChatUserSummary;
@@ -271,7 +274,13 @@ class ChatStore {
   async sendMessage(
     receiverId: number,
     content: string,
-    options?: { type?: number; file_path?: string; file_size?: number; duration?: number }
+    options?: {
+      type?: number;
+      file_path?: string;
+      file_size?: number;
+      duration?: number;
+      reply_to_message_id?: number;
+    }
   ) {
     try {
       const response = await apiService.sendMessage({
@@ -281,6 +290,7 @@ class ChatStore {
         file_path: options?.file_path,
         file_size: options?.file_size,
         duration: options?.duration,
+        reply_to_message_id: options?.reply_to_message_id,
       });
       if (response.success && response.data) {
         const sentMessage = response.data;
