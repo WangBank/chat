@@ -90,6 +90,24 @@ namespace VideoCallAPI.Models.DTOs
 
         [StringLength(500, ErrorMessage = "QQ头像地址不能超过500个字符")]
         public string? avatar_url { get; set; }
+
+        [StringLength(10, ErrorMessage = "QQ性别不能超过10个字符")]
+        public string? gender { get; set; }
+
+        [StringLength(50, ErrorMessage = "QQ省份不能超过50个字符")]
+        public string? province { get; set; }
+
+        [StringLength(50, ErrorMessage = "QQ国家不能超过50个字符")]
+        public string? country { get; set; }
+
+        [StringLength(50, ErrorMessage = "QQ城市不能超过50个字符")]
+        public string? city { get; set; }
+
+        [StringLength(10, ErrorMessage = "QQ生日年份不能超过10个字符")]
+        public string? year { get; set; }
+
+        [StringLength(100, ErrorMessage = "QQ个性签名不能超过100个字符")]
+        public string? signature { get; set; }
     }
 
     public class QQBindingResponseDto

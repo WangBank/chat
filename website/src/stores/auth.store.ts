@@ -102,6 +102,13 @@ class AuthStore {
       const response = await apiService.qqDevLogin({
         open_id: 'dev_qq_web',
         nickname: 'QQ测试用户',
+        avatar_url: 'https://q.qlogo.cn/qqapp/101735715/dev_qq_web/100',
+        gender: '男',
+        country: '中国',
+        province: '广东',
+        city: '深圳',
+        year: '2000',
+        signature: 'QQ测试资料',
       });
       if (response.success && response.data) {
         await this.applyAuthResponse(response.data);

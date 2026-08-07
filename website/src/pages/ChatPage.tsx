@@ -3978,6 +3978,7 @@ const ChatPage = observer(() => {
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无会话" />
             ) : (
               conversationRows.map((row) => {
+                const isContactOnline = row.kind === 'contact' && Boolean(row.contact.contact_user?.is_online);
                 const content = (
                   <button
                     type="button"
@@ -3990,7 +3991,15 @@ const ChatPage = observer(() => {
                     </Badge>
                     <span className="conversation-copy">
                       <span className="conversation-title-row">
-                        <strong>{row.title}</strong>
+                        <span className="conversation-title-main">
+                          <strong>{row.title}</strong>
+                          {row.kind === 'contact' && (
+                            <span className={`conversation-status ${isContactOnline ? 'online' : 'offline'}`}>
+                              <i aria-hidden="true" />
+                              {isContactOnline ? '在线' : '离线'}
+                            </span>
+                          )}
+                        </span>
                         <time>{row.time}</time>
                       </span>
                       <span className="conversation-preview-row">
@@ -5051,6 +5060,7 @@ const ChatPage = observer(() => {
     const contactMessages = chatStore.messages.filter((msg) =>
       isMessageInContactConversation(msg, currentUserId, contact.contact_user?.id)
     );
+    const isContactOnline = Boolean(contact.contact_user?.is_online);
 
     return (
       <div className="chat-panel">
@@ -5063,7 +5073,10 @@ const ChatPage = observer(() => {
           />
           <div className="chat-title">
             <strong>{getContactName(contact)}</strong>
-            {contact.contact_user?.is_online && <span />}
+            <span className={`chat-title-status ${isContactOnline ? 'online' : 'offline'}`}>
+              <i aria-hidden="true" />
+              {isContactOnline ? '在线' : '离线'}
+            </span>
           </div>
           <Space size={8}>
             <Tooltip title="语音通话">

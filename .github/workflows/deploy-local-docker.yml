@@ -21,6 +21,11 @@ jobs:
 
     env:
       POSTGRES_PORT: ${{ vars.POSTGRES_PORT || '17132' }}
+      POSTGRES_CONTAINER: ${{ vars.POSTGRES_CONTAINER || 'foreverlove-chat-postgres' }}
+      POSTGRES_BACKUP_ENABLED: ${{ vars.POSTGRES_BACKUP_ENABLED || 'true' }}
+      POSTGRES_BACKUP_DIR: ${{ vars.POSTGRES_BACKUP_DIR }}
+      POSTGRES_BACKUP_RETENTION_DAYS: ${{ vars.POSTGRES_BACKUP_RETENTION_DAYS || '2' }}
+      POSTGRES_BACKUP_MAX_PER_DAY: ${{ vars.POSTGRES_BACKUP_MAX_PER_DAY || '2' }}
       API_PORT: ${{ vars.API_PORT || '17101' }}
       WEB_PORT: ${{ vars.WEB_PORT || '17102' }}
       API_PUBLIC_URL: ${{ vars.API_PUBLIC_URL }}
@@ -84,7 +89,7 @@ jobs:
         run: |
           $api = if ($env:API_PUBLIC_URL) { $env:API_PUBLIC_URL } else { "http://localhost:$env:API_PORT" }
           $web = if ($env:WEB_PUBLIC_URL) { $env:WEB_PUBLIC_URL } else { "http://localhost:$env:WEB_PORT" }
-          @(
+          $summary = @(
             "### Forever Love Chat deployment",
             "",
             "- Version: ``$env:APP_VERSION``",
@@ -93,4 +98,8 @@ jobs:
             "- API: $api",
             "- Flutter API: ``$api/api``",
             "- Flutter SignalR: ``$api/videocallhub``"
-          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          )
+          if ($env:POSTGRES_BACKUP_PATH) {
+            $summary += "- Database backup: ``$env:POSTGRES_BACKUP_PATH``"
+          }
+          $summary | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY

@@ -139,6 +139,7 @@ backend/logs/
 *~
 .sass-cache/
 .temp/
+website/tmp/
 
 # OS generated files
 .DS_Store

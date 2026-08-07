@@ -81,12 +81,39 @@
 }
 
 .qq-login-card.ant-card {
+  position: relative;
   background: #fff;
   border-radius: 0;
 }
 
 .qq-login-card .ant-card-body {
+  position: relative;
   padding: 26px 30px 28px;
+}
+
+.qq-login-loading-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #253140;
+  text-align: center;
+  backdrop-filter: blur(2px);
+}
+
+.qq-login-loading-mask strong {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.qq-login-loading-mask span {
+  color: #7d8794;
+  font-size: 12px;
 }
 
 .qq-login-heading {

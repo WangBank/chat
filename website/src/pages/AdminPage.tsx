@@ -455,41 +455,41 @@ const AdminPage = observer(() => {
                 <Typography variant="h6" sx={{ fontWeight: 900 }}>
                   用户管理
                 </Typography>
-	                <Typography variant="body2" color="text.secondary">
-	                  每 5 秒自动同步在线状态，可新建账号、编辑资料或为普通账号重置密码。
-	                </Typography>
-	              </Box>
-	              <Stack
-	                direction={{ xs: 'column', sm: 'row' }}
-	                spacing={1.25}
-	                sx={{ alignItems: { xs: 'stretch', sm: 'center' } }}
-	              >
-	                <Button
-	                  variant="contained"
-	                  startIcon={<PersonAddAltOutlined />}
-	                  onClick={openCreateUserDialog}
-	                  sx={{ bgcolor: '#12a8f4', boxShadow: 'none', '&:hover': { bgcolor: '#078fdb', boxShadow: 'none' } }}
-	                >
-	                  新建用户
-	                </Button>
-	                <TextField
-	                  value={searchText}
-	                  onChange={(event) => setSearchText(event.target.value)}
-	                  placeholder="搜索用户名、邮箱或昵称"
-	                  size="small"
-	                  sx={{ minWidth: { xs: '100%', md: 320 } }}
-	                  slotProps={{
-	                    input: {
-	                      startAdornment: (
-	                        <InputAdornment position="start">
-	                          <Search fontSize="small" />
-	                        </InputAdornment>
-	                      ),
-	                    },
-	                  }}
-	                />
-	              </Stack>
-	            </Stack>
+                <Typography variant="body2" color="text.secondary">
+                  每 5 秒自动同步在线状态，可新建账号、编辑资料或为普通账号重置密码。
+                </Typography>
+              </Box>
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={1.25}
+                sx={{ alignItems: { xs: 'stretch', md: 'center' }, minWidth: 0 }}
+              >
+                <Button
+                  variant="contained"
+                  startIcon={<PersonAddAltOutlined />}
+                  onClick={openCreateUserDialog}
+                  sx={{ bgcolor: '#12a8f4', boxShadow: 'none', '&:hover': { bgcolor: '#078fdb', boxShadow: 'none' } }}
+                >
+                  新建用户
+                </Button>
+                <TextField
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
+                  placeholder="搜索用户名、邮箱或昵称"
+                  size="small"
+                  sx={{ width: { xs: '100%', md: 320 }, minWidth: 0 }}
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                />
+              </Stack>
+            </Stack>
 
             <Tabs
               value={activeTab}

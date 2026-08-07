@@ -26,9 +26,9 @@ import {
   History,
   Login,
   Message,
-  MobileFriendly,
   Security,
   SupervisorAccount,
+  TabletMac,
   VideoCall,
   Web,
 } from '@mui/icons-material';
@@ -51,7 +51,7 @@ const featureItems = [
   {
     icon: <VideoCall />,
     title: '音视频通话',
-    text: '在聊天和联系人页保留语音、视频通话入口，适合网页端和移动端快速发起沟通。',
+    text: '在聊天和联系人页保留语音、视频通话入口，适合网页端、平板和移动端快速发起沟通。',
   },
   {
     icon: <History />,
@@ -84,10 +84,10 @@ const deviceItems = [
     text: '安装 APK 后可使用移动端聊天、联系人、资料和通话功能。',
   },
   {
-    icon: <MobileFriendly />,
-    name: '移动浏览器',
-    status: '适配',
-    text: '窄屏布局保留登录、资料和核心沟通入口，便于临时访问。',
+    icon: <TabletMac />,
+    name: '平板浏览器',
+    status: '全功能',
+    text: '横屏和竖屏下保持完整网页版能力，聊天、好友、群组、历史记录和资料入口都可直接使用。',
   },
 ];
 
@@ -133,7 +133,7 @@ const HomePage = () => {
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 } }}>
+      <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 3, lg: 4 } }}>
         <Stack spacing={3}>
           <Paper
             sx={{
@@ -144,22 +144,27 @@ const HomePage = () => {
           >
             <Grid container>
               <Grid size={{ xs: 12, md: 7 }}>
-                <Box sx={{ p: { xs: 3, md: 5 } }}>
+                <Box sx={{ p: { xs: 3, sm: 4, lg: 5 } }}>
                   <Chip label="实时通信系统" color="primary" sx={{ mb: 2, fontWeight: 800 }} />
                   <Typography
                     variant="h2"
                     sx={{
                       maxWidth: 680,
-                      fontSize: { xs: 36, md: 54 },
+                      fontSize: { xs: 34, sm: 42, md: 46, lg: 54 },
                       lineHeight: 1.04,
                       fontWeight: 950,
                       letterSpacing: 0,
                       mb: 2,
+                      overflowWrap: 'break-word',
                     }}
                   >
                     Love Chat 通讯系统
                   </Typography>
-                  <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 720, lineHeight: 1.8, mb: 3 }}>
+                  <Typography
+                    variant="body1"
+                    color="text.secondary"
+                    sx={{ maxWidth: 720, lineHeight: 1.8, mb: 3, overflowWrap: 'break-word' }}
+                  >
                     面向网页端和移动端的即时通信应用，覆盖账号登录、聊天、好友、群组、历史记录、个性资料、表情和音视频通话等核心能力。
                   </Typography>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
@@ -176,10 +181,11 @@ const HomePage = () => {
                 <Box
                   sx={{
                     height: '100%',
-                    minHeight: 330,
-                    p: { xs: 2, md: 3 },
+                    minHeight: { xs: 300, sm: 360 },
+                    p: { xs: 2, sm: 2.5, lg: 3 },
                     bgcolor: '#f8fbfd',
                     borderLeft: { md: '1px solid #e5edf3' },
+                    borderTop: { xs: '1px solid #e5edf3', md: 'none' },
                   }}
                 >
                   <Card sx={{ height: '100%', borderRadius: 2, boxShadow: 'none', border: '1px solid #e5edf3' }}>
@@ -230,10 +236,7 @@ const HomePage = () => {
             <Typography variant="h5" sx={{ fontWeight: 950, mb: 0.5 }}>
               系统功能
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              用 MUI 组件重新组织首页信息层级，入口、能力和设备支持保持可扫读。
-            </Typography>
-            <Grid container spacing={2}>
+            <Grid container spacing={2} sx={{ mt: 1.75 }}>
               {featureItems.map((item) => (
                 <Grid size={{ xs: 12, sm: 6, md: 4 }} key={item.title}>
                   <Card sx={{ height: '100%', borderRadius: 2.5, boxShadow: 'none', border: '1px solid #e5edf3' }}>
@@ -253,7 +256,7 @@ const HomePage = () => {
           </Box>
 
           <Paper sx={{ borderRadius: 2.5, overflow: 'hidden' }}>
-            <Box sx={{ p: 2.5, borderBottom: '1px solid #e5edf3' }}>
+            <Box sx={{ p: { xs: 2, sm: 2.5 }, borderBottom: '1px solid #e5edf3' }}>
               <Typography variant="h5" sx={{ fontWeight: 950 }}>
                 支持设备
               </Typography>
@@ -267,7 +270,11 @@ const HomePage = () => {
                   key={item.name}
                   divider={index < deviceItems.length - 1}
                   secondaryAction={<Chip size="small" label={item.status} color={index === 0 ? 'primary' : 'success'} />}
-                  sx={{ py: 1.5, pr: 12 }}
+                  sx={{
+                    py: { xs: 1.5, sm: 2 },
+                    pr: { xs: 11, sm: 14 },
+                    alignItems: 'flex-start',
+                  }}
                 >
                   <ListItemAvatar>
                     <Avatar sx={{ bgcolor: '#e8f6ff', color: '#078fdb' }}>{item.icon}</Avatar>

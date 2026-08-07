@@ -153,10 +153,13 @@ namespace VideoCallAPI.Services
                 GetOptionalJsonString(root, "figureurl_2") ??
                 GetOptionalJsonString(root, "figureurl_1");
             var gender = GetOptionalJsonString(root, "gender");
+            var country = GetOptionalJsonString(root, "country");
             var province = GetOptionalJsonString(root, "province");
             var city = GetOptionalJsonString(root, "city");
+            var year = GetOptionalJsonString(root, "year");
+            var signature = GetOptionalJsonString(root, "signature");
 
-            return new QQProfile(openId, unionId, nickname, avatarUrl, gender, province, city);
+            return new QQProfile(openId, unionId, nickname, avatarUrl, gender, country, province, city, year, signature);
         }
 
         private async Task<User> FindOrCreateQQUserAsync(QQProfile profile)
@@ -215,14 +218,26 @@ namespace VideoCallAPI.Services
             user.qq_avatar_url = NormalizeExternalUrl(profile.AvatarUrl, "QQ头像地址");
             user.qq_bound_at ??= DateTime.UtcNow;
             var qqGender = NormalizeQQGender(profile.Gender);
+            var qqCountry = NormalizeQQProfileField(profile.Country, "QQ国家", 50);
             var qqProvince = NormalizeQQProfileField(profile.Province, "QQ省份", 50);
             var qqCity = NormalizeQQProfileField(profile.City, "QQ城市", 50);
+            var qqBirthday = NormalizeQQBirthYear(profile.Year);
+            var qqSignature = NormalizeQQProfileField(profile.Signature, "QQ个性签名", 100);
 
             if (overwriteLocalProfile || string.IsNullOrWhiteSpace(user.display_name))
                 user.display_name = user.qq_nickname;
 
+            if (ShouldApplyQQProfileField(overwriteLocalProfile, user.signature, qqSignature))
+                user.signature = qqSignature;
+
             if (ShouldApplyQQProfileField(overwriteLocalProfile, user.gender, qqGender))
                 user.gender = qqGender;
+
+            if (ShouldApplyQQProfileField(overwriteLocalProfile, user.birthday, qqBirthday))
+                user.birthday = qqBirthday;
+
+            if (ShouldApplyQQProfileField(overwriteLocalProfile, user.country, qqCountry))
+                user.country = qqCountry;
 
             if (ShouldApplyQQProfileField(overwriteLocalProfile, user.province, qqProvince))
                 user.province = qqProvince;
@@ -245,7 +260,17 @@ namespace VideoCallAPI.Services
             var nickname = _contentSecurity.NormalizeOptionalText(loginDto.nickname, "QQ昵称", 100)
                 ?? "QQ测试用户";
             var avatarUrl = NormalizeExternalUrl(loginDto.avatar_url, "QQ头像地址");
-            return new QQProfile(openId, null, nickname, avatarUrl, null, null, null);
+            return new QQProfile(
+                openId,
+                null,
+                nickname,
+                avatarUrl,
+                loginDto.gender,
+                loginDto.country,
+                loginDto.province,
+                loginDto.city,
+                loginDto.year,
+                loginDto.signature);
         }
 
         private string BuildAuthorizationUrl(string state)
@@ -312,6 +337,15 @@ namespace VideoCallAPI.Services
         private string? NormalizeQQProfileField(string? value, string fieldName, int maxLength)
         {
             return _contentSecurity.NormalizeOptionalText(value, fieldName, maxLength);
+        }
+
+        private string? NormalizeQQBirthYear(string? value)
+        {
+            var normalized = NormalizeQQProfileField(value, "QQ生日年份", 10);
+            if (string.IsNullOrWhiteSpace(normalized))
+                return null;
+
+            return Regex.IsMatch(normalized, @"^\d{4}$") ? normalized : null;
         }
 
         private static bool ShouldApplyQQProfileField(bool overwriteLocalProfile, string? currentValue, string? qqValue)
@@ -455,7 +489,10 @@ namespace VideoCallAPI.Services
             string Nickname,
             string? AvatarUrl,
             string? Gender,
+            string? Country,
             string? Province,
-            string? City);
+            string? City,
+            string? Year,
+            string? Signature);
     }
 }

@@ -109,6 +109,8 @@
 }
 
 .profile-name-button {
+  min-width: 0;
+  max-width: 168px;
   border: 0;
   padding: 0;
   background: transparent;
@@ -118,6 +120,8 @@
   font-size: 16px;
   font-weight: 600;
   line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -128,7 +132,7 @@
 
 .signature-button {
   min-width: 0;
-  max-width: 320px;
+  max-width: clamp(150px, 24vw, 320px);
   border: 0;
   padding: 0;
   background: transparent;
@@ -151,6 +155,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
   margin-left: auto;
   font-size: 13px;
 }
@@ -357,6 +362,7 @@
 }
 
 .conversation-copy,
+.conversation-title-main,
 .conversation-title-row,
 .conversation-preview {
   min-width: 0;
@@ -375,6 +381,13 @@
   gap: 8px;
 }
 
+.conversation-title-main {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  gap: 6px;
+}
+
 .conversation-title-row strong,
 .friend-row strong,
 .group-thread strong {
@@ -389,6 +402,31 @@
   flex: 0 0 auto;
   color: #a5adb7;
   font-size: 12px;
+}
+
+.conversation-status {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 4px;
+  color: #6d7783;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.conversation-status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--qq-online);
+}
+
+.conversation-status.offline {
+  color: var(--qq-muted);
+}
+
+.conversation-status.offline i {
+  background: var(--qq-offline);
 }
 
 .conversation-preview,
@@ -711,11 +749,31 @@
   font-size: 13px;
 }
 
-.chat-title span {
-  width: 10px;
-  height: 10px;
+.chat-title-status {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  color: #4d5965;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.chat-title-status i {
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
   background: var(--qq-online);
+  box-shadow: 0 0 0 2px rgba(32, 214, 122, 0.16);
+}
+
+.chat-title-status.offline {
+  color: var(--qq-muted);
+}
+
+.chat-title-status.offline i {
+  background: var(--qq-offline);
+  box-shadow: none;
 }
 
 .chat-header .ant-btn {
@@ -3997,7 +4055,7 @@ button.mac-dot {
   }
 
   .signature-button {
-    display: none;
+    max-width: clamp(120px, 22vw, 190px);
   }
 
   .qq-bubble {
@@ -4032,21 +4090,49 @@ button.mac-dot {
   }
 
   .contact-manager-window {
-    grid-template-columns: 210px minmax(0, 1fr);
+    grid-template-columns: 190px minmax(0, 1fr);
   }
 
   .contact-manager-main {
-    padding: 34px 22px 24px;
+    padding: 32px 20px 24px;
+  }
+
+  .contact-manager-side {
+    padding-inline: 10px;
+  }
+
+  .contact-manager-header {
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .contact-manager-header h2 {
+    font-size: 20px;
+  }
+
+  .contact-manager-header .ant-input-affix-wrapper {
+    flex-basis: 250px;
+    min-width: 164px;
   }
 
   .contact-manager-table-head,
   .contact-manager-row {
-    grid-template-columns: 28px minmax(150px, 1fr) minmax(110px, 0.8fr) minmax(120px, 0.8fr);
+    grid-template-columns: 24px minmax(86px, 1fr) minmax(70px, 0.8fr) minmax(84px, 0.85fr) minmax(72px, 0.75fr);
+    gap: 6px;
+    padding-inline: 10px;
   }
 
-  .contact-manager-table-head span:last-child,
+  .contact-manager-table-head {
+    font-size: 13px;
+  }
+
+  .manager-note-cell,
   .manager-permission-cell {
-    display: none;
+    font-size: 13px;
+  }
+
+  .contact-manager-row select {
+    font-size: 13px;
   }
 
   .qq-search-tabs {
@@ -4068,11 +4154,58 @@ button.mac-dot {
 
   .group-chat-content {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(178px, 24vh);
   }
 
-  .group-member-panel,
-  .group-detail-panel {
+  .group-member-panel {
     display: none;
+  }
+
+  .group-detail-panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-top: 1px solid var(--qq-border);
+    border-left: 0;
+    padding: 10px;
+  }
+
+  .group-announcement-card {
+    grid-column: 1 / -1;
+    min-width: 0;
+    margin: 0;
+    padding: 10px;
+  }
+
+  .group-side-section {
+    min-width: 0;
+    margin-top: 0;
+    padding: 8px;
+  }
+
+  .group-side-head {
+    min-height: 28px;
+  }
+
+  .group-side-search {
+    margin-bottom: 6px;
+  }
+
+  .group-side-member-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .group-side-member-grid button {
+    min-height: 52px;
+    padding-block: 4px;
+  }
+
+  .group-side-row {
+    min-height: 34px;
   }
 
   .qq-group-profile-hero {
@@ -4094,6 +4227,27 @@ button.mac-dot {
     border-top: 1px solid #eeeeee;
     padding-top: 14px;
   }
+
+  .emoji-panel {
+    width: min(620px, calc(100vw - 32px));
+  }
+
+  .emoji-popover {
+    left: 16px !important;
+    right: 16px !important;
+    width: calc(100vw - 32px) !important;
+    max-width: calc(100vw - 32px);
+  }
+
+  .emoji-popover .ant-popover-arrow {
+    display: none;
+  }
+
+  .emoji-popover .ant-popover-content,
+  .emoji-popover .ant-popover-inner,
+  .emoji-popover .ant-popover-inner-content {
+    width: 100%;
+  }
 }
 
 @media (max-width: 700px) {
@@ -4110,6 +4264,10 @@ button.mac-dot {
 
   .qq-sidebar {
     min-width: 0;
+  }
+
+  .signature-button {
+    display: none;
   }
 
   .qq-main {

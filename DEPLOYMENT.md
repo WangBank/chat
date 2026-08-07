@@ -26,6 +26,12 @@ paths are routed to the website service by a tunnel or reverse proxy.
 The script builds both images, starts Docker Compose, waits for health checks,
 and prints the URLs to use from the website and Flutter.
 
+Before starting the new Docker Compose deployment, the script backs up the
+current PostgreSQL database when an existing PostgreSQL container is present.
+Backups are stored in
+`%USERPROFILE%\.foreverlove-chat\backups` by default. The retention policy keeps
+at most two backups per day and only the latest two calendar days.
+
 Default endpoints:
 
 - Website: `http://<LAN-IP>:17102`
@@ -85,7 +91,9 @@ Recommended GitHub repository settings:
 - Optional variables: `POSTGRES_PORT`, `API_PORT`, `WEB_PORT`, `EXTRA_CORS_ORIGIN`,
   `QQ_ALLOW_MOCK_LOGIN`, `EMAIL_SMTP_HOST`, `EMAIL_SMTP_PORT`, `EMAIL_ENABLE_SSL`,
   `EMAIL_FROM_NAME`, `EMAIL_PASSWORD_RESET_TOKEN_MINUTES`, `SWAGGER_ENABLED`,
-  `USE_HTTPS_REDIRECTION`
+  `USE_HTTPS_REDIRECTION`, `POSTGRES_CONTAINER`, `POSTGRES_BACKUP_ENABLED`,
+  `POSTGRES_BACKUP_DIR`, `POSTGRES_BACKUP_RETENTION_DAYS`,
+  `POSTGRES_BACKUP_MAX_PER_DAY`
 
 If secrets are not configured, `scripts/deploy-local.ps1` uses the shared local
 env file on the self-hosted runner machine.
@@ -118,6 +126,21 @@ Email__FromEmail=1224327326@qq.com
 Email__FromName=Forever Love
 Email__PasswordResetBaseUrl=https://chat.wangbank.top/reset-password
 Email__PasswordResetTokenMinutes=30
+POSTGRES_BACKUP_ENABLED=true
+POSTGRES_BACKUP_DIR=C:\Users\YOUR_USER\.foreverlove-chat\backups
+POSTGRES_BACKUP_RETENTION_DAYS=2
+POSTGRES_BACKUP_MAX_PER_DAY=2
+```
+
+To restore a `.dump` backup manually, stop the API first, copy the dump into the
+PostgreSQL container, and run `pg_restore`:
+
+```powershell
+docker compose --project-name foreverlove-chat stop api
+docker cp C:\Users\YOUR_USER\.foreverlove-chat\backups\foreverlove_chat-YYYYMMDD-HHMMSS.dump foreverlove-chat-postgres:/tmp/restore.dump
+docker exec foreverlove-chat-postgres pg_restore -U postgres -d foreverlove_chat --clean --if-exists /tmp/restore.dump
+docker exec foreverlove-chat-postgres rm -f /tmp/restore.dump
+docker compose --project-name foreverlove-chat up -d api website
 ```
 
 ## Register the local runner

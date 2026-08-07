@@ -236,12 +236,32 @@ class ApiService {
     return response.data;
   }
 
-  async qqDevLogin(data: { open_id?: string; nickname?: string; avatar_url?: string }) {
+  async qqDevLogin(data: {
+    open_id?: string;
+    nickname?: string;
+    avatar_url?: string;
+    gender?: string;
+    country?: string;
+    province?: string;
+    city?: string;
+    year?: string;
+    signature?: string;
+  }) {
     const response = await this.api.post<ApiResponse<AuthApiResponse>>('/api/auth/qq/dev-login', data);
     return response.data;
   }
 
-  async qqDevBind(data: { open_id?: string; nickname?: string; avatar_url?: string }) {
+  async qqDevBind(data: {
+    open_id?: string;
+    nickname?: string;
+    avatar_url?: string;
+    gender?: string;
+    country?: string;
+    province?: string;
+    city?: string;
+    year?: string;
+    signature?: string;
+  }) {
     const response = await this.api.post<ApiResponse<UserApiResponse>>('/api/auth/qq/dev-bind', data);
     return response.data;
   }

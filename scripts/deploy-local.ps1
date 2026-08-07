@@ -22,6 +22,7 @@ $DefaultStorageDir = Join-Path $DefaultEnvDir "storage"
 $DefaultLogsDir = Join-Path $DefaultStorageDir "logs"
 $DefaultAvatarDir = Join-Path $DefaultStorageDir "avatar"
 $DefaultChatFilesDir = Join-Path $DefaultStorageDir "chat-files"
+$DefaultBackupDir = Join-Path $DefaultEnvDir "backups"
 $EnvFile = if (-not [string]::IsNullOrWhiteSpace($env:FOREVERLOVE_CHAT_ENV_FILE)) {
     $env:FOREVERLOVE_CHAT_ENV_FILE
 }
@@ -142,6 +143,11 @@ function Ensure-EnvFile {
             "POSTGRES_PASSWORD=$initialPostgresPassword",
             "POSTGRES_PORT=17132",
             "POSTGRES_BIND_HOST=127.0.0.1",
+            "POSTGRES_CONTAINER=foreverlove-chat-postgres",
+            "POSTGRES_BACKUP_ENABLED=true",
+            "POSTGRES_BACKUP_DIR=$DefaultBackupDir",
+            "POSTGRES_BACKUP_RETENTION_DAYS=2",
+            "POSTGRES_BACKUP_MAX_PER_DAY=2",
             "API_ENVIRONMENT=Production",
             "API_PORT=17101",
             "API_BIND_HOST=0.0.0.0",
@@ -185,6 +191,22 @@ function Ensure-EnvFile {
     if (-not $values.ContainsKey("POSTGRES_PASSWORD") -and [string]::IsNullOrWhiteSpace($env:POSTGRES_PASSWORD)) {
         Add-DotEnvValue -Path $Path -Name "POSTGRES_PASSWORD" -Value (New-RandomSecret -Bytes 24)
         Write-DeployLog "Added POSTGRES_PASSWORD to .env."
+    }
+
+    $postgresDefaults = [ordered]@{
+        "POSTGRES_CONTAINER" = "foreverlove-chat-postgres"
+        "POSTGRES_BACKUP_ENABLED" = "true"
+        "POSTGRES_BACKUP_DIR" = $DefaultBackupDir
+        "POSTGRES_BACKUP_RETENTION_DAYS" = "2"
+        "POSTGRES_BACKUP_MAX_PER_DAY" = "2"
+    }
+
+    foreach ($postgresDefault in $postgresDefaults.GetEnumerator()) {
+        if (-not $values.ContainsKey($postgresDefault.Key) -and
+            [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($postgresDefault.Key))) {
+            Add-DotEnvValue -Path $Path -Name $postgresDefault.Key -Value $postgresDefault.Value
+            Write-DeployLog "Added $($postgresDefault.Key) to .env."
+        }
     }
 
     if (-not $values.ContainsKey("QQ__RedirectUri") -and [string]::IsNullOrWhiteSpace($env:QQ__RedirectUri)) {
@@ -268,6 +290,44 @@ function Resolve-Setting {
     }
 
     $DefaultValue
+}
+
+function Resolve-BooleanSetting {
+    param(
+        [string]$Name,
+        [string]$Value,
+        [bool]$DefaultValue
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $DefaultValue
+    }
+
+    switch -Regex ($Value.Trim()) {
+        "^(1|true|yes|on)$" { return $true }
+        "^(0|false|no|off)$" { return $false }
+    }
+
+    throw "$Name must be true or false."
+}
+
+function Resolve-PositiveIntSetting {
+    param(
+        [string]$Name,
+        [string]$Value,
+        [int]$DefaultValue
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $DefaultValue
+    }
+
+    $parsed = 0
+    if (-not [int]::TryParse($Value.Trim(), [ref]$parsed) -or $parsed -lt 1) {
+        throw "$Name must be a positive integer."
+    }
+
+    $parsed
 }
 
 function Get-ShortGitSha {
@@ -404,6 +464,181 @@ function Copy-LegacyStorageFiles {
     Write-DeployLog "Migrated $($files.Count) file(s) from $Source to $Destination."
 }
 
+function ConvertTo-BackupSafeName {
+    param([string]$Value)
+
+    $safeName = $Value -replace "[^A-Za-z0-9_.-]", "-"
+    $safeName = $safeName.Trim(".", "-", "_")
+    if ([string]::IsNullOrWhiteSpace($safeName)) {
+        return "postgres"
+    }
+
+    $safeName
+}
+
+function Get-DockerContainerState {
+    param([string]$ContainerName)
+
+    $state = (& docker inspect -f "{{.State.Status}}" $ContainerName 2>$null)
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($state)) {
+        return $null
+    }
+
+    $state.Trim()
+}
+
+function Wait-PostgresReady {
+    param(
+        [string]$ContainerName,
+        [string]$DatabaseName,
+        [string]$DatabaseUser,
+        [int]$TimeoutSeconds = 120
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        & docker exec $ContainerName pg_isready -U $DatabaseUser -d $DatabaseName *> $null
+        if ($LASTEXITCODE -eq 0) {
+            return
+        }
+
+        Start-Sleep -Seconds 2
+    }
+
+    throw "PostgreSQL did not become ready for backup in $TimeoutSeconds seconds."
+}
+
+function Invoke-PostgresBackupRetention {
+    param(
+        [string]$BackupDir,
+        [string]$DatabaseName,
+        [int]$RetentionDays,
+        [int]$MaxBackupsPerDay
+    )
+
+    if (-not (Test-Path -LiteralPath $BackupDir)) {
+        return
+    }
+
+    $safeDbName = ConvertTo-BackupSafeName -Value $DatabaseName
+    $escapedDbName = [regex]::Escape($safeDbName)
+    $today = (Get-Date).Date
+    $cutoffDate = $today.AddDays(-1 * ($RetentionDays - 1))
+    $retained = @()
+    $files = @(Get-ChildItem -LiteralPath $BackupDir -File -Filter "$safeDbName-*.dump" -ErrorAction SilentlyContinue)
+
+    foreach ($file in $files) {
+        if ($file.Name -notmatch "^$escapedDbName-(\d{8})-\d{6}\.dump$") {
+            continue
+        }
+
+        $dateText = $matches[1]
+        try {
+            $backupDate = [datetime]::ParseExact(
+                $dateText,
+                "yyyyMMdd",
+                [System.Globalization.CultureInfo]::InvariantCulture)
+        }
+        catch {
+            continue
+        }
+
+        if ($backupDate.Date -lt $cutoffDate) {
+            Remove-Item -LiteralPath $file.FullName -Force
+            Write-DeployLog "Removed expired database backup: $($file.Name)"
+            continue
+        }
+
+        $retained += [pscustomobject]@{
+            DateKey = $backupDate.ToString("yyyyMMdd")
+            File = $file
+        }
+    }
+
+    foreach ($group in ($retained | Group-Object DateKey)) {
+        $dailyFiles = @($group.Group | ForEach-Object { $_.File } | Sort-Object LastWriteTime -Descending)
+        if ($dailyFiles.Count -le $MaxBackupsPerDay) {
+            continue
+        }
+
+        foreach ($file in ($dailyFiles | Select-Object -Skip $MaxBackupsPerDay)) {
+            Remove-Item -LiteralPath $file.FullName -Force
+            Write-DeployLog "Removed extra daily database backup: $($file.Name)"
+        }
+    }
+}
+
+function Backup-PostgresDatabase {
+    param(
+        [bool]$Enabled,
+        [string]$ContainerName,
+        [string]$DatabaseName,
+        [string]$DatabaseUser,
+        [string]$BackupDir,
+        [int]$RetentionDays,
+        [int]$MaxBackupsPerDay
+    )
+
+    if (-not $Enabled) {
+        Write-DeployLog "PostgreSQL backup is disabled."
+        return $null
+    }
+
+    New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
+
+    $state = Get-DockerContainerState -ContainerName $ContainerName
+    if ($null -eq $state) {
+        Write-DeployLog "No existing PostgreSQL container named $ContainerName; skipping pre-deploy backup."
+        Invoke-PostgresBackupRetention `
+            -BackupDir $BackupDir `
+            -DatabaseName $DatabaseName `
+            -RetentionDays $RetentionDays `
+            -MaxBackupsPerDay $MaxBackupsPerDay
+        return $null
+    }
+
+    if (-not [string]::Equals($state, "running", [System.StringComparison]::OrdinalIgnoreCase)) {
+        Write-DeployLog "Starting PostgreSQL container $ContainerName for pre-deploy backup."
+        & docker start $ContainerName | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to start PostgreSQL container $ContainerName for backup."
+        }
+    }
+
+    Wait-PostgresReady -ContainerName $ContainerName -DatabaseName $DatabaseName -DatabaseUser $DatabaseUser
+
+    $safeDbName = ConvertTo-BackupSafeName -Value $DatabaseName
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $backupFileName = "$safeDbName-$timestamp.dump"
+    $backupPath = Join-Path $BackupDir $backupFileName
+    $containerBackupPath = "/tmp/$backupFileName"
+
+    Write-DeployLog "Creating PostgreSQL backup before deployment: $backupPath"
+    & docker exec $ContainerName rm -f $containerBackupPath *> $null
+    & docker exec $ContainerName pg_dump -Fc -U $DatabaseUser -d $DatabaseName -f $containerBackupPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "pg_dump failed for database $DatabaseName."
+    }
+
+    & docker cp "${ContainerName}:$containerBackupPath" $backupPath
+    if ($LASTEXITCODE -ne 0) {
+        & docker exec $ContainerName rm -f $containerBackupPath *> $null
+        throw "Failed to copy database backup from container $ContainerName."
+    }
+
+    & docker exec $ContainerName rm -f $containerBackupPath *> $null
+    $backup = Get-Item -LiteralPath $backupPath
+    Write-DeployLog "PostgreSQL backup created: $($backup.FullName) ($($backup.Length) bytes)"
+
+    Invoke-PostgresBackupRetention `
+        -BackupDir $BackupDir `
+        -DatabaseName $DatabaseName `
+        -RetentionDays $RetentionDays `
+        -MaxBackupsPerDay $MaxBackupsPerDay
+
+    $backup.FullName
+}
+
 Set-Location -LiteralPath $RootDir
 
 if (-not (Test-Path -LiteralPath $EnvFile) -and
@@ -456,6 +691,16 @@ if ([string]::IsNullOrWhiteSpace($ImageTag)) {
 }
 
 $PostgresPort = Resolve-Setting -ExplicitValue $PostgresPort -EnvName "POSTGRES_PORT" -DotEnv $DotEnv -DefaultValue "17132"
+$PostgresDb = Resolve-Setting -ExplicitValue "" -EnvName "POSTGRES_DB" -DotEnv $DotEnv -DefaultValue "foreverlove_chat"
+$PostgresUser = Resolve-Setting -ExplicitValue "" -EnvName "POSTGRES_USER" -DotEnv $DotEnv -DefaultValue "postgres"
+$PostgresContainer = Resolve-Setting -ExplicitValue "" -EnvName "POSTGRES_CONTAINER" -DotEnv $DotEnv -DefaultValue "foreverlove-chat-postgres"
+$PostgresBackupDir = Resolve-Setting -ExplicitValue "" -EnvName "POSTGRES_BACKUP_DIR" -DotEnv $DotEnv -DefaultValue $DefaultBackupDir
+$PostgresBackupEnabledValue = Resolve-Setting -ExplicitValue "" -EnvName "POSTGRES_BACKUP_ENABLED" -DotEnv $DotEnv -DefaultValue "true"
+$PostgresBackupRetentionDaysValue = Resolve-Setting -ExplicitValue "" -EnvName "POSTGRES_BACKUP_RETENTION_DAYS" -DotEnv $DotEnv -DefaultValue "2"
+$PostgresBackupMaxPerDayValue = Resolve-Setting -ExplicitValue "" -EnvName "POSTGRES_BACKUP_MAX_PER_DAY" -DotEnv $DotEnv -DefaultValue "2"
+$PostgresBackupEnabled = Resolve-BooleanSetting -Name "POSTGRES_BACKUP_ENABLED" -Value $PostgresBackupEnabledValue -DefaultValue $true
+$PostgresBackupRetentionDays = Resolve-PositiveIntSetting -Name "POSTGRES_BACKUP_RETENTION_DAYS" -Value $PostgresBackupRetentionDaysValue -DefaultValue 2
+$PostgresBackupMaxPerDay = Resolve-PositiveIntSetting -Name "POSTGRES_BACKUP_MAX_PER_DAY" -Value $PostgresBackupMaxPerDayValue -DefaultValue 2
 $ApiPort = Resolve-Setting -ExplicitValue $ApiPort -EnvName "API_PORT" -DotEnv $DotEnv -DefaultValue "17101"
 $WebPort = Resolve-Setting -ExplicitValue $WebPort -EnvName "WEB_PORT" -DotEnv $DotEnv -DefaultValue "17102"
 $ApiLogsDir = Resolve-Setting -ExplicitValue "" -EnvName "API_LOGS_DIR" -DotEnv $DotEnv -DefaultValue $DefaultLogsDir
@@ -488,6 +733,13 @@ Set-Env -Name "APP_VERSION" -Value $AppVersion
 Set-Env -Name "IMAGE_TAG" -Value $ImageTag
 Set-Env -Name "VCS_REF" -Value $vcsRef
 Set-Env -Name "POSTGRES_PORT" -Value $PostgresPort
+Set-Env -Name "POSTGRES_DB" -Value $PostgresDb
+Set-Env -Name "POSTGRES_USER" -Value $PostgresUser
+Set-Env -Name "POSTGRES_CONTAINER" -Value $PostgresContainer
+Set-Env -Name "POSTGRES_BACKUP_ENABLED" -Value $PostgresBackupEnabledValue
+Set-Env -Name "POSTGRES_BACKUP_DIR" -Value $PostgresBackupDir
+Set-Env -Name "POSTGRES_BACKUP_RETENTION_DAYS" -Value $PostgresBackupRetentionDaysValue
+Set-Env -Name "POSTGRES_BACKUP_MAX_PER_DAY" -Value $PostgresBackupMaxPerDayValue
 Set-Env -Name "API_PORT" -Value $ApiPort
 Set-Env -Name "WEB_PORT" -Value $WebPort
 Set-Env -Name "API_LOGS_DIR" -Value $ApiLogsDir
@@ -515,6 +767,21 @@ Write-DeployLog "Version: $AppVersion"
 Write-DeployLog "Image tag: $ImageTag"
 Write-DeployLog "API public URL: $ApiPublicUrl"
 Write-DeployLog "Website public URL: $WebPublicUrl"
+Write-DeployLog "PostgreSQL backup directory: $PostgresBackupDir"
+
+$backupPath = Backup-PostgresDatabase `
+    -Enabled $PostgresBackupEnabled `
+    -ContainerName $PostgresContainer `
+    -DatabaseName $PostgresDb `
+    -DatabaseUser $PostgresUser `
+    -BackupDir $PostgresBackupDir `
+    -RetentionDays $PostgresBackupRetentionDays `
+    -MaxBackupsPerDay $PostgresBackupMaxPerDay
+
+if (-not [string]::IsNullOrWhiteSpace($backupPath)) {
+    Set-Env -Name "POSTGRES_BACKUP_PATH" -Value $backupPath
+    Export-GitHubEnv -Name "POSTGRES_BACKUP_PATH" -Value $backupPath
+}
 
 $composeArgs = @("compose", "--project-name", $ProjectName, "up", "-d", "--remove-orphans")
 if (-not $SkipBuild) {
