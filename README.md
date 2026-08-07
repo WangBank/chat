@@ -1,6 +1,6 @@
 # Forever Love Chat
 
-Forever Love Chat 是一个即时通讯项目，包含 ASP.NET Core 后端、React Web 客户端和 Flutter 移动端客户端。核心功能包括账号注册登录、联系人管理、即时消息、语音通话、视频通话、通话记录、群组房间和管理员后台。
+Forever Love Chat 是一个即时通讯项目，包含 ASP.NET Core 后端、React Web 客户端和 Flutter 移动端客户端。核心功能包括账号注册登录、QQ 登录/绑定、联系人和好友申请、即时消息、消息引用、表情/GIF、图片文件发送、群聊、收藏、历史记录、语音通话、视频通话、通话记录、管理员后台和发布前数据库备份。
 
 ## 项目结构
 
@@ -50,6 +50,16 @@ chat/
 - signalr_netcore
 - shared_preferences
 - sqflite
+
+## 功能概览
+
+- 账号体系：用户名/邮箱登录、注册后自动登录、忘记密码邮件、QQ OAuth 登录/绑定、受控 QQ dev-login、头像上传、自定义签名、性别、生日年份和地区资料。
+- 好友关系：搜索用户、发送好友申请、处理好友通知、清理已处理通知、联系人备注、屏蔽联系人、Web 端本地好友分组维护。
+- 聊天能力：单聊和群聊消息、消息引用快照、已读/未读状态、聊天列表、聊天历史、群聊历史、图片和文件上传、表情面板、Fluent UI Animated Emoji GIF 表情库。
+- 收藏能力：收藏聊天、媒体、文件、链接和笔记，支持按类型过滤和搜索。
+- 实时能力：SignalR 在线状态、心跳保活、语音/视频通话、WebRTC 信令和通话记录。
+- 安全能力：JWT + BCrypt、管理员邮箱配置、敏感词过滤、上传文件类型限制、存储路径校验、基础安全响应头。
+- 部署能力：Docker Compose 一键部署前后台和 PostgreSQL，GitHub Actions self-hosted runner 发布，发布前自动备份 PostgreSQL 并按保留策略清理旧备份。
 
 ## 快速启动
 
@@ -164,18 +174,36 @@ flutter build apk --debug
 
 - `POST /api/auth/register` - 用户注册
 - `POST /api/auth/login` - 用户登录
+- `GET /api/auth/qq/login-url` - 获取 QQ 授权地址
+- `POST /api/auth/qq/login` - QQ 登录
+- `POST /api/auth/qq/bind` - 绑定 QQ
+- `POST /api/auth/forgot-password` - 发送密码重置邮件
+- `POST /api/auth/reset-password` - 使用邮件 token 重置密码
 - `GET /api/auth/profile` - 获取用户信息
+- `PUT /api/auth/profile` - 更新头像、签名、性别、生日和地区等资料
+- `POST /api/auth/upload-avatar` - 上传头像
 - `GET /api/contacts` - 获取联系人
 - `POST /api/contacts` - 兼容旧客户端，发送好友申请，不直接添加联系人
 - `POST /api/contacts/friend-requests` - 发送好友申请
 - `PATCH /api/contacts/friend-requests/{requestId}` - 同意或拒绝好友申请
+- `PATCH /api/contacts/{contactId}/display-name` - 修改联系人备注
 - `POST /api/chat/send` - 发送消息
+- `POST /api/chat/upload` - 上传聊天图片或文件
 - `GET /api/chat/history/{contactId}` - 获取聊天记录
+- `GET /api/chat/chat-history` - 获取聊天列表和最近消息
+- `PATCH /api/chat/messages/{messageId}/read` - 标记消息已读
+- `GET /api/groups` - 获取群聊列表
+- `POST /api/groups` - 创建群聊
+- `GET /api/groups/{groupId}/messages` - 获取群聊消息
+- `POST /api/groups/{groupId}/messages` - 发送群聊消息
+- `GET /api/favorites` - 获取收藏
+- `POST /api/favorites` - 新增收藏
 - `GET /api/calls/history` - 获取通话记录
 - `POST /api/calls/rooms` - 创建群组通话房间
 
 ## 子项目文档
 
+- [部署说明](DEPLOYMENT.md)
 - [后端说明](backend/README.md)
 - [后端进度](backend/PROGRESS.md)
 - [Web 客户端说明](website/README.md)

@@ -159,8 +159,9 @@ namespace VideoCallAPI.Services
             if (string.IsNullOrWhiteSpace(normalized))
                 return;
 
-            if (ContainsSensitiveWords(normalized))
-                throw new InvalidOperationException($"{fieldName}包含敏感词");
+            var matchedWord = FindSensitiveWord(normalized);
+            if (matchedWord != null)
+                throw new InvalidOperationException($"{fieldName}包含敏感词：{matchedWord}");
         }
 
         private static string NormalizeText(string? value)
@@ -315,11 +316,18 @@ namespace VideoCallAPI.Services
             }
         }
 
-        private bool ContainsSensitiveWords(string value)
+        private string? FindSensitiveWord(string value)
         {
-            return BuildSensitiveWordCandidates(value)
-                .Any(candidate => _sensitiveWords.Any(word =>
-                    candidate.Contains(word, StringComparison.OrdinalIgnoreCase)));
+            foreach (var candidate in BuildSensitiveWordCandidates(value))
+            {
+                foreach (var word in _sensitiveWords)
+                {
+                    if (candidate.Contains(word, StringComparison.OrdinalIgnoreCase))
+                        return word;
+                }
+            }
+
+            return null;
         }
 
         private string FilterSensitiveWords(string value)
