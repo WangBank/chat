@@ -1,0 +1,218 @@
+name: Android Release APK
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "flutter_client/**"
+      - ".github/workflows/android-release-apk.yml"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag. Leave empty to generate one from VERSION, run number, and SHA."
+        required: false
+        type: string
+      release_name:
+        description: "Release title. Leave empty to use Love Chat Android <VERSION>."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build signed Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      FLUTTER_VERSION: "3.44.8"
+      APK_ASSET_NAME: LoveChat-Android.apk
+      API_BASE_URL: ${{ vars.ANDROID_API_BASE_URL || 'https://chat.wangbank.top/api' }}
+      SIGNALR_HUB_URL: ${{ vars.ANDROID_SIGNALR_HUB_URL || 'https://chat.wangbank.top/videocallhub' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
+
+      - name: Restore Android release keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=()
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required Android signing secrets: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+          keystore_path="$RUNNER_TEMP/lovechat-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          chmod 600 "$keystore_path"
+
+          {
+            echo "ANDROID_KEYSTORE_PATH=$keystore_path"
+            echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS"
+            echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
+            echo "ANDROID_REQUIRE_RELEASE_SIGNING=true"
+          } >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        shell: bash
+        working-directory: flutter_client
+        run: |
+          flutter --version
+          flutter pub get
+          flutter build apk --release \
+            --dart-define=API_BASE_URL="$API_BASE_URL" \
+            --dart-define=SIGNALR_HUB_URL="$SIGNALR_HUB_URL"
+
+          mkdir -p "$RUNNER_TEMP/android-apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$RUNNER_TEMP/android-apk/$APK_ASSET_NAME"
+
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          apk_path="$RUNNER_TEMP/android-apk/$APK_ASSET_NAME"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+
+          "$apksigner" verify --verbose --print-certs "$apk_path" | tee "$RUNNER_TEMP/apksigner.txt"
+
+          if grep -q "CN=Android Debug" "$RUNNER_TEMP/apksigner.txt"; then
+            echo "APK is signed with the Android debug certificate; refusing to publish." >&2
+            exit 1
+          fi
+
+          sha256sum "$apk_path" | tee "$RUNNER_TEMP/android-apk/SHA256SUMS"
+          apk_sha256="$(cut -d ' ' -f 1 "$RUNNER_TEMP/android-apk/SHA256SUMS")"
+          echo "APK_SHA256=$apk_sha256" >> "$GITHUB_ENV"
+
+      - name: Upload signed APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lovechat-android-apk
+          path: |
+            ${{ runner.temp }}/android-apk/LoveChat-Android.apk
+            ${{ runner.temp }}/android-apk/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Resolve release metadata
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.tag_name }}
+          REQUESTED_RELEASE_NAME: ${{ inputs.release_name }}
+        run: |
+          base_version="$(tr -d '\r\n ' < VERSION)"
+          short_sha="${GITHUB_SHA::7}"
+
+          if [ -n "$REQUESTED_TAG" ]; then
+            tag_name="$REQUESTED_TAG"
+          else
+            tag_name="android-v${base_version}-${GITHUB_RUN_NUMBER}-${short_sha}"
+          fi
+
+          if [ -n "$REQUESTED_RELEASE_NAME" ]; then
+            release_name="$REQUESTED_RELEASE_NAME"
+          else
+            release_name="Love Chat Android ${base_version}"
+          fi
+
+          notes_path="$RUNNER_TEMP/android-release-notes.md"
+          cat > "$notes_path" <<EOF
+          Android APK for Love Chat ${base_version}.
+
+          - API: ${API_BASE_URL}
+          - SignalR: ${SIGNALR_HUB_URL}
+          - Package: top.wangbank.chat
+          - Asset: ${APK_ASSET_NAME}
+          - SHA256: ${APK_SHA256}
+          - Commit: ${GITHUB_SHA}
+          EOF
+
+          {
+            echo "RELEASE_TAG=$tag_name"
+            echo "RELEASE_NAME=$release_name"
+            echo "RELEASE_NOTES_PATH=$notes_path"
+          } >> "$GITHUB_ENV"
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          apk_path="$RUNNER_TEMP/android-apk/$APK_ASSET_NAME"
+
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$apk_path#$APK_ASSET_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release edit "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_NAME" \
+              --notes-file "$RELEASE_NOTES_PATH" \
+              --latest
+          else
+            gh release create "$RELEASE_TAG" "$apk_path#$APK_ASSET_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_NAME" \
+              --notes-file "$RELEASE_NOTES_PATH" \
+              --latest
+          fi
+
+      - name: Build summary
+        shell: bash
+        run: |
+          {
+            echo "### Android APK"
+            echo ""
+            echo "- Asset: \`${APK_ASSET_NAME}\`"
+            echo "- SHA256: \`${APK_SHA256}\`"
+            echo "- API: \`${API_BASE_URL}\`"
+            echo "- SignalR: \`${SIGNALR_HUB_URL}\`"
+            if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+              echo "- Release: \`${RELEASE_TAG}\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
