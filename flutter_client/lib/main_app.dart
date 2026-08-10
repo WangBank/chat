@@ -13,6 +13,7 @@ import 'pages/incoming_call_page.dart';
 import 'pages/call_page.dart';
 import 'pages/waiting_call_page.dart';
 import 'pages/video_call_page.dart';
+import 'services/app_update_service.dart';
 import 'services/storage_service.dart';
 
 void main() {
@@ -39,6 +40,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   late SignalRService _signalRService;
   late WebRTCVideoService _webRTCService;
   late CallManager _callManager;
+  late AppUpdateService _updateService;
 
   User? _currentUser;
   int _currentIndex = 1; // 默认显示联系人页面
@@ -46,6 +48,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   int _chatRefreshToken = 0; // 新增：聊天刷新令牌
   bool _showingIncomingCall = false; // 防止重复显示来电界面
   bool _restoringOnlinePresence = false;
+  bool _checkingForUpdate = false;
+  bool _showingUpdateDialog = false;
   String? _visibleCallRouteName;
   String? _visibleCallId;
 
@@ -58,12 +62,16 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _initializeServices();
     _checkStoredCredentials();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkForAppUpdate();
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _restoreOnlinePresence();
+      _checkForAppUpdate();
     }
   }
 
@@ -72,6 +80,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     _signalRService = SignalRService();
     _webRTCService = WebRTCVideoService(_signalRService);
     _callManager = CallManager(_webRTCService);
+    _updateService = AppUpdateService();
 
     // 监听CallManager状态变化
     _callManager.addListener(_onCallManagerChanged);
@@ -148,6 +157,241 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       print('❌ App回到前台恢复在线状态失败: $e');
     } finally {
       _restoringOnlinePresence = false;
+    }
+  }
+
+  Future<void> _checkForAppUpdate() async {
+    if (_checkingForUpdate || _showingUpdateDialog) return;
+
+    _checkingForUpdate = true;
+    try {
+      final update = await _updateService.checkForUpdate();
+      if (!mounted || update == null) return;
+      await _showUpdatePrompt(update);
+    } catch (e) {
+      print('❌ 检查App更新失败: $e');
+    } finally {
+      _checkingForUpdate = false;
+    }
+  }
+
+  Future<void> _showUpdatePrompt(AppUpdateInfo update) async {
+    final context = _navigatorKey.currentContext;
+    if (context == null || _showingUpdateDialog) return;
+
+    _showingUpdateDialog = true;
+    final isRequired = update.isRequired;
+    final notes = update.latest.notes?.trim();
+
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: !isRequired,
+        builder: (dialogContext) {
+          return PopScope(
+            canPop: !isRequired,
+            child: AlertDialog(
+              title: Text(isRequired ? '需要更新' : '发现新版本'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '当前版本：${update.current.versionName} (${update.current.versionCode})',
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '最新版本：${update.latest.versionName} (${update.latest.versionCode})',
+                  ),
+                  if (notes != null && notes.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      notes,
+                      style: const TextStyle(height: 1.4),
+                    ),
+                  ],
+                  if (isRequired) ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      '当前版本过旧，需要更新后继续使用。',
+                      style: TextStyle(
+                        color: Color(0xFFFF3B30),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                if (!isRequired)
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('稍后'),
+                  ),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                    _downloadAndInstallUpdate(update);
+                  },
+                  child: const Text('立即更新'),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    } finally {
+      _showingUpdateDialog = false;
+    }
+  }
+
+  Future<void> _downloadAndInstallUpdate(AppUpdateInfo update) async {
+    final context = _navigatorKey.currentContext;
+    if (context == null) return;
+
+    var progressText = '正在准备下载...';
+    double? progressValue;
+    StateSetter? setProgressState;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return PopScope(
+          canPop: false,
+          child: StatefulBuilder(
+            builder: (context, setState) {
+              setProgressState = setState;
+              return AlertDialog(
+                title: const Text('正在更新'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    LinearProgressIndicator(value: progressValue),
+                    const SizedBox(height: 12),
+                    Text(progressText),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    void updateProgress(String text, double? value) {
+      progressText = text;
+      progressValue = value;
+      setProgressState?.call(() {});
+    }
+
+    try {
+      final apkFile = await _updateService.downloadApk(
+        update.latest,
+        onProgress: (progress) {
+          final fraction = progress.fraction;
+          if (fraction == null) {
+            updateProgress(
+              '已下载 ${(progress.receivedBytes / 1024 / 1024).toStringAsFixed(1)} MB',
+              null,
+            );
+            return;
+          }
+
+          updateProgress(
+            '已下载 ${(fraction * 100).toStringAsFixed(0)}%',
+            fraction.clamp(0, 1).toDouble(),
+          );
+        },
+      );
+
+      updateProgress('下载完成，正在打开安装器...', 1);
+      await _updateService.installApk(apkFile);
+      _closeTopDialog();
+    } on InstallPermissionRequiredException {
+      _closeTopDialog();
+      await _showInstallPermissionPrompt(update);
+    } catch (e) {
+      _closeTopDialog();
+      await _showUpdateError(e.toString(), update);
+    }
+  }
+
+  Future<void> _showInstallPermissionPrompt(AppUpdateInfo update) async {
+    final context = _navigatorKey.currentContext;
+    if (context == null) return;
+
+    final isRequired = update.isRequired;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !isRequired,
+      builder: (dialogContext) {
+        return PopScope(
+          canPop: !isRequired,
+          child: AlertDialog(
+            title: const Text('需要安装权限'),
+            content: const Text(
+              'Android 需要允许 Love Chat 安装来自本应用下载的 APK。打开设置并允许后，请回到应用重新点击更新。',
+            ),
+            actions: [
+              if (!isRequired)
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('取消'),
+                ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  _updateService.openInstallPermissionSettings();
+                },
+                child: const Text('打开设置'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showUpdateError(String message, AppUpdateInfo update) async {
+    final context = _navigatorKey.currentContext;
+    if (context == null) return;
+
+    final isRequired = update.isRequired;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !isRequired,
+      builder: (dialogContext) {
+        return PopScope(
+          canPop: !isRequired,
+          child: AlertDialog(
+            title: const Text('更新失败'),
+            content: Text(message),
+            actions: [
+              if (!isRequired)
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('稍后'),
+                ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  _downloadAndInstallUpdate(update);
+                },
+                child: const Text('重试'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _closeTopDialog() {
+    final navigator = _navigatorKey.currentState;
+    if (navigator != null && navigator.canPop()) {
+      navigator.pop();
     }
   }
 
@@ -443,6 +687,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     if (_currentUser == null) {
       return MaterialApp(
+        navigatorKey: _navigatorKey,
         title: '聊天应用',
         theme: _buildQqTheme(),
         home: LoginPage(
@@ -530,6 +775,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _callManager.removeListener(_onCallManagerChanged);
     _callManager.disconnect();
+    _updateService.dispose();
     super.dispose();
   }
 }

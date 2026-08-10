@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag. Leave empty to generate one from VERSION, run number, and SHA."
+        description: "Release tag. Leave empty to generate one from pubspec version, run number, and SHA."
         required: false
         type: string
       release_name:
@@ -34,8 +34,11 @@ jobs:
     env:
       FLUTTER_VERSION: "3.44.8"
       APK_ASSET_NAME: LoveChat-Android.apk
+      MANIFEST_ASSET_NAME: android-version.json
       API_BASE_URL: ${{ vars.ANDROID_API_BASE_URL || 'https://chat.wangbank.top/api' }}
       SIGNALR_HUB_URL: ${{ vars.ANDROID_SIGNALR_HUB_URL || 'https://chat.wangbank.top/videocallhub' }}
+      ANDROID_MIN_SUPPORTED_VERSION_CODE: ${{ vars.ANDROID_MIN_SUPPORTED_VERSION_CODE || '1' }}
+      ANDROID_UPDATE_MANDATORY: ${{ vars.ANDROID_UPDATE_MANDATORY || 'false' }}
 
     steps:
       - name: Check out repository
@@ -95,6 +98,41 @@ jobs:
             echo "ANDROID_REQUIRE_RELEASE_SIGNING=true"
           } >> "$GITHUB_ENV"
 
+      - name: Resolve Android release metadata
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || '' }}
+          REQUESTED_RELEASE_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.release_name || '' }}
+        run: |
+          version_raw="$(awk '/^version:/{print $2; exit}' flutter_client/pubspec.yaml)"
+          version_name="${version_raw%%+*}"
+          version_code="${version_raw##*+}"
+          short_sha="${GITHUB_SHA::7}"
+
+          if [ -z "$version_name" ] || [ -z "$version_code" ] || [ "$version_name" = "$version_code" ]; then
+            echo "Invalid Flutter version in flutter_client/pubspec.yaml: $version_raw" >&2
+            exit 1
+          fi
+
+          if [ -n "$REQUESTED_TAG" ]; then
+            tag_name="$REQUESTED_TAG"
+          else
+            tag_name="android-v${version_name}-${GITHUB_RUN_NUMBER}-${short_sha}"
+          fi
+
+          if [ -n "$REQUESTED_RELEASE_NAME" ]; then
+            release_name="$REQUESTED_RELEASE_NAME"
+          else
+            release_name="Love Chat Android ${version_name}"
+          fi
+
+          {
+            echo "APP_VERSION_NAME=$version_name"
+            echo "APP_VERSION_CODE=$version_code"
+            echo "RELEASE_TAG=$tag_name"
+            echo "RELEASE_NAME=$release_name"
+          } >> "$GITHUB_ENV"
+
       - name: Build release APK
         shell: bash
         working-directory: flutter_client
@@ -123,7 +161,67 @@ jobs:
 
           sha256sum "$apk_path" | tee "$RUNNER_TEMP/android-apk/SHA256SUMS"
           apk_sha256="$(cut -d ' ' -f 1 "$RUNNER_TEMP/android-apk/SHA256SUMS")"
+          apk_size="$(stat -c%s "$apk_path")"
           echo "APK_SHA256=$apk_sha256" >> "$GITHUB_ENV"
+          echo "APK_SIZE=$apk_size" >> "$GITHUB_ENV"
+
+      - name: Generate update manifest
+        shell: bash
+        run: |
+          manifest_path="$RUNNER_TEMP/android-apk/$MANIFEST_ASSET_NAME"
+          notes_path="$RUNNER_TEMP/android-release-notes.md"
+          mandatory="$(printf '%s' "$ANDROID_UPDATE_MANDATORY" | tr '[:upper:]' '[:lower:]')"
+          if [ "$mandatory" != "true" ]; then
+            mandatory="false"
+          fi
+
+          {
+            echo "MANIFEST_PATH=$manifest_path"
+            echo "RELEASE_NOTES_PATH=$notes_path"
+            echo "ANDROID_UPDATE_MANDATORY_NORMALIZED=$mandatory"
+          } >> "$GITHUB_ENV"
+          export MANIFEST_PATH="$manifest_path"
+          export RELEASE_NOTES_PATH="$notes_path"
+          export ANDROID_UPDATE_MANDATORY_NORMALIZED="$mandatory"
+
+          python3 - <<'PY'
+          import datetime
+          import json
+          import os
+          from pathlib import Path
+
+          manifest = {
+              "versionName": os.environ["APP_VERSION_NAME"],
+              "versionCode": int(os.environ["APP_VERSION_CODE"]),
+              "minSupportedVersionCode": int(os.environ["ANDROID_MIN_SUPPORTED_VERSION_CODE"]),
+              "mandatory": os.environ["ANDROID_UPDATE_MANDATORY_NORMALIZED"] == "true",
+              "apkUrl": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/{os.environ['RELEASE_TAG']}/{os.environ['APK_ASSET_NAME']}",
+              "sha256": os.environ["APK_SHA256"],
+              "size": int(os.environ["APK_SIZE"]),
+              "releaseTag": os.environ["RELEASE_TAG"],
+              "publishedAt": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+              "notes": f"Love Chat Android {os.environ['APP_VERSION_NAME']}",
+          }
+
+          Path(os.environ["MANIFEST_PATH"]).write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          cat > "$notes_path" <<EOF
+          Android APK for Love Chat ${APP_VERSION_NAME}.
+
+          - API: ${API_BASE_URL}
+          - SignalR: ${SIGNALR_HUB_URL}
+          - Package: top.wangbank.chat
+          - Asset: ${APK_ASSET_NAME}
+          - Manifest: ${MANIFEST_ASSET_NAME}
+          - SHA256: ${APK_SHA256}
+          - Commit: ${GITHUB_SHA}
+          EOF
+
+          cat "$manifest_path"
 
       - name: Upload signed APK artifact
         uses: actions/upload-artifact@v4
@@ -131,49 +229,10 @@ jobs:
           name: lovechat-android-apk
           path: |
             ${{ runner.temp }}/android-apk/LoveChat-Android.apk
+            ${{ runner.temp }}/android-apk/android-version.json
             ${{ runner.temp }}/android-apk/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
-
-      - name: Resolve release metadata
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        env:
-          REQUESTED_TAG: ${{ inputs.tag_name }}
-          REQUESTED_RELEASE_NAME: ${{ inputs.release_name }}
-        run: |
-          base_version="$(tr -d '\r\n ' < VERSION)"
-          short_sha="${GITHUB_SHA::7}"
-
-          if [ -n "$REQUESTED_TAG" ]; then
-            tag_name="$REQUESTED_TAG"
-          else
-            tag_name="android-v${base_version}-${GITHUB_RUN_NUMBER}-${short_sha}"
-          fi
-
-          if [ -n "$REQUESTED_RELEASE_NAME" ]; then
-            release_name="$REQUESTED_RELEASE_NAME"
-          else
-            release_name="Love Chat Android ${base_version}"
-          fi
-
-          notes_path="$RUNNER_TEMP/android-release-notes.md"
-          cat > "$notes_path" <<EOF
-          Android APK for Love Chat ${base_version}.
-
-          - API: ${API_BASE_URL}
-          - SignalR: ${SIGNALR_HUB_URL}
-          - Package: top.wangbank.chat
-          - Asset: ${APK_ASSET_NAME}
-          - SHA256: ${APK_SHA256}
-          - Commit: ${GITHUB_SHA}
-          EOF
-
-          {
-            echo "RELEASE_TAG=$tag_name"
-            echo "RELEASE_NAME=$release_name"
-            echo "RELEASE_NOTES_PATH=$notes_path"
-          } >> "$GITHUB_ENV"
 
       - name: Publish GitHub Release
         if: github.event_name == 'workflow_dispatch'
@@ -182,9 +241,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           apk_path="$RUNNER_TEMP/android-apk/$APK_ASSET_NAME"
+          manifest_path="$RUNNER_TEMP/android-apk/$MANIFEST_ASSET_NAME"
 
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "$apk_path#$APK_ASSET_NAME" \
+            gh release upload "$RELEASE_TAG" \
+              "$apk_path#$APK_ASSET_NAME" \
+              "$manifest_path#$MANIFEST_ASSET_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber
             gh release edit "$RELEASE_TAG" \
@@ -194,7 +256,9 @@ jobs:
               --notes-file "$RELEASE_NOTES_PATH" \
               --latest
           else
-            gh release create "$RELEASE_TAG" "$apk_path#$APK_ASSET_NAME" \
+            gh release create "$RELEASE_TAG" \
+              "$apk_path#$APK_ASSET_NAME" \
+              "$manifest_path#$MANIFEST_ASSET_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "$RELEASE_NAME" \
@@ -209,6 +273,7 @@ jobs:
             echo "### Android APK"
             echo ""
             echo "- Asset: \`${APK_ASSET_NAME}\`"
+            echo "- Manifest: \`${MANIFEST_ASSET_NAME}\`"
             echo "- SHA256: \`${APK_SHA256}\`"
             echo "- API: \`${API_BASE_URL}\`"
             echo "- SignalR: \`${SIGNALR_HUB_URL}\`"

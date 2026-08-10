@@ -7,6 +7,11 @@ class AppConfig {
   static const String _configuredSignalRUrl = String.fromEnvironment(
     'SIGNALR_HUB_URL',
   );
+  static const String updateManifestUrl = String.fromEnvironment(
+    'ANDROID_UPDATE_MANIFEST_URL',
+    defaultValue:
+        'https://github.com/WangBank/chat/releases/latest/download/android-version.json',
+  );
 
   // 根据平台和环境自动选择服务器地址
   static String get baseUrl {
