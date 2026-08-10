@@ -68,7 +68,7 @@ export const APP_CONFIG = {
   SIGNALR_HUB_URL: resolveSignalRHubUrl(),
   
   // App name
-  APP_NAME: 'SimpleChat',
+  APP_NAME: 'Love Chat',
   
   // Version
   VERSION: import.meta.env.VITE_APP_VERSION || '1.0.0',

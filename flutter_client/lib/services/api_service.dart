@@ -53,6 +53,25 @@ class ApiService {
     _currentUser = user;
   }
 
+  void _applyAuthData(Map<String, dynamic> responseData) {
+    final data = responseData['data'];
+    if (data is! Map<String, dynamic>) {
+      throw Exception('认证响应格式错误');
+    }
+
+    final token = data['token']?.toString();
+    if (token == null || token.isEmpty) {
+      throw Exception('认证响应缺少Token');
+    }
+    _token = token;
+
+    final userData = data['user'];
+    if (userData is! Map<String, dynamic>) {
+      throw Exception('认证响应缺少用户信息');
+    }
+    _currentUser = User.fromJson(userData);
+  }
+
   // 获取HTTP请求头
   Map<String, String> get _headers {
     final headers = {'content-type': 'application/json'};
@@ -262,7 +281,58 @@ class ApiService {
     }
   }
 
-  // QQ测试登录（真实QQ OAuth需要移动端应用跳转；本地验证使用后端受控dev-login）
+  Future<Map<String, dynamic>> getQQLoginUrl({String mode = 'login'}) async {
+    String errorMessage = '获取QQ授权地址失败';
+    try {
+      final uri = Uri.parse(
+        '$baseUrl/auth/qq/login-url',
+      ).replace(queryParameters: {'mode': mode});
+      final response = await http.get(uri, headers: _headers);
+      final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode == 200 && responseData['success'] == true) {
+        return responseData;
+      }
+
+      errorMessage = responseData['message'] ?? errorMessage;
+      throw Exception(errorMessage);
+    } catch (e) {
+      print('❌ 获取QQ授权地址错误: $e');
+      throw Exception(errorMessage);
+    }
+  }
+
+  Future<Map<String, dynamic>> qqLogin({
+    required String code,
+    required String state,
+  }) async {
+    String errorMessage = 'QQ登录失败';
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/qq/login'),
+        headers: _headers,
+        body: jsonEncode({'code': code, 'state': state}),
+      );
+      final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode == 200 && responseData['success'] == true) {
+        _applyAuthData(responseData);
+        return responseData;
+      }
+
+      errorMessage = responseData['message'] ?? errorMessage;
+      if (responseData['errors'] is List &&
+          (responseData['errors'] as List).isNotEmpty) {
+        errorMessage = (responseData['errors'] as List).join('\n');
+      }
+      throw Exception(errorMessage);
+    } catch (e) {
+      print('❌ QQ登录错误: $e');
+      throw Exception(errorMessage);
+    }
+  }
+
+  // QQ测试登录。本地或测试环境启用 mock 时才作为 fallback 使用。
   Future<Map<String, dynamic>> qqDevLogin() async {
     String errorMessage = 'QQ登录失败';
     try {
@@ -278,13 +348,7 @@ class ApiService {
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         if (responseData['success'] == true && responseData['data'] != null) {
-          final data = responseData['data'];
-          if (data['token'] != null) {
-            _token = data['token'];
-          }
-          if (data['user'] != null) {
-            _currentUser = User.fromJson(data['user']);
-          }
+          _applyAuthData(responseData);
           return responseData;
         }
 

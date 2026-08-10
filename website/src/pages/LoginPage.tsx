@@ -177,7 +177,7 @@ const LoginPage = observer(() => {
       <section className="qq-login-window" aria-label="登录窗口" aria-busy={isAuthBusy}>
         <div className="qq-login-titlebar">
           <span className="qq-login-avatar">Q</span>
-          <span className="qq-login-account">Forever Love</span>
+          <span className="qq-login-account">Love Chat</span>
           <span className="qq-login-status">
             {isQQCallbackBusy ? 'QQ 授权中' : isQQRedirecting ? '跳转 QQ' : '网页版登录'}
           </span>

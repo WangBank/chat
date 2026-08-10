@@ -688,7 +688,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     if (_currentUser == null) {
       return MaterialApp(
         navigatorKey: _navigatorKey,
-        title: '聊天应用',
+        title: 'Love Chat',
         theme: _buildQqTheme(),
         home: LoginPage(
           apiService: _apiService,
@@ -699,7 +699,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
 
     return MaterialApp(
       navigatorKey: _navigatorKey, // 添加全局NavigatorKey
-      title: '聊天应用',
+      title: 'Love Chat',
       theme: _buildQqTheme(),
       home: Scaffold(
         body: Stack(

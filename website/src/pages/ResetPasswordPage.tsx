@@ -45,7 +45,7 @@ const ResetPasswordPage = () => {
       <section className="qq-login-window" aria-label="重置密码窗口">
         <div className="qq-login-titlebar">
           <span className="qq-login-avatar">Q</span>
-          <span className="qq-login-account">Forever Love</span>
+          <span className="qq-login-account">Love Chat</span>
           <span className="qq-login-status">密码重置</span>
         </div>
         <Card className="qq-login-card" bordered={false}>

@@ -129,7 +129,7 @@ const ContactsPage = observer(() => {
       </Card>
 
       <div className="version-badge">
-        SimpleChat v{APP_CONFIG.VERSION}
+        Love Chat v{APP_CONFIG.VERSION}
       </div>
     </div>
   );

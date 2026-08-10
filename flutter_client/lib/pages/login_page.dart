@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:app_links/app_links.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
 import '../services/storage_service.dart';
@@ -22,21 +26,75 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   late final ApiService _apiService;
+  late final AppLinks _appLinks;
+  StreamSubscription<Uri>? _qqLinkSubscription;
   static const Color _qqBlue = Color(0xFF12A8F4);
   static const Color _qqShell = Color(0xFFEFF7FC);
   static const Color _qqText = Color(0xFF111820);
   static const Color _qqMuted = Color(0xFF8C96A3);
+  static const String _qqCallbackScheme = 'lovechat';
+  static const String _qqCallbackHost = 'qq-callback';
 
   @override
   void initState() {
     super.initState();
     _apiService = widget.apiService ?? ApiService();
+    _appLinks = AppLinks();
+    _listenForQQCallbackLinks();
   }
 
   bool _isLogin = true;
   bool _isLoading = false;
   bool _rememberMe = true; // 记住登录状态
   String? _errorMessage;
+
+  void _listenForQQCallbackLinks() {
+    _qqLinkSubscription = _appLinks.uriLinkStream.listen(
+      _handleIncomingQQLink,
+      onError: (error) {
+        print('❌ QQ回调监听失败: $error');
+      },
+    );
+
+    _appLinks.getInitialLink().then((uri) {
+      if (uri != null) {
+        _handleIncomingQQLink(uri);
+      }
+    }).catchError((error) {
+      print('❌ 获取QQ初始回调失败: $error');
+    });
+  }
+
+  void _handleIncomingQQLink(Uri uri) {
+    if (uri.scheme != _qqCallbackScheme || uri.host != _qqCallbackHost) {
+      return;
+    }
+
+    final error = uri.queryParameters['error_description'] ??
+        uri.queryParameters['error'];
+    if (error != null && error.isNotEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'QQ授权失败：$error';
+        _isLoading = false;
+      });
+      return;
+    }
+
+    final code = uri.queryParameters['code'] ?? uri.queryParameters['qq_code'];
+    final state =
+        uri.queryParameters['state'] ?? uri.queryParameters['qq_state'];
+    if (code == null || code.isEmpty || state == null || state.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'QQ授权回调缺少必要参数';
+        _isLoading = false;
+      });
+      return;
+    }
+
+    _completeQQLogin(code: code, state: state);
+  }
 
   Future<void> _handleSubmit() async {
     final username = _usernameController.text.trim();
@@ -146,6 +204,35 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      final loginUrlResponse = await _apiService.getQQLoginUrl();
+      final loginUrlData = loginUrlResponse['data'];
+      if (loginUrlResponse['success'] == true &&
+          loginUrlData is Map<String, dynamic> &&
+          loginUrlData['configured'] == true &&
+          (loginUrlData['auth_url']?.toString().isNotEmpty ?? false)) {
+        final authUrl = Uri.parse(loginUrlData['auth_url'].toString());
+        final launched = await launchUrl(
+          authUrl,
+          mode: LaunchMode.externalApplication,
+        );
+        if (!launched) {
+          throw Exception('无法打开QQ授权页，请检查浏览器或QQ是否可用');
+        }
+
+        if (!mounted) return;
+        setState(() {
+          _errorMessage = '请在QQ授权页完成登录，授权完成后会自动返回 Love Chat。';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      if (loginUrlResponse['success'] != true ||
+          loginUrlData is! Map<String, dynamic> ||
+          loginUrlData['mock_available'] != true) {
+        throw Exception(loginUrlResponse['message'] ?? 'QQ登录尚未配置');
+      }
+
       final result = await _apiService.qqDevLogin();
       if (result['success'] == true && result['data']?['user'] != null) {
         final user = User.fromJson(result['data']['user']);
@@ -161,6 +248,46 @@ class _LoginPageState extends State<LoginPage> {
         _isLoading = false;
       });
     } catch (e) {
+      print('❌ QQ登录失败: $e');
+      setState(() {
+        var errorMsg = e.toString();
+        if (errorMsg.startsWith('Exception: ')) {
+          errorMsg = errorMsg.substring(11);
+        }
+        _errorMessage = errorMsg;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _completeQQLogin({
+    required String code,
+    required String state,
+  }) async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final result = await _apiService.qqLogin(code: code, state: state);
+      if (result['success'] == true && result['data']?['user'] != null) {
+        final user = User.fromJson(result['data']['user']);
+        if (_rememberMe) {
+          await StorageService.saveLoginInfo(user, _apiService.token ?? '');
+        }
+        widget.onLoginSuccess?.call(user);
+        return;
+      }
+
+      setState(() {
+        _errorMessage = result['message'] ?? 'QQ登录失败';
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('❌ 完成QQ登录失败: $e');
       setState(() {
         var errorMsg = e.toString();
         if (errorMsg.startsWith('Exception: ')) {
@@ -231,7 +358,7 @@ class _LoginPageState extends State<LoginPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Forever Love',
+                                  'Love Chat',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 20,
@@ -494,6 +621,7 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
+    _qqLinkSubscription?.cancel();
     _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();

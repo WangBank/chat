@@ -32,7 +32,7 @@ const ForgotPasswordPage = () => {
       <section className="qq-login-window" aria-label="找回密码窗口">
         <div className="qq-login-titlebar">
           <span className="qq-login-avatar">Q</span>
-          <span className="qq-login-account">Forever Love</span>
+          <span className="qq-login-account">Love Chat</span>
           <span className="qq-login-status">密码找回</span>
         </div>
         <Card className="qq-login-card" bordered={false}>
