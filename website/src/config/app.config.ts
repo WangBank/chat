@@ -74,7 +74,7 @@ export const APP_CONFIG = {
   VERSION: import.meta.env.VITE_APP_VERSION || '1.0.0',
   
   // APK download URL
-  APK_DOWNLOAD_URL: '/archives/andriod/app-release.apk',
+  APK_DOWNLOAD_URL: 'https://github.com/WangBank/chat/releases/latest/download/LoveChat-Android.apk',
 
   ADMIN_EMAILS: parseAdminEmails()
 };

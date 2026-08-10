@@ -14,6 +14,7 @@ const contentTypes = new Map([
   ['.ico', 'image/x-icon'],
   ['.js', 'application/javascript; charset=utf-8'],
   ['.json', 'application/json; charset=utf-8'],
+  ['.apk', 'application/vnd.android.package-archive'],
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
   ['.png', 'image/png'],
@@ -85,6 +86,9 @@ async function sendFile(response, filePath) {
   applySecurityHeaders(response);
   if (extension === '.html') {
     response.setHeader('Cache-Control', 'no-store');
+  }
+  if (extension === '.apk') {
+    response.setHeader('Content-Disposition', 'attachment; filename="LoveChat-Android.apk"');
   }
   if (['.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp', '.woff', '.woff2'].includes(extension)) {
     response.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
