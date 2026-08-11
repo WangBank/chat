@@ -187,11 +187,17 @@ class AppUpdateService {
     AppUpdateManifest manifest, {
     void Function(AppUpdateDownloadProgress progress)? onProgress,
   }) async {
-    final tempDir = await getTemporaryDirectory();
-    final file = File('${tempDir.path}/LoveChat-${manifest.versionCode}.apk');
+    final appDir = await getApplicationSupportDirectory();
+    final updateDir = Directory('${appDir.path}/updates');
+    await updateDir.create(recursive: true);
+    final file = File('${updateDir.path}/LoveChat-${manifest.versionCode}.apk');
     final request = http.Request('GET', manifest.apkUrl);
+    request.headers.addAll(const {
+      'Accept': 'application/vnd.android.package-archive,*/*',
+      'User-Agent': 'LoveChat-Android-Updater',
+    });
     final response = await _client.send(request).timeout(
-          const Duration(seconds: 20),
+          const Duration(seconds: 60),
         );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -243,6 +249,15 @@ class AppUpdateService {
         throw const InstallPermissionRequiredException();
       }
       throw AppUpdateException(error.message ?? '无法打开安装器');
+    }
+  }
+
+  Future<bool> canInstallApks() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('canInstallApks');
+      return result ?? false;
+    } on PlatformException {
+      return false;
     }
   }
 

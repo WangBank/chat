@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'models/user.dart';
 import 'models/call.dart';
 import 'services/api_service.dart';
@@ -50,6 +53,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   bool _restoringOnlinePresence = false;
   bool _checkingForUpdate = false;
   bool _showingUpdateDialog = false;
+  File? _pendingInstallApkFile;
+  AppUpdateInfo? _pendingInstallUpdate;
   String? _visibleCallRouteName;
   String? _visibleCallId;
 
@@ -71,6 +76,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _restoreOnlinePresence();
+      _resumePendingUpdateInstallation();
       _checkForAppUpdate();
     }
   }
@@ -161,7 +167,11 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   }
 
   Future<void> _checkForAppUpdate() async {
-    if (_checkingForUpdate || _showingUpdateDialog) return;
+    if (_checkingForUpdate ||
+        _showingUpdateDialog ||
+        _pendingInstallApkFile != null) {
+      return;
+    }
 
     _checkingForUpdate = true;
     try {
@@ -307,7 +317,11 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       );
 
       updateProgress('下载完成，正在打开安装器...', 1);
+      _pendingInstallApkFile = apkFile;
+      _pendingInstallUpdate = update;
       await _updateService.installApk(apkFile);
+      _pendingInstallApkFile = null;
+      _pendingInstallUpdate = null;
       _closeTopDialog();
     } on InstallPermissionRequiredException {
       _closeTopDialog();
@@ -332,7 +346,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           child: AlertDialog(
             title: const Text('需要安装权限'),
             content: const Text(
-              'Android 需要允许 Love Chat 安装来自本应用下载的 APK。打开设置并允许后，请回到应用重新点击更新。',
+              'Android 需要允许 Love Chat 安装来自本应用下载的 APK。打开设置并允许后，回到应用会自动继续打开安装器。',
             ),
             actions: [
               if (!isRequired)
@@ -345,7 +359,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
                   Navigator.of(dialogContext).pop();
                   _updateService.openInstallPermissionSettings();
                 },
-                child: const Text('打开设置'),
+                child: const Text('打开设置并继续'),
               ),
             ],
           ),
@@ -381,11 +395,54 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
                 },
                 child: const Text('重试'),
               ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  launchUrl(
+                    update.latest.apkUrl,
+                    mode: LaunchMode.externalApplication,
+                  );
+                },
+                child: const Text('浏览器下载'),
+              ),
             ],
           ),
         );
       },
     );
+  }
+
+  Future<void> _resumePendingUpdateInstallation() async {
+    final apkFile = _pendingInstallApkFile;
+    final update = _pendingInstallUpdate;
+    if (apkFile == null || update == null || _showingUpdateDialog) {
+      return;
+    }
+
+    if (!await apkFile.exists()) {
+      _pendingInstallApkFile = null;
+      _pendingInstallUpdate = null;
+      await _showUpdateError('更新安装包已丢失，请重新下载。', update);
+      return;
+    }
+
+    try {
+      final canInstall = await _updateService.canInstallApks();
+      if (!canInstall) {
+        await _showInstallPermissionPrompt(update);
+        return;
+      }
+
+      await _updateService.installApk(apkFile);
+      _pendingInstallApkFile = null;
+      _pendingInstallUpdate = null;
+    } on InstallPermissionRequiredException {
+      await _showInstallPermissionPrompt(update);
+    } catch (e) {
+      _pendingInstallApkFile = null;
+      _pendingInstallUpdate = null;
+      await _showUpdateError(e.toString(), update);
+    }
   }
 
   void _closeTopDialog() {

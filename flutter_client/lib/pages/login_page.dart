@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:app_links/app_links.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
@@ -34,6 +35,9 @@ class _LoginPageState extends State<LoginPage> {
   static const Color _qqMuted = Color(0xFF8C96A3);
   static const String _qqCallbackScheme = 'lovechat';
   static const String _qqCallbackHost = 'qq-callback';
+  static const String _qqHttpsCallbackHost = 'chat.wangbank.top';
+  static const String _qqHttpsCallbackPath = '/qq-callback';
+  static const MethodChannel _qqChannel = MethodChannel('top.wangbank.chat/qq');
 
   @override
   void initState() {
@@ -66,7 +70,12 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _handleIncomingQQLink(Uri uri) {
-    if (uri.scheme != _qqCallbackScheme || uri.host != _qqCallbackHost) {
+    final isCustomSchemeCallback =
+        uri.scheme == _qqCallbackScheme && uri.host == _qqCallbackHost;
+    final isHttpsAppLinkCallback = uri.scheme == 'https' &&
+        uri.host == _qqHttpsCallbackHost &&
+        uri.path == _qqHttpsCallbackPath;
+    if (!isCustomSchemeCallback && !isHttpsAppLinkCallback) {
       return;
     }
 
@@ -210,11 +219,10 @@ class _LoginPageState extends State<LoginPage> {
           loginUrlData is Map<String, dynamic> &&
           loginUrlData['configured'] == true &&
           (loginUrlData['auth_url']?.toString().isNotEmpty ?? false)) {
-        final authUrl = Uri.parse(loginUrlData['auth_url'].toString());
-        final launched = await launchUrl(
-          authUrl,
-          mode: LaunchMode.externalApplication,
+        final authUrl = _withMobileQQHints(
+          Uri.parse(loginUrlData['auth_url'].toString()),
         );
+        final launched = await _launchQQAuthUrl(authUrl);
         if (!launched) {
           throw Exception('无法打开QQ授权页，请检查浏览器或QQ是否可用');
         }
@@ -258,6 +266,43 @@ class _LoginPageState extends State<LoginPage> {
         _isLoading = false;
       });
     }
+  }
+
+  Uri _withMobileQQHints(Uri authUrl) {
+    final query = Map<String, String>.from(authUrl.queryParameters);
+    query.putIfAbsent('display', () => 'mobile');
+    return authUrl.replace(queryParameters: query);
+  }
+
+  Future<bool> _launchQQAuthUrl(Uri authUrl) async {
+    try {
+      final launchedInNativeQQ = await _qqChannel.invokeMethod<bool>(
+        'openQQAuthUrl',
+        {'url': authUrl.toString()},
+      );
+      if (launchedInNativeQQ == true) {
+        return true;
+      }
+    } catch (e) {
+      print('⚠️ 手机QQ原生唤起不可用，继续尝试系统应用: $e');
+    }
+
+    try {
+      final launchedInQQ = await launchUrl(
+        authUrl,
+        mode: LaunchMode.externalNonBrowserApplication,
+      );
+      if (launchedInQQ) {
+        return true;
+      }
+    } catch (e) {
+      print('⚠️ 未能直接唤起手机QQ，改用浏览器授权: $e');
+    }
+
+    return launchUrl(
+      authUrl,
+      mode: LaunchMode.externalApplication,
+    );
   }
 
   Future<void> _completeQQLogin({

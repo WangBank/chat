@@ -1,5 +1,6 @@
 package top.wangbank.chat
 
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -12,6 +13,12 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val updateChannelName = "top.wangbank.chat/update"
+    private val qqChannelName = "top.wangbank.chat/qq"
+    private val qqPackages = listOf(
+        "com.tencent.mobileqq",
+        "com.tencent.tim",
+        "com.tencent.qqlite",
+    )
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -20,6 +27,7 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getPackageInfo" -> result.success(getPackageInfoMap())
+                    "canInstallApks" -> result.success(canInstallApks())
                     "installApk" -> {
                         val path = call.argument<String>("path")
                         if (path.isNullOrBlank()) {
@@ -31,6 +39,21 @@ class MainActivity : FlutterActivity() {
                     "openInstallPermissionSettings" -> {
                         openInstallPermissionSettings()
                         result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, qqChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "openQQAuthUrl" -> {
+                        val url = call.argument<String>("url")
+                        if (url.isNullOrBlank()) {
+                            result.error("invalid_qq_auth_url", "QQ auth URL is empty.", null)
+                            return@setMethodCallHandler
+                        }
+                        result.success(openQQAuthUrl(url))
                     }
                     else -> result.notImplemented()
                 }
@@ -53,9 +76,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun installApk(path: String, result: MethodChannel.Result) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            !packageManager.canRequestPackageInstalls()
-        ) {
+        if (!canInstallApks()) {
             result.error(
                 "unknown_sources_disabled",
                 "Install permission for unknown apps is disabled.",
@@ -77,6 +98,7 @@ class MainActivity : FlutterActivity() {
         )
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
+            clipData = ClipData.newUri(contentResolver, "Love Chat update", uri)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
@@ -89,6 +111,11 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun canInstallApks(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+            packageManager.canRequestPackageInstalls()
+    }
+
     private fun openInstallPermissionSettings() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val intent = Intent(
@@ -99,5 +126,29 @@ class MainActivity : FlutterActivity() {
             }
             startActivity(intent)
         }
+    }
+
+    private fun openQQAuthUrl(url: String): Boolean {
+        val uri = Uri.parse(url)
+        for (qqPackage in qqPackages) {
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                setPackage(qqPackage)
+                addCategory(Intent.CATEGORY_BROWSABLE)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            if (intent.resolveActivity(packageManager) == null) {
+                continue
+            }
+
+            try {
+                startActivity(intent)
+                return true
+            } catch (_: Exception) {
+                continue
+            }
+        }
+
+        return false
     }
 }

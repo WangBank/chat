@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "top.wangbank.chat",
+      "sha256_cert_fingerprints": [
+        "68:91:09:47:34:18:B3:03:0D:51:C2:2A:F0:36:80:62:4E:A0:52:E5:B1:28:A6:BC:FC:9C:DD:D5:74:2B:3A:73"
+      ]
+    }
+  }
+]
