@@ -275,6 +275,7 @@ const PROFILE_NAME_MAX_LENGTH = 36;
 const PROFILE_SIGNATURE_MAX_LENGTH = 100;
 const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024;
 const STORAGE_PREFIX = 'forever-love-chat';
+const STANDALONE_EMOJI_MAX_LENGTH = 32;
 const MESSAGE_TYPES = {
   Text: 1,
   Image: 2,
@@ -809,6 +810,15 @@ function isVideoMessage(msg: { type?: number | string }) {
 
 function isFileMessage(msg: { type?: number | string }) {
   return normalizeMessageType(msg.type) === 'file';
+}
+
+function isStandaloneEmojiContent(content?: string | null) {
+  const value = (content || '').trim();
+  if (!value || value.length > STANDALONE_EMOJI_MAX_LENGTH) return false;
+
+  const hasEmoji = /(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}\uFE0F|\p{Emoji}\uFE0F)/u.test(value);
+  const containsOnlyEmoji = /^(?:\s|\p{Emoji_Presentation}|\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Emoji_Component}|\uFE0E|\uFE0F|\u200D)+$/u.test(value);
+  return hasEmoji && containsOnlyEmoji;
 }
 
 function formatFileSize(size?: number) {
@@ -3686,6 +3696,7 @@ const ChatPage = observer(() => {
     const attachmentUrl = getAttachmentUrl(msg.file_path);
     const shareContent = attachmentUrl ? `${msg.content || '附件'}\n${attachmentUrl}` : msg.content;
     const isMediaBubble = isImageMessage(msg) && Boolean(attachmentUrl);
+    const isEmojiBubble = normalizeMessageType(msg.type) === 'text' && !msg.reply_to && isStandaloneEmojiContent(msg.content);
     const contextMenu: MenuProps = {
       items: [
         {
@@ -3726,7 +3737,7 @@ const ChatPage = observer(() => {
         <div className={`qq-message ${isMine ? 'sent' : 'received'}`}>
           {!isMine && renderAvatar(chatStore.currentContact, 36)}
           <Dropdown trigger={['contextMenu']} menu={contextMenu} overlayClassName="message-context-menu">
-            <div className={`qq-bubble ${isMediaBubble ? 'media-bubble' : ''} ${msg.reply_to ? 'has-reply' : ''}`}>
+            <div className={`qq-bubble ${isMediaBubble ? 'media-bubble' : ''} ${isEmojiBubble ? 'emoji-bubble' : ''} ${msg.reply_to ? 'has-reply' : ''}`}>
               {renderReplyCard(msg.reply_to)}
               {isAudioMessage(msg) ? (
                 <button
@@ -4728,6 +4739,7 @@ const ChatPage = observer(() => {
     const attachmentUrl = getAttachmentUrl(msg.filePath);
     const shareContent = attachmentUrl ? `${msg.content || '附件'}\n${attachmentUrl}` : msg.content;
     const isMediaBubble = messageType === 'image' && Boolean(attachmentUrl);
+    const isEmojiBubble = messageType === 'text' && !msg.replyTo && isStandaloneEmojiContent(msg.content);
     const sender = isMine
       ? (authStore.user as UserSummary | null)
       : (chatStore.contacts.find((contact) => contact.contact_user?.id === msg.senderId)?.contact_user as UserSummary | undefined);
@@ -4771,7 +4783,7 @@ const ChatPage = observer(() => {
         <div className={`qq-message ${isMine ? 'sent' : 'received'}`}>
           {!isMine && renderUserAvatar(sender, 36)}
           <Dropdown trigger={['contextMenu']} menu={contextMenu} overlayClassName="message-context-menu">
-            <div className={`qq-bubble ${isMediaBubble ? 'media-bubble' : ''} ${msg.replyTo ? 'has-reply' : ''}`}>
+            <div className={`qq-bubble ${isMediaBubble ? 'media-bubble' : ''} ${isEmojiBubble ? 'emoji-bubble' : ''} ${msg.replyTo ? 'has-reply' : ''}`}>
               {!isMine && <div className="group-message-sender">{msg.senderName}</div>}
               {renderReplyCard(msg.replyTo)}
               {messageType === 'audio' ? (

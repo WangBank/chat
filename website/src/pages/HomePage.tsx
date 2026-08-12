@@ -78,16 +78,16 @@ const deviceItems = [
     text: '打开网页即可使用完整聊天、好友、群聊和管理控制台。',
   },
   {
+    icon: <TabletMac />,
+    name: 'iPad 浏览器',
+    status: '已支持',
+    text: 'iPad 横屏和竖屏下都可以直接使用网页版，聊天、好友、群组、历史记录和资料入口保持完整。',
+  },
+  {
     icon: <Android />,
     name: 'Android 客户端',
     status: '可下载',
     text: '安装 APK 后可使用移动端聊天、联系人、资料和通话功能。',
-  },
-  {
-    icon: <TabletMac />,
-    name: '平板浏览器',
-    status: '全功能',
-    text: '横屏和竖屏下保持完整网页版能力，聊天、好友、群组、历史记录和资料入口都可直接使用。',
   },
 ];
 
@@ -121,7 +121,7 @@ const HomePage = () => {
               {PRODUCT_NAME}
             </Typography>
             <Typography variant="caption" noWrap sx={{ display: 'block', color: 'rgba(255,255,255,0.82)' }}>
-              网页版 · Android · 实时通信系统
+              网页版 · iPad · Android · 实时通信系统
             </Typography>
           </Box>
           <Chip
@@ -165,7 +165,7 @@ const HomePage = () => {
                     color="text.secondary"
                     sx={{ maxWidth: 720, lineHeight: 1.8, mb: 3, overflowWrap: 'break-word' }}
                   >
-                    面向网页端和移动端的即时通信应用，覆盖账号登录、聊天、好友、群组、历史记录、个性资料、表情和音视频通话等核心能力。
+                    面向桌面浏览器、iPad 和 Android 的即时通信应用，覆盖账号登录、聊天、好友、群组、历史记录、个性资料、表情和音视频通话等核心能力。
                   </Typography>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
                     <Button variant="contained" size="large" startIcon={<Login />} onClick={() => navigate('/login')}>
@@ -261,7 +261,7 @@ const HomePage = () => {
                 支持设备
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                根据使用场景选择网页版或 Android 客户端。
+                根据使用场景选择桌面浏览器、iPad 网页版或 Android 客户端。
               </Typography>
             </Box>
             <List disablePadding>
@@ -304,7 +304,7 @@ const HomePage = () => {
               <Typography variant="h5" sx={{ fontWeight: 950 }}>
                 开始使用
               </Typography>
-              <Typography color="text.secondary">使用网页端登录已有账号，或下载 Android 安装包在移动设备上使用。</Typography>
+              <Typography color="text.secondary">使用网页端登录已有账号，iPad 可直接打开网页版，Android 可下载 APK 使用。</Typography>
             </Box>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
               <Button variant="contained" startIcon={<Login />} onClick={() => navigate('/login')}>

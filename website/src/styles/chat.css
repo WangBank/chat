@@ -881,6 +881,33 @@
   content: none;
 }
 
+.qq-message.received .qq-bubble.emoji-bubble,
+.qq-message.sent .qq-bubble.emoji-bubble {
+  max-width: min(220px, 48vw);
+  padding: 0 2px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.qq-message.received .qq-bubble.emoji-bubble::before,
+.qq-message.sent .qq-bubble.emoji-bubble::before {
+  content: none;
+}
+
+.qq-bubble.emoji-bubble .message-text {
+  font-size: 28px;
+  line-height: 1.15;
+}
+
+.qq-bubble.emoji-bubble .message-meta {
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.qq-bubble.emoji-bubble .message-meta button {
+  display: none;
+}
+
 .qq-bubble.media-bubble .group-message-sender {
   margin: 0 0 5px 2px;
 }
