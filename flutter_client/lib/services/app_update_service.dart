@@ -137,6 +137,10 @@ class InstallPermissionRequiredException extends AppUpdateException {
 class AppUpdateService {
   static const MethodChannel _channel =
       MethodChannel('top.wangbank.chat/update');
+  static const Duration _manifestTimeout = Duration(seconds: 15);
+  static const Duration _downloadConnectTimeout = Duration(seconds: 30);
+  static const Duration _downloadIdleTimeout = Duration(seconds: 20);
+  static const Duration _downloadTotalTimeout = Duration(minutes: 8);
 
   final http.Client _client;
 
@@ -167,9 +171,13 @@ class AppUpdateService {
 
   Future<AppUpdateManifest> fetchManifest() async {
     final uri = Uri.parse(AppConfig.updateManifestUrl);
-    final response = await _client.get(uri, headers: const {
-      'Accept': 'application/json'
-    }).timeout(const Duration(seconds: 15));
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'}).timeout(
+      _manifestTimeout,
+      onTimeout: () {
+        throw const AppUpdateException('检查更新超时，请稍后重试');
+      },
+    );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw AppUpdateException('检查更新失败：HTTP ${response.statusCode}');
@@ -197,8 +205,11 @@ class AppUpdateService {
       'User-Agent': 'LoveChat-Android-Updater',
     });
     final response = await _client.send(request).timeout(
-          const Duration(seconds: 60),
-        );
+      _downloadConnectTimeout,
+      onTimeout: () {
+        throw const AppUpdateException('连接更新服务器超时，请检查网络后重试');
+      },
+    );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw AppUpdateException('下载更新失败：HTTP ${response.statusCode}');
@@ -208,8 +219,19 @@ class AppUpdateService {
     var receivedBytes = 0;
     final output = file.openWrite();
 
+    final startedAt = DateTime.now();
     try {
-      await for (final chunk in response.stream) {
+      await for (final chunk in response.stream.timeout(
+        _downloadIdleTimeout,
+        onTimeout: (sink) {
+          sink.addError(const AppUpdateException('下载更新超时，请检查网络后重试'));
+          sink.close();
+        },
+      )) {
+        if (DateTime.now().difference(startedAt) > _downloadTotalTimeout) {
+          throw const AppUpdateException('下载时间过长，请检查网络后重试');
+        }
+
         receivedBytes += chunk.length;
         output.add(chunk);
         onProgress?.call(
@@ -220,6 +242,12 @@ class AppUpdateService {
         );
       }
       await output.close();
+    } on AppUpdateException {
+      await output.close();
+      if (await file.exists()) {
+        await file.delete();
+      }
+      rethrow;
     } catch (_) {
       await output.close();
       if (await file.exists()) {

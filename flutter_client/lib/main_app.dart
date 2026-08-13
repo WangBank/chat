@@ -38,6 +38,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   static const Color _qqBlueDark = Color(0xFF078FDB);
   static const Color _qqShell = Color(0xFFEFF7FC);
   static const Color _qqText = Color(0xFF111820);
+  static const Color _qqMuted = Color(0xFF8C96A3);
 
   late ApiService _apiService;
   late SignalRService _signalRService;
@@ -274,14 +275,20 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
               setProgressState = setState;
               return AlertDialog(
                 title: const Text('正在更新'),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    LinearProgressIndicator(value: progressValue),
-                    const SizedBox(height: 12),
-                    Text(progressText),
-                  ],
+                content: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 360),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LinearProgressIndicator(value: progressValue),
+                      const SizedBox(height: 12),
+                      Text(
+                        progressText,
+                        softWrap: true,
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -381,7 +388,15 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           canPop: !isRequired,
           child: AlertDialog(
             title: const Text('更新失败'),
-            content: Text(message),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360, maxHeight: 220),
+              child: SingleChildScrollView(
+                child: Text(
+                  message,
+                  softWrap: true,
+                ),
+              ),
+            ),
             actions: [
               if (!isRequired)
                 TextButton(
@@ -747,6 +762,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         navigatorKey: _navigatorKey,
         title: 'Love Chat',
         theme: _buildQqTheme(),
+        builder: _buildMaterialAppWithErrorBoundary,
         home: LoginPage(
           apiService: _apiService,
           onLoginSuccess: _onLoginSuccess,
@@ -758,6 +774,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       navigatorKey: _navigatorKey, // 添加全局NavigatorKey
       title: 'Love Chat',
       theme: _buildQqTheme(),
+      builder: _buildMaterialAppWithErrorBoundary,
       home: Scaffold(
         body: Stack(
           children: [
@@ -822,6 +839,109 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
               label: '我的',
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMaterialAppWithErrorBoundary(
+    BuildContext context,
+    Widget? child,
+  ) {
+    ErrorWidget.builder = (details) {
+      return _buildFriendlyErrorScreen(details.exceptionAsString());
+    };
+    return child ?? const SizedBox.shrink();
+  }
+
+  Widget _buildFriendlyErrorScreen(String message) {
+    final normalizedMessage = message
+        .replaceFirst(RegExp(r'^Exception:\s*'), '')
+        .replaceFirst(RegExp(r'^Error:\s*'), '');
+
+    return Material(
+      color: _qqShell,
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: ConstrainedBox(
+                constraints:
+                    BoxConstraints(minHeight: constraints.maxHeight - 40),
+                child: Center(
+                  child: Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 24,
+                          offset: const Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Icon(
+                          Icons.cloud_off_outlined,
+                          size: 42,
+                          color: _qqBlue,
+                        ),
+                        const SizedBox(height: 14),
+                        const Text(
+                          '服务暂时不可用',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: _qqText,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          '请确认后端服务已启动，或稍后重试。',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: _qqMuted,
+                            fontSize: 14,
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Container(
+                          constraints: const BoxConstraints(maxHeight: 120),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF7FAFC),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFE1E8EF)),
+                          ),
+                          child: SingleChildScrollView(
+                            child: Text(
+                              normalizedMessage,
+                              style: const TextStyle(
+                                color: Color(0xFF5F6975),
+                                fontSize: 12,
+                                height: 1.35,
+                              ),
+                              softWrap: true,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

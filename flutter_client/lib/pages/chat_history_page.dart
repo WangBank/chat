@@ -3,6 +3,7 @@ import '../services/api_service.dart';
 import '../services/call_manager.dart';
 import '../models/contact.dart';
 import '../config/app_config.dart';
+import '../widgets/load_error_state.dart';
 import 'chat_page.dart';
 
 class ChatHistoryPage extends StatefulWidget {
@@ -77,7 +78,7 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
       });
     } catch (e) {
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = normalizeErrorMessage(e, fallback: '加载聊天记录失败');
         _isLoading = false;
       });
     }
@@ -337,18 +338,14 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _errorMessage != null
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text('加载失败: $_errorMessage'),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: _loadContacts,
-                          child: const Text('重试'),
-                        ),
-                      ],
-                    ),
+                ? LoadErrorState(
+                    title: '聊天记录加载失败',
+                    message: '请确认后端服务已启动，或稍后重试。',
+                    details: _errorMessage,
+                    onRetry: _loadContacts,
+                    accentColor: _qqBlue,
+                    textColor: _qqText,
+                    mutedColor: _qqMuted,
                   )
                 : _contacts.isEmpty
                     ? const Center(

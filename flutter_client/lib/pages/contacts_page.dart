@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import '../services/call_manager.dart';
 import '../services/signalr_service.dart';
 import '../config/app_config.dart';
+import '../widgets/load_error_state.dart';
 import 'user_search_page.dart';
 import 'chat_page.dart';
 
@@ -40,6 +41,7 @@ class _ContactsPageState extends State<ContactsPage> {
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = false;
   bool _isFriendRequestsLoading = false;
+  String? _contactsErrorMessage;
   Timer? _refreshTimer;
   late final OnUserOnlineStatusChangedCallback _onlineStatusListener;
 
@@ -76,6 +78,7 @@ class _ContactsPageState extends State<ContactsPage> {
     if (showLoading) {
       setState(() {
         _isLoading = true;
+        _contactsErrorMessage = null;
       });
     }
 
@@ -90,16 +93,24 @@ class _ContactsPageState extends State<ContactsPage> {
           _searchController.text,
         );
         _isLoading = false;
+        _contactsErrorMessage = null;
       });
     } catch (e) {
       if (!mounted) return;
 
       setState(() {
         _isLoading = false;
+        if (showLoading || _contacts.isEmpty) {
+          _contactsErrorMessage = normalizeErrorMessage(
+            e,
+            fallback: '获取联系人失败',
+          );
+        }
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('获取联系人失败: $e')));
+
+      if (!showLoading && _contacts.isNotEmpty) {
+        showCompactErrorSnackBar(context, '联系人刷新失败，请稍后重试');
+      }
     }
   }
 
@@ -125,9 +136,7 @@ class _ContactsPageState extends State<ContactsPage> {
         _isFriendRequestsLoading = false;
       });
       if (showLoading) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('获取好友申请失败: $e')));
+        showCompactErrorSnackBar(context, '获取好友申请失败，请稍后重试');
       }
     }
   }
@@ -197,9 +206,7 @@ class _ContactsPageState extends State<ContactsPage> {
       _loadFriendRequests(showLoading: false);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('添加联系人失败: $e')));
+        showCompactErrorSnackBar(context, '添加联系人失败，请稍后重试');
       }
     }
   }
@@ -271,9 +278,7 @@ class _ContactsPageState extends State<ContactsPage> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('删除联系人失败: $e')));
+      showCompactErrorSnackBar(context, '删除联系人失败，请稍后重试');
     }
   }
 
@@ -304,9 +309,7 @@ class _ContactsPageState extends State<ContactsPage> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('修改备注失败: $e')));
+      showCompactErrorSnackBar(context, '修改备注失败，请稍后重试');
     }
   }
 
@@ -790,37 +793,47 @@ class _ContactsPageState extends State<ContactsPage> {
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : _filteredContacts.isEmpty
-                      ? const Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.person_search_outlined,
-                                size: 58,
-                                color: _qqMuted,
-                              ),
-                              SizedBox(height: 12),
-                              Text(
-                                '没有联系人',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  color: _qqMuted,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
+                  : _contactsErrorMessage != null
+                      ? LoadErrorState(
+                          title: '联系人加载失败',
+                          message: '请确认后端服务已启动，或稍后重试。',
+                          details: _contactsErrorMessage,
+                          onRetry: _loadContacts,
+                          accentColor: _qqBlue,
+                          textColor: _qqText,
+                          mutedColor: _qqMuted,
                         )
-                      : RefreshIndicator(
-                          onRefresh: _loadContacts,
-                          child: ListView.builder(
-                            padding: const EdgeInsets.only(bottom: 18),
-                            itemCount: _filteredContacts.length,
-                            itemBuilder: (context, index) =>
-                                _buildContactCard(_filteredContacts[index]),
-                          ),
-                        ),
+                      : _filteredContacts.isEmpty
+                          ? const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.person_search_outlined,
+                                    size: 58,
+                                    color: _qqMuted,
+                                  ),
+                                  SizedBox(height: 12),
+                                  Text(
+                                    '没有联系人',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      color: _qqMuted,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : RefreshIndicator(
+                              onRefresh: _loadContacts,
+                              child: ListView.builder(
+                                padding: const EdgeInsets.only(bottom: 18),
+                                itemCount: _filteredContacts.length,
+                                itemBuilder: (context, index) =>
+                                    _buildContactCard(_filteredContacts[index]),
+                              ),
+                            ),
             ),
           ],
         ),
@@ -899,9 +912,7 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
       setState(() {
         _isLoading = false;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('获取好友申请失败: $e')));
+      showCompactErrorSnackBar(context, '获取好友申请失败，请稍后重试');
     }
   }
 
@@ -933,9 +944,7 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('处理好友申请失败: $e')));
+      showCompactErrorSnackBar(context, '处理好友申请失败，请稍后重试');
     } finally {
       if (mounted) {
         setState(() {
@@ -957,9 +966,7 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('清理好友申请失败: $e')));
+      showCompactErrorSnackBar(context, '清理好友申请失败，请稍后重试');
     }
   }
 

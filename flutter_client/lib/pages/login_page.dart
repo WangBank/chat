@@ -478,24 +478,7 @@ class _LoginPageState extends State<LoginPage> {
                             obscureText: true,
                           ),
                           const SizedBox(height: 10),
-                          if (_errorMessage != null)
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              margin: const EdgeInsets.only(bottom: 12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFF0F0),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: const Color(0xFFFFC4C4),
-                                ),
-                              ),
-                              child: Text(
-                                _errorMessage!,
-                                style:
-                                    const TextStyle(color: Color(0xFFD93025)),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
+                          if (_errorMessage != null) _buildErrorMessage(),
                           if (_isLogin)
                             CheckboxListTile(
                               value: _rememberMe,
@@ -660,6 +643,46 @@ class _LoginPageState extends State<LoginPage> {
       child: Text(
         label,
         style: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+    );
+  }
+
+  Widget _buildErrorMessage() {
+    final message = (_errorMessage ?? '').trim();
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 118),
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF5F5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFFFD2D2),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.error_outline,
+            size: 18,
+            color: Color(0xFFD93025),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  color: Color(0xFFD93025),
+                  fontSize: 13,
+                  height: 1.35,
+                ),
+                softWrap: true,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
