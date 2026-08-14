@@ -2752,6 +2752,10 @@
   gap: 12px;
 }
 
+.favorite-card-foot {
+  flex-wrap: wrap;
+}
+
 .favorite-card-head span {
   color: #139cf0;
   font-weight: 700;
@@ -2761,6 +2765,13 @@
 .favorite-card-foot > span {
   color: #8c8c8c;
   font-size: 12px;
+}
+
+.favorite-card-foot > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .favorite-card-body p {

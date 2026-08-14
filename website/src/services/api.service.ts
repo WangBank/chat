@@ -446,6 +446,11 @@ class ApiService {
     return response.data;
   }
 
+  async updateFavorite(favoriteId: number, data: { content: string }) {
+    const response = await this.api.put<ApiResponse<FavoriteItemApiResponse>>(`/api/favorites/${favoriteId}`, data);
+    return response.data;
+  }
+
   async deleteFavorite(favoriteId: number) {
     const response = await this.api.delete<ApiResponse>(`/api/favorites/${favoriteId}`);
     return response.data;

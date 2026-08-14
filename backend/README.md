@@ -193,6 +193,7 @@ dotnet ef database update
 - `POST /api/groups/{groupId}/messages` - 发送群聊消息
 - `GET /api/favorites` - 获取收藏列表
 - `POST /api/favorites` - 新增收藏
+- `PUT /api/favorites/{favoriteId}` - 更新收藏笔记
 - `DELETE /api/favorites/{favoriteId}` - 删除收藏
 - `GET /api/calls/history` - 获取通话记录
 - `POST /api/calls/rooms` - 创建群组通话房间

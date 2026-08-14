@@ -414,6 +414,14 @@ namespace VideoCallAPI.Models.DTOs
         public int? file_size { get; set; }
     }
 
+    public class UpdateFavoriteItemDto
+    {
+        [Required(ErrorMessage = "收藏内容是必填的")]
+        [MinLength(1, ErrorMessage = "收藏内容不能为空")]
+        [StringLength(1000, ErrorMessage = "收藏内容不能超过1000个字符")]
+        public string content { get; set; } = string.Empty;
+    }
+
     public class FavoriteItemResponseDto
     {
         public int id { get; set; }

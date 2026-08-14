@@ -1127,6 +1127,7 @@ const ChatPage = observer(() => {
   const [favoriteFilter, setFavoriteFilter] = useState<FavoriteFilter>('all');
   const [favoriteNoteVisible, setFavoriteNoteVisible] = useState(false);
   const [favoriteNoteDraft, setFavoriteNoteDraft] = useState('');
+  const [editingFavoriteNoteId, setEditingFavoriteNoteId] = useState<string | null>(null);
   const [createGroupVisible, setCreateGroupVisible] = useState(false);
   const [groupNameDraft, setGroupNameDraft] = useState('');
   const [groupCategoryDraft, setGroupCategoryDraft] = useState('我创建的群聊');
@@ -3232,6 +3233,24 @@ const ChatPage = observer(() => {
     }
   };
 
+  const openCreateFavoriteNote = () => {
+    setEditingFavoriteNoteId(null);
+    setFavoriteNoteDraft('');
+    setFavoriteNoteVisible(true);
+  };
+
+  const openEditFavoriteNote = (item: FavoriteItem) => {
+    setEditingFavoriteNoteId(item.id);
+    setFavoriteNoteDraft(item.content);
+    setFavoriteNoteVisible(true);
+  };
+
+  const closeFavoriteNoteModal = () => {
+    setFavoriteNoteVisible(false);
+    setEditingFavoriteNoteId(null);
+    setFavoriteNoteDraft('');
+  };
+
   const addFavoriteItem = async (item: Omit<FavoriteItem, 'id' | 'createdAt'>, stableId?: string) => {
     const id = stableId || createLocalId('favorite');
     const exists = favoriteItems.some(
@@ -3245,7 +3264,7 @@ const ChatPage = observer(() => {
 
     if (exists) {
       message.info('已经收藏过了');
-      return;
+      return false;
     }
 
     try {
@@ -3260,10 +3279,11 @@ const ChatPage = observer(() => {
       if (response.success && response.data) {
         setFavoriteItems((items) => [mapApiFavorite(response.data!), ...items]);
         message.success(response.message || '已添加到收藏');
-        return;
+        return true;
       }
 
       message.info(response.message || '已经收藏过了');
+      return false;
     } catch (error: unknown) {
       setFavoriteItems((items) => [
         {
@@ -3274,6 +3294,7 @@ const ChatPage = observer(() => {
         ...items,
       ]);
       message.warning(getErrorMessage(error, '后端不可用，已添加到本地收藏'));
+      return true;
     }
   };
 
@@ -3314,20 +3335,75 @@ const ChatPage = observer(() => {
     );
   };
 
-  const addFavoriteNote = async () => {
+  const updateFavoriteNote = async (favoriteId: string, content: string) => {
+    const favorite = favoriteItems.find((item) => item.id === favoriteId);
+    if (!favorite || favorite.type !== 'note') {
+      message.error('笔记不存在');
+      return false;
+    }
+
+    if (favorite.content === content) {
+      return true;
+    }
+
+    const exists = favoriteItems.some(
+      (item) =>
+        item.id !== favoriteId &&
+        item.type === 'note' &&
+        item.content === content &&
+        item.sourceName === favorite.sourceName &&
+        item.filePath === favorite.filePath
+    );
+    if (exists) {
+      message.info('已经收藏过了');
+      return false;
+    }
+
+    if (isBackendId(favoriteId)) {
+      try {
+        const response = await apiService.updateFavorite(Number(favoriteId), { content });
+        if (response.success && response.data) {
+          const updatedFavorite = mapApiFavorite(response.data);
+          setFavoriteItems((items) =>
+            items.map((item) => (item.id === favoriteId ? updatedFavorite : item))
+          );
+          message.success(response.message || '笔记已更新');
+          return true;
+        }
+
+        message.error(response.message || '笔记更新失败');
+        return false;
+      } catch (error: unknown) {
+        message.error(getErrorMessage(error, '笔记更新失败'));
+        return false;
+      }
+    }
+
+    setFavoriteItems((items) =>
+      items.map((item) => (item.id === favoriteId ? { ...item, content } : item))
+    );
+    message.success('笔记已更新');
+    return true;
+  };
+
+  const saveFavoriteNote = async () => {
     const content = favoriteNoteDraft.trim();
     if (!content) {
       message.warning('请输入笔记内容');
       return;
     }
 
-    await addFavoriteItem({
-      content,
-      type: 'note',
-      sourceName: currentUserName,
-    });
-    setFavoriteNoteDraft('');
-    setFavoriteNoteVisible(false);
+    const saved = editingFavoriteNoteId
+      ? await updateFavoriteNote(editingFavoriteNoteId, content)
+      : await addFavoriteItem({
+          content,
+          type: 'note',
+          sourceName: currentUserName,
+        });
+
+    if (saved) {
+      closeFavoriteNoteModal();
+    }
   };
 
   const removeFavoriteItem = async (favoriteId: string) => {
@@ -4258,7 +4334,7 @@ const ChatPage = observer(() => {
           <Button
             className="favorite-note-button"
             icon={<EditOutlined />}
-            onClick={() => setFavoriteNoteVisible(true)}
+            onClick={openCreateFavoriteNote}
           >
             创建笔记
           </Button>
@@ -4670,7 +4746,7 @@ const ChatPage = observer(() => {
             <h2>我的收藏</h2>
             <p>{favoriteCounts.all} 条内容</p>
           </div>
-          <Button type="primary" icon={<EditOutlined />} onClick={() => setFavoriteNoteVisible(true)}>
+          <Button type="primary" icon={<EditOutlined />} onClick={openCreateFavoriteNote}>
             创建笔记
           </Button>
         </div>
@@ -4712,6 +4788,11 @@ const ChatPage = observer(() => {
                   <div className="favorite-card-foot">
                     <span>来自 {item.sourceName}</span>
                     <Space size={6}>
+                      {item.type === 'note' && (
+                        <Button size="small" icon={<EditOutlined />} onClick={() => openEditFavoriteNote(item)}>
+                          编辑
+                        </Button>
+                      )}
                       <Button size="small" icon={<ShareAltOutlined />} onClick={() => openShare(shareContent)}>
                         分享
                       </Button>
@@ -4951,7 +5032,7 @@ const ChatPage = observer(() => {
                   <Button type="text" icon={<GiftOutlined />} onClick={() => showComingSoon('红包')} />
                 </Tooltip>
                 <Tooltip title="收藏笔记">
-                  <Button type="text" icon={<HeartOutlined />} onClick={() => setFavoriteNoteVisible(true)} />
+                  <Button type="text" icon={<HeartOutlined />} onClick={openCreateFavoriteNote} />
                 </Tooltip>
                 <Tooltip title="分享">
                   <Button type="text" icon={<ShareAltOutlined />} onClick={() => openShare(groupMessageText || activeGroup.name)} />
@@ -5968,12 +6049,12 @@ const ChatPage = observer(() => {
       </Modal>
 
       <Modal
-        title="创建笔记"
+        title={editingFavoriteNoteId ? '编辑笔记' : '创建笔记'}
         open={favoriteNoteVisible}
         className="limited-text-modal"
-        onCancel={() => setFavoriteNoteVisible(false)}
-        onOk={() => void addFavoriteNote()}
-        okText="收藏"
+        onCancel={closeFavoriteNoteModal}
+        onOk={() => void saveFavoriteNote()}
+        okText={editingFavoriteNoteId ? '保存' : '收藏'}
         cancelText="取消"
         width={520}
       >
@@ -5984,7 +6065,7 @@ const ChatPage = observer(() => {
           autoSize={{ minRows: 5, maxRows: 9 }}
           maxLength={1000}
           showCount={{ formatter: formatTextAreaCount }}
-          placeholder="记录一条收藏笔记"
+          placeholder={editingFavoriteNoteId ? '更新这条收藏笔记' : '记录一条收藏笔记'}
         />
       </Modal>
 

@@ -1813,6 +1813,93 @@ namespace VideoCallAPI.Controllers
             }
         }
 
+        [HttpPut("{favoriteId}")]
+        public async Task<ActionResult<ApiResponse<FavoriteItemResponseDto>>> UpdateFavorite(int favoriteId, UpdateFavoriteItemDto updateDto)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+
+                return BadRequest(new ApiResponse<FavoriteItemResponseDto>
+                {
+                    Success = false,
+                    Message = "请求参数验证失败",
+                    Errors = errors
+                });
+            }
+
+            try
+            {
+                var userId = GetUserId();
+                var favorite = await _context.FavoriteItems
+                    .FirstOrDefaultAsync(item => item.id == favoriteId && item.user_id == userId);
+
+                if (favorite == null)
+                {
+                    return NotFound(new ApiResponse<FavoriteItemResponseDto>
+                    {
+                        Success = false,
+                        Message = "收藏不存在"
+                    });
+                }
+
+                if (favorite.type != "note")
+                {
+                    return BadRequest(new ApiResponse<FavoriteItemResponseDto>
+                    {
+                        Success = false,
+                        Message = "只有笔记收藏可以编辑"
+                    });
+                }
+
+                var content = _contentSecurity.NormalizeRequiredText(
+                    updateDto.content,
+                    "收藏内容",
+                    1000,
+                    rejectSensitiveWords: true);
+
+                var exists = await _context.FavoriteItems.AnyAsync(item =>
+                    item.id != favoriteId &&
+                    item.user_id == userId &&
+                    item.type == favorite.type &&
+                    item.content == content &&
+                    item.source_name == favorite.source_name &&
+                    item.file_path == favorite.file_path);
+
+                if (exists)
+                {
+                    return BadRequest(new ApiResponse<FavoriteItemResponseDto>
+                    {
+                        Success = false,
+                        Message = "已经收藏过了"
+                    });
+                }
+
+                favorite.content = content;
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<FavoriteItemResponseDto>
+                {
+                    Success = true,
+                    Message = "笔记已更新",
+                    Data = MapToFavoriteDto(favorite)
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "更新收藏失败: UserId={UserId}, FavoriteId={FavoriteId}", GetUserId(), favoriteId);
+                return BadRequest(new ApiResponse<FavoriteItemResponseDto>
+                {
+                    Success = false,
+                    Message = ApiErrorMessage.ForClient(ex, "更新收藏失败"),
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
         [HttpDelete("{favoriteId}")]
         public async Task<ActionResult<ApiResponse>> DeleteFavorite(int favoriteId)
         {
