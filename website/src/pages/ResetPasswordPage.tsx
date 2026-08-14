@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Form, Input, Button, message, Card } from 'antd';
 import { LockOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { apiService } from '../services/api.service';
+import { apiService, getApiErrorMessage } from '../services/api.service';
 import '../styles/common.css';
 
 const ResetPasswordPage = () => {
@@ -33,8 +33,8 @@ const ResetPasswordPage = () => {
       }
 
       message.error(response.message || '密码重置失败');
-    } catch (error: any) {
-      message.error(error.response?.data?.message || '密码重置失败');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, '密码重置失败'));
     } finally {
       setLoading(false);
     }

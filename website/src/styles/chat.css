@@ -164,6 +164,18 @@
   color: #fff;
 }
 
+.message-notice-button {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+}
+
+.message-notice-button .ant-badge {
+  color: #fff;
+  line-height: 1;
+}
+
 .weather-pill {
   display: inline-flex;
   align-items: center;
@@ -2826,6 +2838,14 @@
 
 .favorite-file small {
   color: #8c8c8c;
+}
+
+.call-history-list {
+  padding-top: 4px;
+}
+
+.call-history-row strong {
+  color: #4f5c68;
 }
 
 .contact-manager-modal {

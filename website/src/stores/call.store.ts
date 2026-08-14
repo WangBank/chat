@@ -1,6 +1,6 @@
 import { makeAutoObservable } from 'mobx';
 import { signalRService, type IncomingCall } from '../services/signalr.service';
-import { webRTCService, CallType } from '../services/webrtc.service';
+import { webRTCService, CallType, type CallPeer } from '../services/webrtc.service';
 import { authStore } from './auth.store';
 
 class CallStore {
@@ -27,13 +27,25 @@ class CallStore {
       if (this.currentCall && (!this.currentCall.call_id || this.currentCall.call_id === '')) {
         this.currentCall.call_id = call.call_id;
         this.currentCall.start_time = call.start_time;
-        // Send pending offer
-        await webRTCService.sendPendingOffer(call.call_id);
+        webRTCService.setCurrentCall({
+          callId: this.currentCall.call_id,
+          caller: this.currentCall.caller,
+          receiver: this.currentCall.receiver,
+          callType: this.currentCall.call_type as CallType,
+          status: this.currentCall.status,
+          startTime: this.currentCall.start_time,
+        });
       } else if (!this.currentCall) {
         this.currentCall = call;
         this.isRinging = true;
-        // Send pending offer
-        await webRTCService.sendPendingOffer(call.call_id);
+        webRTCService.setCurrentCall({
+          callId: call.call_id,
+          caller: call.caller,
+          receiver: call.receiver,
+          callType: call.call_type as CallType,
+          status: call.status,
+          startTime: call.start_time,
+        });
       }
     };
 
@@ -46,7 +58,7 @@ class CallStore {
         if (this.currentCall.call_id === callId) {
           this.isRinging = false;
           this.isInCall = true;
-          await webRTCService.acceptCall({
+          await webRTCService.startCallAsCaller({
             callId: this.currentCall.call_id,
             caller: this.currentCall.caller,
             receiver: this.currentCall.receiver,
@@ -99,7 +111,7 @@ class CallStore {
     };
   }
 
-  async initiateCall(receiverId: number, callType: CallType, receiverInfo?: any) {
+  async initiateCall(receiverId: number, callType: CallType, receiverInfo?: CallPeer) {
     try {
       // Ensure SignalR is connected
       if (!signalRService.isConnected && authStore.token && authStore.user) {
@@ -123,7 +135,10 @@ class CallStore {
             created_at: authStore.user.created_at,
             updated_at: authStore.user.updated_at,
           },
-          receiver: receiverInfo,
+          receiver: {
+            ...receiverInfo,
+            username: receiverInfo.username || receiverInfo.display_name || String(receiverInfo.id),
+          },
           call_type: callType,
           status: 1, // Initiated
           start_time: new Date().toISOString(),

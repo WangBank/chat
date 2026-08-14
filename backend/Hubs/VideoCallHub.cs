@@ -13,6 +13,7 @@ namespace VideoCallAPI.Hubs
     {
         private readonly IWebRTCService _webRTCService;
         private readonly IUserService _userService;
+        private readonly ICallService _callService;
         private readonly ILogger<VideoCallHub> _logger;
         private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly IHubContext<VideoCallHub> _hubContext;
@@ -22,12 +23,14 @@ namespace VideoCallAPI.Hubs
         public VideoCallHub(
             IWebRTCService webRTCService,
             IUserService userService,
+            ICallService callService,
             ILogger<VideoCallHub> logger,
             IServiceScopeFactory serviceScopeFactory,
             IHubContext<VideoCallHub> hubContext)
         {
             _webRTCService = webRTCService;
             _userService = userService;
+            _callService = callService;
             _logger = logger;
             _serviceScopeFactory = serviceScopeFactory;
             _hubContext = hubContext;
@@ -208,55 +211,31 @@ namespace VideoCallAPI.Hubs
                     return;
                 }
 
-                var session = await _webRTCService.CreateSessionAsync(callerId.Value, request.receiver_id, request.call_type);
-                
-                // 通知接收者
-                var caller = await _userService.GetUserByIdAsync(callerId.Value);
-                var receiver = await _userService.GetUserByIdAsync(request.receiver_id);
-                
-                if (caller != null && receiver != null)
-                {
-                    var callData = new
-                    {
-                        call_id = session.call_id,
-                        caller = new
-                        {
-                            id = caller.id,
-                            username = caller.username,
-                            email = caller.email,
-                            display_name = caller.display_name,
-                            avatar_path = caller.avatar_path,
-                            is_online = caller.is_online,
-                            last_login_at = caller.last_login_at,
-                            created_at = caller.created_at,
-                            updated_at = caller.updated_at
-                        },
-                        receiver = new
-                        {
-                            id = receiver.id,
-                            username = receiver.username,
-                            email = receiver.email,
-                            display_name = receiver.display_name,
-                            avatar_path = receiver.avatar_path,
-                            is_online = receiver.is_online,
-                            last_login_at = receiver.last_login_at,
-                            created_at = receiver.created_at,
-                            updated_at = receiver.updated_at
-                        },
-                        call_type = request.call_type,
-                        status = 1, // Initiated
-                        start_time = session.start_time
-                    };
+                var callResponse = await _callService.InitiateCallAsync(callerId.Value, request.receiver_id, request.call_type);
+                await _webRTCService.CreateSessionAsync(
+                    callerId.Value,
+                    request.receiver_id,
+                    request.call_type,
+                    callResponse.call_id);
 
-                    // 通知接收者
-                    await Clients.Group($"user_{request.receiver_id}").SendAsync("IncomingCall", callData);
-                    
-                    // 同时通知呼叫者（返回call_id等信息）
-                    await Clients.Caller.SendAsync("CallInitiated", callData);
-                }
+                var callData = new
+                {
+                    call_id = callResponse.call_id,
+                    caller = callResponse.caller,
+                    receiver = callResponse.receiver,
+                    call_type = callResponse.call_type,
+                    status = callResponse.status,
+                    start_time = callResponse.start_time
+                };
+
+                // 通知接收者
+                await Clients.Group($"user_{request.receiver_id}").SendAsync("IncomingCall", callData);
+
+                // 同时通知呼叫者（返回call_id等信息）
+                await Clients.Caller.SendAsync("CallInitiated", callData);
 
                 _logger.LogInformation("发起通话: {call_id}, 呼叫者: {caller_id}, 接收者: {receiver_id}", 
-                    session.call_id, callerId, request.receiver_id);
+                    callResponse.call_id, callerId, request.receiver_id);
             }
             catch (Exception ex)
             {
@@ -279,40 +258,49 @@ namespace VideoCallAPI.Hubs
 
                 if (request.accept)
                 {
+                    var session = await _webRTCService.GetSessionAsync(request.call_id);
+                    if (session == null)
+                    {
+                        await Clients.Caller.SendAsync("CallError", "通话不存在");
+                        return;
+                    }
+
+                    await _callService.AnswerCallAsync(request.call_id, userId.Value, true);
                     var success = await _webRTCService.AcceptCallAsync(request.call_id, userId.Value);
                     if (success)
                     {
-                        var session = await _webRTCService.GetSessionAsync(request.call_id);
-                        if (session != null)
+                        // 通知呼叫者通话被接受
+                        await Clients.Group($"user_{session.caller_id}").SendAsync("CallAccepted", new
                         {
-                            // 通知呼叫者通话被接受
-                            await Clients.Group($"user_{session.caller_id}").SendAsync("CallAccepted", new
-                            {
-                                call_id = request.call_id,
-                                receiver_id = userId
-                            });
+                            call_id = request.call_id,
+                            receiver_id = userId
+                        });
 
-                            _logger.LogInformation("通话被接受: {call_id}, 接收者: {user_id}", request.call_id, userId);
-                        }
+                        _logger.LogInformation("通话被接受: {call_id}, 接收者: {user_id}", request.call_id, userId);
                     }
                 }
                 else
                 {
+                    var session = await _webRTCService.GetSessionAsync(request.call_id);
+                    if (session == null)
+                    {
+                        await Clients.Caller.SendAsync("CallError", "通话不存在");
+                        return;
+                    }
+
+                    await _callService.AnswerCallAsync(request.call_id, userId.Value, false);
                     var success = await _webRTCService.RejectCallAsync(request.call_id, userId.Value);
                     if (success)
                     {
-                        var session = await _webRTCService.GetSessionAsync(request.call_id);
-                        if (session != null)
+                        // 通知呼叫者通话被拒绝
+                        await Clients.Group($"user_{session.caller_id}").SendAsync("CallRejected", new
                         {
-                            // 通知呼叫者通话被拒绝
-                            await Clients.Group($"user_{session.caller_id}").SendAsync("CallRejected", new
-                            {
-                                call_id = request.call_id,
-                                receiver_id = userId
-                            });
+                            call_id = request.call_id,
+                            receiver_id = userId
+                        });
+                        await _webRTCService.EndSessionAsync(request.call_id);
 
-                            _logger.LogInformation("通话被拒绝: {call_id}, 接收者: {user_id}", request.call_id, userId);
-                        }
+                        _logger.LogInformation("通话被拒绝: {call_id}, 接收者: {user_id}", request.call_id, userId);
                     }
                 }
             }
@@ -336,12 +324,30 @@ namespace VideoCallAPI.Hubs
                     await Clients.Caller.SendAsync("Error", new { message = "Unauthorized" });
                     return;
                 }
-                // 先广播，再清理，避免被动端漏消息
-                await Clients.Group($"call_{callId}").SendAsync("CallEnded", new
+                var session = await _webRTCService.GetSessionAsync(callId);
+                var callEndedPayload = new
                 {
                     call_id = callId,
                     EndedBy = userId.Value
-                });
+                };
+
+                // 先广播，再清理，避免被动端漏消息。用户组兜底覆盖尚未加入 call 组的未接听场景。
+                var targetGroups = new List<string> { $"call_{callId}" };
+                if (session != null)
+                {
+                    targetGroups.Add($"user_{session.caller_id}");
+                    targetGroups.Add($"user_{session.receiver_id}");
+                }
+                await Clients.Groups(targetGroups.Distinct()).SendAsync("CallEnded", callEndedPayload);
+
+                try
+                {
+                    await _callService.EndCallAsync(callId, userId.Value);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "写入通话结束历史失败: CallId={CallId}, UserId={UserId}", callId, userId.Value);
+                }
 
                 var success = await _webRTCService.EndCallAsync(callId, userId.Value);
                 if (!success)

@@ -1,5 +1,5 @@
 import { makeAutoObservable } from 'mobx';
-import { apiService, type AuthApiResponse } from '../services/api.service';
+import { apiService, getApiErrorMessage, type AuthApiResponse } from '../services/api.service';
 import { signalRService } from '../services/signalr.service';
 
 export interface User {
@@ -56,8 +56,8 @@ class AuthStore {
       } else {
         return { success: false, message: response.message || 'Login failed' };
       }
-    } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || error.message || 'Login failed' };
+    } catch (error: unknown) {
+      return { success: false, message: getApiErrorMessage(error, 'Login failed') };
     } finally {
       this.isLoading = false;
     }
@@ -73,8 +73,8 @@ class AuthStore {
       } else {
         return { success: false, message: response.message || 'Registration failed' };
       }
-    } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || error.message || 'Registration failed' };
+    } catch (error: unknown) {
+      return { success: false, message: getApiErrorMessage(error, 'Registration failed') };
     } finally {
       this.isLoading = false;
     }
@@ -89,8 +89,8 @@ class AuthStore {
         return { success: true };
       }
       return { success: false, message: response.message || 'QQ login failed' };
-    } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || 'QQ login failed' };
+    } catch (error: unknown) {
+      return { success: false, message: getApiErrorMessage(error, 'QQ login failed') };
     } finally {
       this.isLoading = false;
     }
@@ -115,8 +115,8 @@ class AuthStore {
         return { success: true };
       }
       return { success: false, message: response.message || 'QQ test login failed' };
-    } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || 'QQ test login failed' };
+    } catch (error: unknown) {
+      return { success: false, message: getApiErrorMessage(error, 'QQ test login failed') };
     } finally {
       this.isLoading = false;
     }

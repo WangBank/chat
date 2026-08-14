@@ -2,7 +2,7 @@ import * as signalR from '@microsoft/signalr';
 import { APP_CONFIG } from '../config/app.config';
 import type { ChatMessageApiResponse, UserSummaryResponse } from './api.service';
 
-type SignalRUser = UserSummaryResponse & {
+export type SignalRUser = UserSummaryResponse & {
   id: number;
   username: string;
   created_at?: string;

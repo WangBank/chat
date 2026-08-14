@@ -60,6 +60,7 @@ import { callStore } from '../stores/call.store';
 import { authStore } from '../stores/auth.store';
 import {
   apiService,
+  type CallHistoryApiResponse,
   type ChatGroupApiResponse,
   type FavoriteItemApiResponse,
   type GroupMessageApiResponse,
@@ -706,6 +707,27 @@ function formatHistoryDate(timestamp?: string | Date) {
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
 }
 
+function formatDurationText(seconds?: number) {
+  if (!seconds || seconds <= 0) return '0秒';
+  const minutes = Math.floor(seconds / 60);
+  const remainSeconds = seconds % 60;
+  if (minutes === 0) return `${remainSeconds}秒`;
+  return `${minutes}分${pad(remainSeconds)}秒`;
+}
+
+function getCallTypeText(callType: number) {
+  return callType === 1 ? '语音通话' : '视频通话';
+}
+
+function getCallStatusText(status: number) {
+  if (status === 3) return '已接听';
+  if (status === 4) return '已拒绝';
+  if (status === 5) return '未接听';
+  if (status === 6) return '已结束';
+  if (status === 7) return '失败';
+  return '呼叫中';
+}
+
 function getUserName(user?: UserSummary | null) {
   return user?.display_name || user?.username || '未命名用户';
 }
@@ -775,6 +797,19 @@ function getMessageTypeValue(type?: number | string) {
   if (normalizedType === 'audio') return MESSAGE_TYPES.Audio;
   if (normalizedType === 'file') return MESSAGE_TYPES.File;
   return MESSAGE_TYPES.Text;
+}
+
+function getConversationPreviewFromMessage(payload: {
+  content?: string;
+  type?: number | string;
+  duration?: number;
+}) {
+  const normalizedType = normalizeMessageType(payload.type);
+  if (normalizedType === 'image') return '[图片]';
+  if (normalizedType === 'video') return '[视频]';
+  if (normalizedType === 'audio') return `[语音] ${payload.duration || 1}"`;
+  if (normalizedType === 'file') return `[文件] ${payload.content || '附件'}`;
+  return payload.content || '新消息';
 }
 
 function getForwardPreview(payload: Pick<ForwardMessagePayload, 'content' | 'type' | 'file_path'>) {
@@ -1169,6 +1204,9 @@ const ChatPage = observer(() => {
   const [historyTitle, setHistoryTitle] = useState('聊天记录');
   const [historyMessages, setHistoryMessages] = useState<HistoryMessageItem[]>([]);
   const [historyQuery, setHistoryQuery] = useState('');
+  const [callHistoryVisible, setCallHistoryVisible] = useState(false);
+  const [callHistoryLoading, setCallHistoryLoading] = useState(false);
+  const [callHistoryItems, setCallHistoryItems] = useState<CallHistoryApiResponse[]>([]);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
   const [signatureVisible, setSignatureVisible] = useState(false);
   const [signatureDraft, setSignatureDraft] = useState('');
@@ -1364,10 +1402,36 @@ const ChatPage = observer(() => {
   const currentUsername = normalizeUsername(authStore.user?.username);
   const currentSignature = getDisplaySignature(authStore.user);
   const currentContactId = chatStore.currentContact?.id;
+  const notificationsSupported = typeof Notification !== 'undefined';
 
   useEffect(() => {
     setReplyDraft(null);
   }, [activeChatKind, activeGroupId, currentContactId]);
+
+  useEffect(() => {
+    const dispose = reaction(
+      () => chatStore.latestMessageNotice,
+      (notice) => {
+        if (!notice) return;
+
+        const body = getConversationPreviewFromMessage({
+          content: notice.content,
+          type: notice.type,
+          duration: notice.duration,
+        });
+        message.info(`${notice.senderName}: ${body}`);
+
+        if (document.hidden && notificationsSupported && Notification.permission === 'granted') {
+          new Notification(notice.senderName, {
+            body,
+            tag: `message-${notice.id}`,
+          });
+        }
+      }
+    );
+
+    return () => dispose();
+  }, [notificationsSupported]);
 
   useEffect(() => {
     const nextContactGroupAssignments = readLocalJson<Record<string, string>>(
@@ -1419,6 +1483,30 @@ const ChatPage = observer(() => {
   const openProfileSettings = () => {
     setProfileDraft(createProfileDraft(authStore.user));
     setProfileVisible(true);
+  };
+
+  const requestMessageNotifications = async () => {
+    if (!notificationsSupported) {
+      message.info('当前浏览器不支持系统通知');
+      return;
+    }
+
+    if (Notification.permission === 'granted') {
+      message.success('新消息通知已开启');
+      return;
+    }
+
+    if (Notification.permission === 'denied') {
+      message.warning('浏览器已关闭通知权限，请在站点设置中开启');
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      message.success('新消息通知已开启');
+    } else {
+      message.info('未开启系统通知，仍会显示站内新消息提醒');
+    }
   };
 
   const updateProfileDraft = (field: keyof ProfileDraft, value: string) => {
@@ -1787,14 +1875,20 @@ const ChatPage = observer(() => {
   const activeGroupMemberPreview = allGroupMembers.slice(0, 10);
   const conversationRows = [
     ...filteredContacts.map((contact) => {
-      const sortDate = parseDate(contact.last_message_at || contact.added_at);
+      const latestMessage = chatStore.lastMessagesByContactId.get(contact.id);
+      const latestMessageAt = latestMessage?.created_at || latestMessage?.timestamp;
+      const sortDate = parseDate(latestMessageAt || contact.last_message_at || contact.added_at);
       return {
         id: `contact-${contact.id}`,
         kind: 'contact' as const,
         active: activeChatKind === 'contact' && chatStore.currentContact?.id === contact.id,
         title: getContactName(contact),
-        time: formatListTime(contact.last_message_at || contact.added_at),
-        preview: contact.last_message_at ? '最近有新的聊天记录' : '你们已经是好友了',
+        time: formatListTime(latestMessageAt || contact.last_message_at || contact.added_at),
+        preview: latestMessage
+          ? getConversationPreviewFromMessage(latestMessage)
+          : contact.last_message_at
+            ? '最近有新的聊天记录'
+            : '你们已经是好友了',
         sortTime: sortDate?.getTime() || 0,
         unread: contact.unread_count || 0,
         pinned: false,
@@ -2955,6 +3049,24 @@ const ChatPage = observer(() => {
     } finally {
       setHistoryLoading(false);
       void chatStore.loadContacts(false);
+    }
+  };
+
+  const openCallHistory = async () => {
+    setCallHistoryVisible(true);
+    setCallHistoryLoading(true);
+
+    try {
+      const response = await apiService.getCallHistory();
+      if (response.success && response.data) {
+        setCallHistoryItems(response.data);
+      } else {
+        message.error(response.message || '通话记录加载失败');
+      }
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '通话记录加载失败'));
+    } finally {
+      setCallHistoryLoading(false);
     }
   };
 
@@ -5329,6 +5441,26 @@ const ChatPage = observer(() => {
                 </span>
               </span>
             </Tooltip>
+            <Tooltip title={chatStore.totalUnreadCount > 0 ? `${chatStore.totalUnreadCount} 条未读消息` : '新消息通知'}>
+              <Button
+                type="text"
+                className="message-notice-button"
+                onClick={() => void requestMessageNotifications()}
+                aria-label="新消息通知"
+              >
+                <Badge count={chatStore.totalUnreadCount} size="small" offset={[-2, 4]}>
+                  <BellOutlined />
+                </Badge>
+              </Button>
+            </Tooltip>
+            <Tooltip title="通话记录">
+              <Button
+                type="text"
+                className="message-notice-button"
+                icon={<PhoneOutlined />}
+                onClick={() => void openCallHistory()}
+              />
+            </Tooltip>
             <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout} />
           </div>
         </div>
@@ -5982,6 +6114,46 @@ const ChatPage = observer(() => {
                           {messageType === 'audio' && msg.duration ? ` · ${msg.duration}"` : ''}
                         </strong>
                       </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        title="通话记录"
+        open={callHistoryVisible}
+        footer={null}
+        width={680}
+        className="history-modal"
+        onCancel={() => setCallHistoryVisible(false)}
+      >
+        <div className="history-shell">
+          <div className="history-list call-history-list">
+            {callHistoryLoading ? (
+              <div className="history-empty">加载中...</div>
+            ) : callHistoryItems.length === 0 ? (
+              <div className="history-empty">暂无通话记录</div>
+            ) : (
+              callHistoryItems.map((item) => {
+                const peer = item.caller.id === currentUserId ? item.receiver : item.caller;
+                const direction = item.caller.id === currentUserId ? '呼出' : '呼入';
+                return (
+                  <div className="history-row call-history-row" key={item.call_id}>
+                    <Avatar size={38} src={getAvatarUrl(peer.avatar_path)}>
+                      {getInitial(getUserName(peer))}
+                    </Avatar>
+                    <div>
+                      <p>
+                        {getUserName(peer)} <span>{formatHistoryDate(item.start_time)} {formatClock(item.start_time)}</span>
+                      </p>
+                      <strong>
+                        {direction} · {getCallTypeText(item.call_type)} · {getCallStatusText(item.status)}
+                        {item.duration !== undefined ? ` · ${formatDurationText(item.duration)}` : ''}
+                      </strong>
                     </div>
                   </div>
                 );

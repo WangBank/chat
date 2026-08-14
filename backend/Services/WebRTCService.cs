@@ -15,9 +15,9 @@ namespace VideoCallAPI.Services
             _logger = logger;
         }
 
-        public async Task<WebRTCSession> CreateSessionAsync(int callerId, int receiverId, CallType callType)
+        public async Task<WebRTCSession> CreateSessionAsync(int callerId, int receiverId, CallType callType, string? callId = null)
         {
-            var callId = Guid.NewGuid().ToString();
+            callId ??= Guid.NewGuid().ToString();
             var session = new WebRTCSession
             {
                 call_id = callId,
@@ -253,4 +253,4 @@ namespace VideoCallAPI.Services
             }
         }
     }
-} 
+}

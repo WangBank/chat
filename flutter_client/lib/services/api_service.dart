@@ -855,7 +855,9 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
+        final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+        final List<dynamic> data =
+            decoded['data'] is List ? decoded['data'] as List<dynamic> : [];
         return data.map((json) => Call.fromJson(json)).toList();
       } else {
         throw Exception('获取通话历史失败: ${response.body}');

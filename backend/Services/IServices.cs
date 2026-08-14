@@ -12,7 +12,7 @@ namespace VideoCallAPI.Services
         Task<RoomResponseDto> CreateRoomAsync(int userId, CreateRoomDto createRoomDto);
         Task<RoomResponseDto> JoinRoomAsync(string roomCode, int userId);
         Task LeaveRoomAsync(int roomId, int userId);
-        Task<List<CallHistory>> GetCallHistoryAsync(int userId);
+        Task<List<CallResponseDto>> GetCallHistoryAsync(int userId);
     }
 
     public interface IUserService

@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 import '../models/contact.dart';
 import '../models/chat_message.dart';
 import '../models/call.dart';
@@ -32,6 +35,8 @@ class _ChatPageState extends State<ChatPage> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
+  final AudioRecorder _audioRecorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
   static const Color _qqBlue = Color(0xFF12A8F4);
   static const Color _qqBlueSoft = Color(0xFFE8F6FF);
   static const Color _qqChat = Color(0xFFEEF4F8);
@@ -48,10 +53,16 @@ class _ChatPageState extends State<ChatPage> {
   bool _isLoading = false;
   bool _isSending = false;
   bool _isUploading = false;
+  bool _isRecordingVoice = false;
   bool _showEmojiPanel = false;
+  int _voiceRecordSeconds = 0;
   ChatMessage? _replyingToMessage;
   late Contact _contact;
   OnUserOnlineStatusChangedCallback? _onlineStatusListener;
+  Timer? _voiceTimer;
+  DateTime? _voiceStartedAt;
+  StreamSubscription<void>? _audioCompleteSubscription;
+  String? _playingAudioUrl;
   String? _lastInsertedEmoji;
   DateTime? _lastEmojiInsertedAt;
   String? _lastSendSignature;
@@ -192,6 +203,12 @@ class _ChatPageState extends State<ChatPage> {
     _contact = widget.contact;
     _loadMessages();
     _setupMessageListener();
+    _audioCompleteSubscription = _audioPlayer.onPlayerComplete.listen((_) {
+      if (!mounted) return;
+      setState(() {
+        _playingAudioUrl = null;
+      });
+    });
   }
 
   void _setupMessageListener() {
@@ -241,6 +258,10 @@ class _ChatPageState extends State<ChatPage> {
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
+    _voiceTimer?.cancel();
+    unawaited(_audioRecorder.dispose());
+    unawaited(_audioCompleteSubscription?.cancel());
+    unawaited(_audioPlayer.dispose());
 
     // 清理消息监听器
     if (widget.callManager != null) {
@@ -454,10 +475,148 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  Future<void> _toggleVoiceRecording() async {
+    if (_isRecordingVoice) {
+      await _stopAndSendVoiceRecording();
+      return;
+    }
+
+    if (_isUploading || _isSending) return;
+
+    final hasPermission = await _audioRecorder.hasPermission();
+    if (!hasPermission) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请开启麦克风权限后再发送语音')));
+      return;
+    }
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final now = DateTime.now();
+      final filePath =
+          '${tempDir.path}/voice_${now.millisecondsSinceEpoch}.m4a';
+
+      await _audioRecorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc),
+        path: filePath,
+      );
+
+      _voiceTimer?.cancel();
+      _voiceStartedAt = now;
+      setState(() {
+        _isRecordingVoice = true;
+        _voiceRecordSeconds = 0;
+        _showEmojiPanel = false;
+      });
+      _voiceTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+        final startedAt = _voiceStartedAt;
+        if (!mounted || startedAt == null) return;
+        setState(() {
+          _voiceRecordSeconds =
+              DateTime.now().difference(startedAt).inSeconds.clamp(1, 3600);
+        });
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isRecordingVoice = false;
+        _voiceRecordSeconds = 0;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('录音失败: $e')));
+    }
+  }
+
+  Future<void> _stopAndSendVoiceRecording() async {
+    _voiceTimer?.cancel();
+    _voiceTimer = null;
+    final startedAt = _voiceStartedAt;
+    _voiceStartedAt = null;
+
+    String? path;
+    try {
+      path = await _audioRecorder.stop();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isRecordingVoice = false;
+        _voiceRecordSeconds = 0;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('停止录音失败: $e')));
+      return;
+    }
+
+    final duration = startedAt == null
+        ? _voiceRecordSeconds.clamp(1, 3600)
+        : DateTime.now().difference(startedAt).inSeconds.clamp(1, 3600);
+
+    if (!mounted) return;
+    setState(() {
+      _isRecordingVoice = false;
+      _voiceRecordSeconds = duration;
+    });
+
+    if (path == null || path.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('没有录到声音')));
+      return;
+    }
+
+    await _uploadAndSendAttachment(
+      File(path),
+      preferredName: '语音消息 ${duration}s',
+      messageType: MessageType.audio,
+      duration: duration,
+    );
+  }
+
+  Future<void> _playVoiceMessage(ChatMessage message) async {
+    final audioUrl = AppConfig.resolveMediaUrl(message.filePath);
+    if (audioUrl == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('语音文件不可用')));
+      return;
+    }
+
+    try {
+      if (_playingAudioUrl == audioUrl) {
+        await _audioPlayer.stop();
+        if (!mounted) return;
+        setState(() {
+          _playingAudioUrl = null;
+        });
+        return;
+      }
+
+      await _audioPlayer.stop();
+      await _audioPlayer.play(UrlSource(audioUrl));
+      if (!mounted) return;
+      setState(() {
+        _playingAudioUrl = audioUrl;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _playingAudioUrl = null;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('语音播放失败: $e')));
+    }
+  }
+
   Future<void> _uploadAndSendAttachment(
     File file, {
     required String preferredName,
     required MessageType messageType,
+    int? duration,
   }) async {
     if (_isUploading || _isSending) return;
 
@@ -480,6 +639,7 @@ class _ChatPageState extends State<ChatPage> {
         messageType,
         filePath: upload.filePath,
         fileSize: upload.fileSize,
+        duration: duration,
         replyToMessageId: replyToMessageId,
       );
 
@@ -1307,6 +1467,38 @@ class _ChatPageState extends State<ChatPage> {
                         padding: EdgeInsets.only(bottom: 8),
                         child: LinearProgressIndicator(minHeight: 2),
                       ),
+                    if (_isRecordingVoice)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _qqBlueSoft,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.mic, color: _qqBlue, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '正在录音 ${_voiceRecordSeconds.clamp(1, 3600)}"',
+                                style: const TextStyle(
+                                  color: _qqText,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => unawaited(
+                                  _stopAndSendVoiceRecording()),
+                              child: const Text('停止并发送'),
+                            ),
+                          ],
+                        ),
+                      ),
                     if (_replyingToMessage != null)
                       _buildReplyCard(
                         _replySnapshotForMessage(_replyingToMessage!),
@@ -1346,6 +1538,17 @@ class _ChatPageState extends State<ChatPage> {
                           onPressed: _isUploading || _isSending
                               ? null
                               : _pickAndSendFile,
+                        ),
+                        const SizedBox(width: 6),
+                        _buildComposerButton(
+                          icon: _isRecordingVoice
+                              ? Icons.stop_circle_outlined
+                              : Icons.mic_none_outlined,
+                          tooltip: _isRecordingVoice ? '停止并发送语音' : '发送语音',
+                          active: _isRecordingVoice,
+                          onPressed: _isUploading || _isSending
+                              ? null
+                              : _toggleVoiceRecording,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -1544,9 +1747,44 @@ class _ChatPageState extends State<ChatPage> {
       return _buildFileContent(message, isMe);
     }
 
+    if (message.type == MessageType.audio && message.filePath != null) {
+      return _buildVoiceContent(message, isMe);
+    }
+
     return Text(
       message.content,
       style: const TextStyle(color: _qqText, fontSize: 16, height: 1.35),
+    );
+  }
+
+  Widget _buildVoiceContent(ChatMessage message, bool isMe) {
+    final audioUrl = AppConfig.resolveMediaUrl(message.filePath);
+    final isPlaying = audioUrl != null && _playingAudioUrl == audioUrl;
+    final duration = message.duration ?? 1;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => unawaited(_playVoiceMessage(message)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isPlaying ? Icons.stop_circle_outlined : Icons.play_arrow_rounded,
+            color: _qqBlue,
+          ),
+          const SizedBox(width: 8),
+          const Icon(Icons.graphic_eq, color: _qqBlue, size: 20),
+          const SizedBox(width: 8),
+          Text(
+            '${duration.clamp(1, 3600)}"',
+            style: const TextStyle(
+              color: _qqText,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

@@ -96,6 +96,10 @@ namespace VideoCallAPI.Services
 
             var status = accept ? CallStatus.Answered : CallStatus.Rejected;
             callSession.Status = status;
+            if (accept)
+            {
+                callSession.answered_at = DateTime.UtcNow;
+            }
 
             // 更新数据库记录
             var callHistory = await _context.CallHistories.FindAsync(callSession.CallHistoryId);
@@ -142,13 +146,25 @@ namespace VideoCallAPI.Services
             var callHistory = await _context.CallHistories.FindAsync(callSession.CallHistoryId);
             if (callHistory != null)
             {
-                callHistory.status = CallStatus.Ended;
-                callHistory.end_time = DateTime.UtcNow;
-                
-                if (callHistory.status == CallStatus.Answered)
+                var previousStatus = callHistory.status;
+                var endedAt = DateTime.UtcNow;
+                callHistory.end_time = endedAt;
+
+                if (previousStatus == CallStatus.Answered)
                 {
-                    var duration = (int)(DateTime.UtcNow - callHistory.start_time).TotalSeconds;
-                    callHistory.duration = duration;
+                    var durationStart = callSession.answered_at ?? callHistory.start_time;
+                    callHistory.status = CallStatus.Ended;
+                    callHistory.duration = Math.Max(0, (int)(endedAt - durationStart).TotalSeconds);
+                }
+                else if (previousStatus is CallStatus.Initiated or CallStatus.Ringing)
+                {
+                    callHistory.status = CallStatus.Missed;
+                    callHistory.duration = 0;
+                    callHistory.end_reason = "未接听";
+                }
+                else
+                {
+                    callHistory.status = previousStatus;
                 }
                 
                 await _context.SaveChangesAsync();
@@ -290,15 +306,27 @@ namespace VideoCallAPI.Services
             }
         }
 
-        public async Task<List<CallHistory>> GetCallHistoryAsync(int userId)
+        public async Task<List<CallResponseDto>> GetCallHistoryAsync(int userId)
         {
-            return await _context.CallHistories
+            var histories = await _context.CallHistories
                 .Include(c => c.Caller)
                 .Include(c => c.receiver)
                 .Where(c => c.caller_id == userId || c.receiver_id == userId)
                 .OrderByDescending(c => c.start_time)
                 .Take(50)
                 .ToListAsync();
+
+            return histories.Select(history => new CallResponseDto
+            {
+                call_id = history.id.ToString(),
+                caller = MapToUserResponse(history.Caller),
+                receiver = MapToUserResponse(history.receiver),
+                call_type = history.call_type,
+                status = history.status,
+                start_time = history.start_time,
+                end_time = history.end_time,
+                duration = history.duration
+            }).ToList();
         }
 
         private static UserResponseDto MapToUserResponse(User user)
@@ -343,6 +371,7 @@ namespace VideoCallAPI.Services
         public CallType CallType { get; set; }
         public CallStatus Status { get; set; }
         public DateTime start_time { get; set; }
+        public DateTime? answered_at { get; set; }
         public int CallHistoryId { get; set; }
     }
 }

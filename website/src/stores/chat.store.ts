@@ -34,6 +34,16 @@ export interface Contact {
   unread_count: number;
 }
 
+export interface MessageNotice {
+  id: number;
+  contactId: number;
+  senderName: string;
+  content: string;
+  type: number | string;
+  duration?: number;
+  createdAt: string;
+}
+
 function getApiErrorMessage(error: unknown, fallback: string) {
   const maybeError = error as { response?: { data?: { message?: unknown } } };
   return typeof maybeError.response?.data?.message === 'string'
@@ -45,6 +55,8 @@ class ChatStore {
   contacts: Contact[] = [];
   currentContact: Contact | null = null;
   messages: ChatMessage[] = [];
+  lastMessagesByContactId = new Map<number, ChatMessage>();
+  latestMessageNotice: MessageNotice | null = null;
   isLoading: boolean = false;
   private messageLoadRequestId = 0;
 
@@ -81,10 +93,23 @@ class ChatStore {
       }
 
       if (contact) {
+        this.lastMessagesByContactId.set(contact.id, visibleMessage);
         this.updateContactForMessage(contact.id, visibleMessage, isIncomingMessage && !isCurrentContactMessage);
         if (isIncomingMessage && isCurrentContactMessage) {
           this.markContactAsRead(contact.id);
           void this.markMessagesAsRead([message.id], contact.id);
+        }
+
+        if (isIncomingMessage) {
+          this.latestMessageNotice = {
+            id: message.id,
+            contactId: contact.id,
+            senderName: contact.display_name || message.sender?.display_name || message.sender?.username || '新消息',
+            content: message.content,
+            type: message.type,
+            duration: message.duration,
+            createdAt: message.created_at || message.timestamp || new Date().toISOString(),
+          };
         }
       }
 
@@ -256,6 +281,10 @@ class ChatStore {
           return acc;
         }, []);
         this.messages = uniqueMessages;
+        const latestMessage = uniqueMessages[uniqueMessages.length - 1];
+        if (latestMessage) {
+          this.lastMessagesByContactId.set(contactId, latestMessage);
+        }
         this.markContactAsRead(contactId);
         void this.loadContacts(false);
       }
@@ -298,6 +327,7 @@ class ChatStore {
         const contact = this.findContactByPeerId(receiverId);
         this.appendMessageToCurrentConversation(sentMessage, receiverId, currentUserId);
         if (contact) {
+          this.lastMessagesByContactId.set(contact.id, sentMessage);
           this.updateContactForMessage(contact.id, sentMessage, false);
         }
         return { success: true, data: sentMessage };

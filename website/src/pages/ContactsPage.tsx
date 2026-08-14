@@ -3,7 +3,7 @@ import { Card, List, Avatar, Button, Input, Space, message, Empty, Tag } from 'a
 import { UserAddOutlined, SearchOutlined, UserOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { observer } from 'mobx-react-lite';
 import { useNavigate } from 'react-router-dom';
-import { apiService } from '../services/api.service';
+import { apiService, type UserApiResponse } from '../services/api.service';
 import { APP_CONFIG } from '../config/app.config';
 import '../styles/common.css';
 
@@ -11,7 +11,7 @@ const { Search } = Input;
 
 const ContactsPage = observer(() => {
   const navigate = useNavigate();
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<UserApiResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 

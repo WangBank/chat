@@ -1,52 +1,48 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card, List, Input, Button, Space, DatePicker, Empty, message } from 'antd';
 import { ArrowLeftOutlined, SearchOutlined } from '@ant-design/icons';
 import { observer } from 'mobx-react-lite';
 import { useNavigate, useParams } from 'react-router-dom';
 import { chatStore } from '../stores/chat.store';
-import { apiService } from '../services/api.service';
+import { apiService, type ChatMessageApiResponse } from '../services/api.service';
 import { APP_CONFIG } from '../config/app.config';
 import { formatFullTime } from '../utils/time.utils';
 import dayjs from 'dayjs';
 import '../styles/common.css';
 
 const { RangePicker } = DatePicker;
+type MessageDateRange = [dayjs.Dayjs, dayjs.Dayjs] | null;
 
 const ChatHistoryPage = observer(() => {
   const navigate = useNavigate();
   const { contactId } = useParams<{ contactId: string }>();
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ChatMessageApiResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
+  const [dateRange, setDateRange] = useState<MessageDateRange>(null);
 
-  useEffect(() => {
-    if (contactId) {
-      loadMessages();
-    }
-  }, [contactId]);
-
-  const loadMessages = async () => {
+  const loadMessages = useCallback(async (query: string = '', range: MessageDateRange = null) => {
     if (!contactId) return;
 
     setLoading(true);
     try {
       const response = await apiService.getChatHistory(Number(contactId));
       if (response.success && response.data) {
-        let filteredMessages = response.data || [];
+        let filteredMessages = response.data;
 
         // Search by content
-        if (searchQuery.trim()) {
-          filteredMessages = filteredMessages.filter((msg: any) =>
-            msg.content.toLowerCase().includes(searchQuery.toLowerCase())
+        if (query.trim()) {
+          const normalizedQuery = query.toLowerCase();
+          filteredMessages = filteredMessages.filter((msg) =>
+            msg.content.toLowerCase().includes(normalizedQuery)
           );
         }
 
         // Search by date range
-        if (dateRange && dateRange[0] && dateRange[1]) {
-          const startDate = dateRange[0].startOf('day').toDate();
-          const endDate = dateRange[1].endOf('day').toDate();
-          filteredMessages = filteredMessages.filter((msg: any) => {
+        if (range && range[0] && range[1]) {
+          const startDate = range[0].startOf('day').toDate();
+          const endDate = range[1].endOf('day').toDate();
+          filteredMessages = filteredMessages.filter((msg) => {
             const msgDate = new Date(msg.created_at);
             return msgDate >= startDate && msgDate <= endDate;
           });
@@ -60,10 +56,16 @@ const ChatHistoryPage = observer(() => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [contactId]);
+
+  useEffect(() => {
+    if (contactId) {
+      loadMessages();
+    }
+  }, [contactId, loadMessages]);
 
   const handleSearch = () => {
-    loadMessages();
+    loadMessages(searchQuery, dateRange);
   };
 
 
@@ -105,7 +107,7 @@ const ChatHistoryPage = observer(() => {
           />
           <RangePicker
             value={dateRange}
-            onChange={(dates) => setDateRange(dates as [dayjs.Dayjs, dayjs.Dayjs] | null)}
+            onChange={(dates) => setDateRange(dates as MessageDateRange)}
             style={{ width: '100%' }}
             placeholder={['Start date', 'End date']}
           />

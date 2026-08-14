@@ -5,7 +5,7 @@ namespace VideoCallAPI.Services
     public interface IWebRTCService
     {
         // 会话管理
-        Task<WebRTCSession> CreateSessionAsync(int callerId, int receiverId, CallType callType);
+        Task<WebRTCSession> CreateSessionAsync(int callerId, int receiverId, CallType callType, string? callId = null);
         Task<WebRTCSession?> GetSessionAsync(string callId);
         Task<bool> EndSessionAsync(string callId);
         
@@ -26,4 +26,4 @@ namespace VideoCallAPI.Services
         // 清理
         Task CleanupExpiredSessionsAsync();
     }
-} 
+}

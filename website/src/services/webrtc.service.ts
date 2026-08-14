@@ -1,3 +1,4 @@
+import type { UserSummaryResponse } from './api.service';
 import { signalRService, type WebRTCMessage } from './signalr.service';
 
 export const CallType = {
@@ -6,11 +7,12 @@ export const CallType = {
 } as const;
 
 export type CallType = (typeof CallType)[keyof typeof CallType];
+export type CallPeer = UserSummaryResponse & { id: number };
 
 export interface Call {
   callId: string;
-  caller: any;
-  receiver: any;
+  caller: CallPeer;
+  receiver: CallPeer;
   callType: CallType;
   status: number;
   startTime: string;
@@ -22,7 +24,7 @@ class WebRTCService {
   private remoteStream: MediaStream | null = null;
   private currentCall: Call | null = null;
   private isInCall: boolean = false;
-  private pendingOffer: { offer: RTCSessionDescriptionInit; receiverId: number } | null = null;
+  private pendingIceCandidates: RTCIceCandidateInit[] = [];
 
   // Callbacks
   onLocalStream?: (stream: MediaStream) => void;
@@ -59,7 +61,13 @@ class WebRTCService {
     // Listen for remote stream
     pc.ontrack = (event) => {
       console.log('Received remote stream');
-      this.remoteStream = event.streams[0];
+      const [stream] = event.streams;
+      if (stream) {
+        this.remoteStream = stream;
+      } else {
+        this.remoteStream ??= new MediaStream();
+        this.remoteStream.addTrack(event.track);
+      }
       this.onRemoteStream?.(this.remoteStream);
     };
 
@@ -128,23 +136,11 @@ class WebRTCService {
       // Create peer connection
       this.peerConnection = this.createPeerConnection();
 
-      // Create offer
-      if (this.peerConnection) {
-        const offer = await this.peerConnection.createOffer();
-        await this.peerConnection.setLocalDescription(offer);
-
-        // Store offer and send after call_id is available
-        this.pendingOffer = {
-          offer,
-          receiverId,
-        };
-        
-        // Initiate call
-        await signalRService.initiateCall({
-          receiver_id: receiverId,
-          call_type: callType,
-        });
-      }
+      // Initiate call. Offer is created only after the receiver accepts.
+      await signalRService.initiateCall({
+        receiver_id: receiverId,
+        call_type: callType,
+      });
     } catch (error) {
       console.error('Failed to initiate call:', error);
       this.onError?.('Failed to initiate call');
@@ -152,18 +148,34 @@ class WebRTCService {
     }
   }
 
-  // Send pending offer (after call_id is received)
-  async sendPendingOffer(callId: string): Promise<void> {
-    if (this.pendingOffer && callId) {
-      const offerData = JSON.stringify(this.pendingOffer.offer);
-      await signalRService.sendWebRTCMessage({
-        call_id: callId,
-        type: 1, // Offer
-        data: offerData,
-        receiver_id: this.pendingOffer.receiverId,
-      });
-      this.pendingOffer = null;
+  setCurrentCall(call: Call): void {
+    this.currentCall = call;
+  }
+
+  async startCallAsCaller(call: Call): Promise<void> {
+    this.currentCall = call;
+    this.isInCall = true;
+
+    if (!this.localStream) {
+      await this.getUserMedia(call.callType);
     }
+
+    if (!this.peerConnection) {
+      this.peerConnection = this.createPeerConnection();
+    }
+
+    await signalRService.joinCall(call.callId);
+
+    const offer = await this.peerConnection.createOffer();
+    await this.peerConnection.setLocalDescription(offer);
+
+    const receiverId = call.receiver.id;
+    await signalRService.sendWebRTCMessage({
+      call_id: call.callId,
+      type: 1, // Offer
+      data: JSON.stringify(offer),
+      receiver_id: receiverId,
+    });
   }
 
   // Accept call
@@ -211,7 +223,7 @@ class WebRTCService {
       const data = JSON.parse(message.data);
 
       switch (message.type) {
-        case 1: // Offer
+        case 1: { // Offer
           // Create peer connection if not created yet (callee side)
           if (!this.peerConnection) {
             // Ensure user media is available
@@ -229,6 +241,7 @@ class WebRTCService {
 
           // Set remote description (offer)
           await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data));
+          await this.flushPendingIceCandidates();
           
           // Create answer
           const answer = await this.peerConnection.createAnswer();
@@ -242,6 +255,7 @@ class WebRTCService {
             receiver_id: message.sender_id,
           });
           break;
+        }
 
         case 2: // Answer
           if (!this.peerConnection) {
@@ -249,11 +263,13 @@ class WebRTCService {
             return;
           }
           await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data));
+          await this.flushPendingIceCandidates();
           break;
 
         case 3: // ICE Candidate
           if (!this.peerConnection) {
             console.warn('Received ICE candidate without peer connection; may still be initializing');
+            this.pendingIceCandidates.push(data);
             return;
           }
           await this.peerConnection.addIceCandidate(new RTCIceCandidate(data));
@@ -297,7 +313,17 @@ class WebRTCService {
     this.currentCall = null;
     this.isInCall = false;
     this.remoteStream = null;
-    this.pendingOffer = null;
+    this.pendingIceCandidates = [];
+  }
+
+  private async flushPendingIceCandidates(): Promise<void> {
+    if (!this.peerConnection || this.pendingIceCandidates.length === 0) return;
+
+    const candidates = this.pendingIceCandidates;
+    this.pendingIceCandidates = [];
+    for (const candidate of candidates) {
+      await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    }
   }
 
   // Get current user ID from localStorage
@@ -312,4 +338,3 @@ class WebRTCService {
 }
 
 export const webRTCService = new WebRTCService();
-

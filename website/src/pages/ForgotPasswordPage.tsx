@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Form, Input, Button, message, Card } from 'antd';
 import { MailOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
-import { apiService } from '../services/api.service';
+import { apiService, getApiErrorMessage } from '../services/api.service';
 import '../styles/common.css';
 
 const ForgotPasswordPage = () => {
@@ -20,8 +20,8 @@ const ForgotPasswordPage = () => {
       }
 
       message.error(response.message || '发送重置邮件失败');
-    } catch (error: any) {
-      message.error(error.response?.data?.message || '发送重置邮件失败');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, '发送重置邮件失败'));
     } finally {
       setLoading(false);
     }

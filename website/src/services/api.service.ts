@@ -162,6 +162,32 @@ export interface FavoriteItemApiResponse {
   created_at: string;
 }
 
+export interface CallHistoryApiResponse {
+  call_id: string;
+  caller: UserApiResponse;
+  receiver: UserApiResponse;
+  call_type: number;
+  status: number;
+  start_time: string;
+  end_time?: string;
+  duration?: number;
+}
+
+export function getApiErrorMessage(error: unknown, fallback: string) {
+  if (axios.isAxiosError<ApiResponse>(error)) {
+    const responseMessage = error.response?.data?.message;
+    if (typeof responseMessage === 'string' && responseMessage.trim()) {
+      return responseMessage;
+    }
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 class ApiService {
   private api: AxiosInstance;
 
@@ -453,6 +479,11 @@ class ApiService {
 
   async deleteFavorite(favoriteId: number) {
     const response = await this.api.delete<ApiResponse>(`/api/favorites/${favoriteId}`);
+    return response.data;
+  }
+
+  async getCallHistory() {
+    const response = await this.api.get<ApiResponse<CallHistoryApiResponse[]>>('/api/calls/history');
     return response.data;
   }
 
