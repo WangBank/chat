@@ -170,6 +170,18 @@ Android debug APK：
 flutter build apk --debug
 ```
 
+Android GitHub Release 一键发布：
+
+```bash
+./scripts/release-android-apk.sh --yes
+```
+
+脚本会自动把 `flutter_client/pubspec.yaml` 从 `X.Y.Z+N` 提升到 `X.Y.(Z+1)+(N+1)`，提交并推送版本号，然后触发 GitHub Actions 的 `Android Release APK` workflow 发布签名 APK。发布前预览可用：
+
+```bash
+./scripts/release-android-apk.sh --dry-run
+```
+
 ## 主要 API
 
 - `POST /api/auth/register` - 用户注册
