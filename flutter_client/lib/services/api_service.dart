@@ -84,11 +84,27 @@ class ApiService {
   // 获取当前headers（用于调试）
   Map<String, String> get currentHeaders => _headers;
 
+  String _responseErrorMessage(http.Response response, String fallback) {
+    try {
+      final responseData = jsonDecode(response.body);
+      if (responseData is Map<String, dynamic>) {
+        final message = responseData['message'];
+        if (message is String && message.isNotEmpty) return message;
+        final errors = responseData['errors'];
+        if (errors is List && errors.isNotEmpty) return errors.join('\n');
+      }
+    } catch (_) {
+      // 保留默认错误信息，避免解析失败掩盖原始请求失败。
+    }
+    return fallback;
+  }
+
   // 用户注册
   Future<Map<String, dynamic>> register({
     required String username,
     required String email,
     required String password,
+    required String verificationCode,
   }) async {
     try {
       print('🚀 调用注册API...');
@@ -99,6 +115,7 @@ class ApiService {
           'username': username,
           'email': email,
           'password': password,
+          'verification_code': verificationCode,
         }),
       );
 
@@ -125,7 +142,17 @@ class ApiService {
         String errorMessage = '注册失败';
         try {
           final errorData = jsonDecode(response.body);
-          if (errorData['errors'] != null) {
+          if (errorData['errors'] is List) {
+            final errorList = (errorData['errors'] as List)
+                .map((item) => item.toString())
+                .where((item) => item.isNotEmpty)
+                .toList();
+            if (errorList.isNotEmpty) {
+              errorMessage = errorList.join('\n');
+            } else {
+              errorMessage = errorData['message'] ?? '注册失败，请检查输入信息';
+            }
+          } else if (errorData['errors'] is Map) {
             // 处理验证错误
             final errors = errorData['errors'] as Map<String, dynamic>;
             final errorList = <String>[];
@@ -141,6 +168,11 @@ class ApiService {
             if (errors['password'] != null) {
               final passwordErrors = errors['password'] as List;
               errorList.addAll(passwordErrors.cast<String>());
+            }
+            if (errors['verification_code'] != null) {
+              final verificationCodeErrors =
+                  errors['verification_code'] as List;
+              errorList.addAll(verificationCodeErrors.cast<String>());
             }
 
             if (errorList.isNotEmpty) {
@@ -166,6 +198,63 @@ class ApiService {
         throw Exception(e.toString().replaceAll('Exception: ', ''));
       }
     }
+  }
+
+  Future<Map<String, dynamic>> requestRegistrationEmailCode({
+    required String username,
+    required String email,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/registration-email-code'),
+      headers: _headers,
+      body: jsonEncode({'username': username, 'email': email}),
+    );
+    if (response.statusCode == 200) {
+      final responseData = jsonDecode(response.body);
+      if (responseData is Map<String, dynamic> &&
+          responseData['success'] == true) {
+        return responseData;
+      }
+    }
+    throw Exception(_responseErrorMessage(response, '发送验证码失败'));
+  }
+
+  Future<void> requestEmailChangeCode({required String email}) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/change-email-code'),
+      headers: _headers,
+      body: jsonEncode({'email': email}),
+    );
+    if (response.statusCode == 200) {
+      final responseData = jsonDecode(response.body);
+      if (responseData is Map<String, dynamic> &&
+          responseData['success'] == true) {
+        return;
+      }
+    }
+    throw Exception(_responseErrorMessage(response, '发送验证码失败'));
+  }
+
+  Future<User> changeEmail({
+    required String email,
+    required String verificationCode,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/change-email'),
+      headers: _headers,
+      body: jsonEncode({'email': email, 'verification_code': verificationCode}),
+    );
+    if (response.statusCode == 200) {
+      final responseData = jsonDecode(response.body);
+      if (responseData is Map<String, dynamic> &&
+          responseData['success'] == true &&
+          responseData['data'] is Map<String, dynamic>) {
+        final user = User.fromJson(responseData['data']);
+        _currentUser = user;
+        return user;
+      }
+    }
+    throw Exception(_responseErrorMessage(response, '邮箱修改失败'));
   }
 
   // 用户登录

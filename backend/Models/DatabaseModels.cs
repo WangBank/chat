@@ -85,6 +85,35 @@ namespace VideoCallAPI.Models
         public virtual ICollection<PasswordResetToken> PasswordResetTokens { get; set; } = new List<PasswordResetToken>();
     }
 
+    public enum EmailVerificationPurpose
+    {
+        Registration = 1,
+        ChangeEmail = 2,
+        ChangePassword = 3
+    }
+
+    // 邮箱验证码表。验证码本身只保存 BCrypt 哈希，避免数据库泄露后被直接使用。
+    public class EmailVerificationCode
+    {
+        [Key]
+        public int id { get; set; }
+
+        [Required]
+        [StringLength(100)]
+        public string email { get; set; } = string.Empty;
+
+        public EmailVerificationPurpose purpose { get; set; }
+
+        [Required]
+        [StringLength(100)]
+        public string code_hash { get; set; } = string.Empty;
+
+        public DateTime expires_at { get; set; }
+        public bool is_used { get; set; }
+        public DateTime? used_at { get; set; }
+        public DateTime created_at { get; set; }
+    }
+
     // 密码重置令牌表
     public class PasswordResetToken
     {

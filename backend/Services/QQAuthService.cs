@@ -183,7 +183,8 @@ namespace VideoCallAPI.Services
                 _context.users.Add(user);
             }
 
-            ApplyQQProfile(user, profile, overwriteLocalProfile: true);
+            // QQ 登录只补全当前账号缺失的资料，避免后续登录覆盖用户手动维护的生日、地区、头像和性别。
+            ApplyQQProfile(user, profile, overwriteLocalProfile: false);
             user.last_login_at = now;
             user.last_heartbeat_at = now;
             user.is_online = true;

@@ -18,8 +18,12 @@ namespace VideoCallAPI.Services
     public interface IUserService
     {
         Task<UserResponseDto> RegisterAsync(UserRegistrationDto registrationDto);
+        Task RequestRegistrationEmailVerificationCodeAsync(RegistrationEmailVerificationCodeRequestDto requestDto);
+        Task RequestEmailChangeVerificationCodeAsync(int userId, ChangeEmailVerificationCodeRequestDto requestDto);
+        Task<UserResponseDto> ChangeEmailAsync(int userId, ChangeEmailDto changeEmailDto);
         Task<string> LoginAsync(UserLoginDto loginDto);
         Task<UserResponseDto> GetUserByIdAsync(int userId);
+        Task RequestPasswordChangeEmailVerificationCodeAsync(int userId);
         Task<bool> ChangePasswordAsync(int userId, ChangePasswordDto changePasswordDto);
         Task<UserResponseDto> UpdateProfileAsync(int userId, UpdateProfileDto updateProfileDto);
         Task<UserResponseDto> UploadAvatarAsync(int userId, IFormFile avatar);
@@ -51,6 +55,7 @@ namespace VideoCallAPI.Services
     {
         void EnsureConfigured();
         Task SendPasswordResetEmailAsync(string toEmail, string displayName, string resetUrl);
+        Task SendEmailVerificationCodeAsync(string toEmail, string displayName, string code, EmailVerificationPurpose purpose);
     }
 
     public interface IContactService

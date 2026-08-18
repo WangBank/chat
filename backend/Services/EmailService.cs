@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Net;
 using System.Net.Mail;
 using System.Text;
+using VideoCallAPI.Models;
 
 namespace VideoCallAPI.Services
 {
@@ -45,6 +46,44 @@ namespace VideoCallAPI.Services
 
             await smtpClient.SendMailAsync(message);
             _logger.LogInformation("邮件发送成功: To={ToEmail}, Subject={Subject}", toEmail, message.Subject);
+        }
+
+        public async Task SendEmailVerificationCodeAsync(
+            string toEmail,
+            string displayName,
+            string code,
+            EmailVerificationPurpose purpose)
+        {
+            var settings = GetSettings();
+            var (subject, actionDescription) = purpose switch
+            {
+                EmailVerificationPurpose.Registration => ("Forever Love 注册验证码", "注册 Forever Love 账号"),
+                EmailVerificationPurpose.ChangeEmail => ("Forever Love 修改邮箱验证码", "修改 Forever Love 登录邮箱"),
+                EmailVerificationPurpose.ChangePassword => ("Forever Love 修改密码验证码", "修改 Forever Love 登录密码"),
+                _ => throw new ArgumentOutOfRangeException(nameof(purpose), purpose, "不支持的邮箱验证码用途")
+            };
+
+            using var message = new MailMessage
+            {
+                From = new MailAddress(settings.FromEmail, settings.FromName, Encoding.UTF8),
+                Subject = subject,
+                SubjectEncoding = Encoding.UTF8,
+                BodyEncoding = Encoding.UTF8,
+                IsBodyHtml = true,
+                Body = BuildEmailVerificationCodeBody(displayName, code, actionDescription)
+            };
+            message.To.Add(new MailAddress(toEmail, displayName, Encoding.UTF8));
+
+            using var smtpClient = new SmtpClient(settings.SmtpHost, settings.SmtpPort)
+            {
+                DeliveryMethod = SmtpDeliveryMethod.Network,
+                EnableSsl = settings.EnableSsl,
+                UseDefaultCredentials = false,
+                Credentials = new NetworkCredential(settings.Username, settings.Password)
+            };
+
+            await smtpClient.SendMailAsync(message);
+            _logger.LogInformation("邮箱验证码邮件发送成功: To={ToEmail}, Purpose={Purpose}", toEmail, purpose);
         }
 
         private EmailSettings GetSettings()
@@ -96,6 +135,22 @@ namespace VideoCallAPI.Services
                   <p>如果按钮无法打开，请复制下面的链接到浏览器：</p>
                   <p style="word-break:break-all;color:#4b5563;">{safeResetUrl}</p>
                   <p>如果不是你本人操作，可以忽略这封邮件。</p>
+                </div>
+                """;
+        }
+
+        private static string BuildEmailVerificationCodeBody(string displayName, string code, string actionDescription)
+        {
+            var safeDisplayName = WebUtility.HtmlEncode(displayName);
+            var safeCode = WebUtility.HtmlEncode(code);
+            var safeActionDescription = WebUtility.HtmlEncode(actionDescription);
+
+            return $"""
+                <div style="font-family:Segoe UI,Arial,sans-serif;line-height:1.6;color:#111820;">
+                  <p>{safeDisplayName}，你好：</p>
+                  <p>你正在{safeActionDescription}，验证码是：</p>
+                  <p style="font-size:28px;letter-spacing:6px;font-weight:700;color:#0794df;">{safeCode}</p>
+                  <p>验证码 5 分钟内有效，请勿向他人泄露。如果不是你本人操作，可以忽略这封邮件。</p>
                 </div>
                 """;
         }

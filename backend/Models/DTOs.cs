@@ -29,6 +29,38 @@ namespace VideoCallAPI.Models.DTOs
         [Required(ErrorMessage = "密码是必填的")]
         [MinLength(6, ErrorMessage = "密码至少6位")]
         public string password { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "邮箱验证码是必填的")]
+        [RegularExpression(@"^\d{6}$", ErrorMessage = "邮箱验证码必须为6位数字")]
+        public string verification_code { get; set; } = string.Empty;
+    }
+
+    public class RegistrationEmailVerificationCodeRequestDto
+    {
+        [Required(ErrorMessage = "用户名是必填的")]
+        public string username { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "邮箱是必填的")]
+        [EmailAddress(ErrorMessage = "邮箱格式不正确")]
+        public string email { get; set; } = string.Empty;
+    }
+
+    public class ChangeEmailVerificationCodeRequestDto
+    {
+        [Required(ErrorMessage = "邮箱是必填的")]
+        [EmailAddress(ErrorMessage = "邮箱格式不正确")]
+        public string email { get; set; } = string.Empty;
+    }
+
+    public class ChangeEmailDto
+    {
+        [Required(ErrorMessage = "邮箱是必填的")]
+        [EmailAddress(ErrorMessage = "邮箱格式不正确")]
+        public string email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "邮箱验证码是必填的")]
+        [RegularExpression(@"^\d{6}$", ErrorMessage = "邮箱验证码必须为6位数字")]
+        public string verification_code { get; set; } = string.Empty;
     }
 
     public class UserLoginDto
@@ -144,7 +176,13 @@ namespace VideoCallAPI.Models.DTOs
 
     public class ChangePasswordDto
     {
-        public string old_password { get; set; } = string.Empty;
+        public string? old_password { get; set; }
+
+        [RegularExpression(@"^\d{6}$", ErrorMessage = "邮箱验证码必须为6位数字")]
+        public string? verification_code { get; set; }
+
+        [Required(ErrorMessage = "新密码是必填的")]
+        [MinLength(6, ErrorMessage = "新密码至少6位")]
         public string new_password { get; set; } = string.Empty;
     }
 

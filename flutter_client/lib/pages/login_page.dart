@@ -26,6 +26,8 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _verificationCodeController =
+      TextEditingController();
   late final ApiService _apiService;
   late final AppLinks _appLinks;
   StreamSubscription<Uri>? _qqLinkSubscription;
@@ -49,6 +51,7 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _isLogin = true;
   bool _isLoading = false;
+  bool _isSendingVerificationCode = false;
   bool _rememberMe = true; // 记住登录状态
   String? _errorMessage;
 
@@ -109,12 +112,15 @@ class _LoginPageState extends State<LoginPage> {
     final username = _usernameController.text.trim();
     final password = _passwordController.text.trim();
     final email = _emailController.text.trim();
+    final verificationCode = _verificationCodeController.text.trim();
 
     print('🔐 开始${_isLogin ? '登录' : '注册'}流程...');
     print(' 账号: $username');
     print('📧 邮箱: $email');
 
-    if (username.isEmpty || password.isEmpty || (!_isLogin && email.isEmpty)) {
+    if (username.isEmpty ||
+        password.isEmpty ||
+        (!_isLogin && (email.isEmpty || verificationCode.isEmpty))) {
       setState(() {
         _errorMessage = '请填写所有必填字段';
       });
@@ -147,6 +153,7 @@ class _LoginPageState extends State<LoginPage> {
           username: username,
           email: email,
           password: password,
+          verificationCode: verificationCode,
         );
         print('✅ 注册API调用完成');
       }
@@ -201,6 +208,45 @@ class _LoginPageState extends State<LoginPage> {
         _errorMessage = errorMsg;
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _requestRegistrationEmailCode() async {
+    final username = _usernameController.text.trim();
+    final email = _emailController.text.trim();
+    if (username.isEmpty || email.isEmpty) {
+      setState(() {
+        _errorMessage = '请先填写用户名和邮箱';
+      });
+      return;
+    }
+    if (_isLoading || _isSendingVerificationCode) return;
+
+    setState(() {
+      _isSendingVerificationCode = true;
+      _errorMessage = null;
+    });
+    try {
+      final response = await _apiService.requestRegistrationEmailCode(
+        username: username,
+        email: email,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(response['message']?.toString() ?? '验证码已发送，5分钟内有效')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSendingVerificationCode = false;
+        });
+      }
     }
   }
 
@@ -468,6 +514,30 @@ class _LoginPageState extends State<LoginPage> {
                               keyboardType: TextInputType.emailAddress,
                             ),
                             const SizedBox(height: 14),
+                            TextField(
+                              controller: _verificationCodeController,
+                              decoration: InputDecoration(
+                                labelText: '邮箱验证码',
+                                prefixIcon: const Icon(Icons.verified_outlined),
+                                suffixIcon: TextButton(
+                                  onPressed:
+                                      _isLoading || _isSendingVerificationCode
+                                          ? null
+                                          : _requestRegistrationEmailCode,
+                                  child: _isSendingVerificationCode
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        )
+                                      : const Text('获取验证码'),
+                                ),
+                              ),
+                              keyboardType: TextInputType.number,
+                              maxLength: 6,
+                            ),
+                            const SizedBox(height: 14),
                           ],
                           TextField(
                             controller: _passwordController,
@@ -693,6 +763,7 @@ class _LoginPageState extends State<LoginPage> {
     _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _verificationCodeController.dispose();
     super.dispose();
   }
 }

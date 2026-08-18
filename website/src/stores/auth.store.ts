@@ -63,10 +63,15 @@ class AuthStore {
     }
   }
 
-  async register(username: string, email: string, password: string) {
+  async register(username: string, email: string, password: string, verificationCode: string) {
     this.isLoading = true;
     try {
-      const response = await apiService.register({ username, email, password });
+      const response = await apiService.register({
+        username,
+        email,
+        password,
+        verification_code: verificationCode,
+      });
       if (response.success && response.data) {
         await this.applyAuthResponse(response.data);
         return { success: true };
@@ -158,12 +163,6 @@ class AuthStore {
     await this.ensureSignalRConnection();
   }
 
-  // Generate random username and password
-  generateRandomAccount() {
-    const randomUsername = `user_${Math.random().toString(36).substring(2, 10)}`;
-    const randomPassword = Math.random().toString(36).substring(2, 12);
-    return { username: randomUsername, password: randomPassword };
-  }
 }
 
 export const authStore = new AuthStore();

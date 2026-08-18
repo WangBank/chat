@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image/image.dart' as image;
+import 'package:path_provider/path_provider.dart';
 import '../services/api_service.dart';
 import '../services/call_manager.dart';
 import '../services/signalr_service.dart';
@@ -140,12 +143,14 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _uploadAvatar(File imageFile) async {
+    File? processedFile;
     try {
       setState(() {
         _isLoading = true;
       });
 
-      final updatedUser = await widget.apiService.uploadAvatar(imageFile);
+      processedFile = await _cropAvatarIfNeeded(imageFile);
+      final updatedUser = await widget.apiService.uploadAvatar(processedFile);
 
       setState(() {
         _setCurrentUser(updatedUser);
@@ -155,7 +160,11 @@ class _ProfilePageState extends State<ProfilePage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('头像上传成功')));
+        ).showSnackBar(SnackBar(
+          content: Text(processedFile.path == imageFile.path
+              ? '头像上传成功'
+              : '头像已裁剪压缩至 100KB 以内并上传成功'),
+        ));
       }
     } catch (e) {
       setState(() {
@@ -166,7 +175,64 @@ class _ProfilePageState extends State<ProfilePage> {
           context,
         ).showSnackBar(SnackBar(content: Text('头像上传失败: $e')));
       }
+    } finally {
+      if (processedFile != null && processedFile.path != imageFile.path) {
+        try {
+          await processedFile.delete();
+        } catch (_) {
+          // 临时压缩文件会由系统最终清理。
+        }
+      }
     }
+  }
+
+  Future<File> _cropAvatarIfNeeded(File sourceFile) async {
+    const maxBytes = 100 * 1024;
+    if (await sourceFile.length() <= maxBytes) return sourceFile;
+
+    final decoded = image.decodeImage(await sourceFile.readAsBytes());
+    if (decoded == null) throw Exception('无法读取头像图片');
+
+    final oriented = image.bakeOrientation(decoded);
+    final sourceSize = min(oriented.width, oriented.height);
+    final cropped = image.copyCrop(
+      oriented,
+      x: (oriented.width - sourceSize) ~/ 2,
+      y: (oriented.height - sourceSize) ~/ 2,
+      width: sourceSize,
+      height: sourceSize,
+    );
+
+    var targetSize = min(512, sourceSize);
+    List<int>? lastBytes;
+    while (targetSize >= 64) {
+      final resized = image.copyResize(
+        cropped,
+        width: targetSize,
+        height: targetSize,
+        interpolation: image.Interpolation.average,
+      );
+      for (final quality in [85, 70, 55, 40, 25]) {
+        final encoded = image.encodeJpg(resized, quality: quality);
+        lastBytes = encoded;
+        if (encoded.length <= maxBytes) {
+          return _writeCroppedAvatar(encoded);
+        }
+      }
+      targetSize = (targetSize * 0.75).floor();
+    }
+
+    if (lastBytes == null || lastBytes.length > maxBytes) {
+      throw Exception('头像无法裁剪到 100KB 以内');
+    }
+    return _writeCroppedAvatar(lastBytes);
+  }
+
+  Future<File> _writeCroppedAvatar(List<int> bytes) async {
+    final directory = await getTemporaryDirectory();
+    final file = File(
+        '${directory.path}/avatar_${DateTime.now().microsecondsSinceEpoch}.jpg');
+    return file.writeAsBytes(bytes, flush: true);
   }
 
   Future<void> _updateProfile() async {
@@ -276,6 +342,120 @@ class _ProfilePageState extends State<ProfilePage> {
             context,
           ).showSnackBar(SnackBar(content: Text('更新失败: $e')));
         }
+      }
+    }
+  }
+
+  Future<void> _changeEmail() async {
+    final emailController =
+        TextEditingController(text: _currentUser?.email ?? '');
+    final verificationCodeController = TextEditingController();
+    var isSendingCode = false;
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('修改邮箱'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: '新邮箱',
+                  hintText: '请输入新邮箱',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: verificationCodeController,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                decoration: InputDecoration(
+                  labelText: '邮箱验证码',
+                  hintText: '请输入 6 位验证码',
+                  suffixIcon: TextButton(
+                    onPressed: isSendingCode
+                        ? null
+                        : () async {
+                            final email = emailController.text.trim();
+                            if (email.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('请先输入新邮箱')),
+                              );
+                              return;
+                            }
+                            setDialogState(() => isSendingCode = true);
+                            try {
+                              await widget.apiService
+                                  .requestEmailChangeCode(email: email);
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('验证码已发送，5分钟内有效')),
+                              );
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('发送验证码失败: $e')),
+                              );
+                            } finally {
+                              if (dialogContext.mounted) {
+                                setDialogState(() => isSendingCode = false);
+                              }
+                            }
+                          },
+                    child: isSendingCode
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('获取验证码'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop({
+                'email': emailController.text.trim(),
+                'verification_code': verificationCodeController.text.trim(),
+              }),
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    emailController.dispose();
+    verificationCodeController.dispose();
+    if (result == null) return;
+
+    try {
+      final updatedUser = await widget.apiService.changeEmail(
+        email: result['email'] ?? '',
+        verificationCode: result['verification_code'] ?? '',
+      );
+      if (!mounted) return;
+      setState(() {
+        _setCurrentUser(updatedUser);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('邮箱修改成功')),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('邮箱修改失败: $e')),
+        );
       }
     }
   }
@@ -694,6 +874,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                   leading: const Icon(Icons.email_outlined),
                                   title: const Text('邮箱'),
                                   subtitle: Text(_currentUser!.email),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: _isLoading ? null : _changeEmail,
                                 ),
                                 const Divider(height: 1),
                                 ListTile(

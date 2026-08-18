@@ -77,6 +77,14 @@ namespace VideoCallAPI.Services
                 (user.username.ToLower() == normalizedUsername || user.email.ToLower() == normalizedEmail));
         }
 
+        private Task<bool> IsEmailUsedAsync(string email, int? excludedUserId = null)
+        {
+            var normalizedEmail = email.ToLowerInvariant();
+            return _context.users.AnyAsync(user =>
+                (!excludedUserId.HasValue || user.id != excludedUserId.Value) &&
+                user.email.ToLower() == normalizedEmail);
+        }
+
         private static bool IsUniqueUserConflict(DbUpdateException exception)
         {
             var message = exception.InnerException?.Message ?? exception.Message;
@@ -85,6 +93,83 @@ namespace VideoCallAPI.Services
                    message.Contains("IX_users_username", StringComparison.OrdinalIgnoreCase) ||
                    message.Contains("IX_users_email", StringComparison.OrdinalIgnoreCase) ||
                    message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public async Task RequestRegistrationEmailVerificationCodeAsync(
+            RegistrationEmailVerificationCodeRequestDto requestDto)
+        {
+            var username = _contentSecurity.NormalizeRequiredText(
+                requestDto.username,
+                "用户名",
+                50,
+                filterSensitiveWords: false,
+                rejectSensitiveWords: true);
+            EnsureValidUsername(username);
+            var email = NormalizeEmail(requestDto.email);
+
+            if (await IsUsernameOrEmailUsedAsync(username, email))
+                throw new InvalidOperationException("当前用户名或者邮箱被使用请重新输入");
+
+            await CreateAndSendEmailVerificationCodeAsync(
+                email,
+                username,
+                EmailVerificationPurpose.Registration);
+        }
+
+        public async Task RequestEmailChangeVerificationCodeAsync(
+            int userId,
+            ChangeEmailVerificationCodeRequestDto requestDto)
+        {
+            var user = await _context.users.FindAsync(userId);
+            if (user == null)
+                throw new ArgumentException("用户不存在");
+
+            var email = NormalizeEmail(requestDto.email);
+            if (string.Equals(user.email, email, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("新邮箱与当前邮箱一致");
+            if (await IsEmailUsedAsync(email, userId))
+                throw new InvalidOperationException("该邮箱已被使用，请更换后重试");
+
+            await CreateAndSendEmailVerificationCodeAsync(
+                email,
+                GetDisplayName(user),
+                EmailVerificationPurpose.ChangeEmail);
+        }
+
+        public async Task<UserResponseDto> ChangeEmailAsync(int userId, ChangeEmailDto changeEmailDto)
+        {
+            var user = await _context.users.FindAsync(userId);
+            if (user == null)
+                throw new ArgumentException("用户不存在");
+
+            var email = NormalizeEmail(changeEmailDto.email);
+            if (string.Equals(user.email, email, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("新邮箱与当前邮箱一致");
+            if (await IsEmailUsedAsync(email, userId))
+                throw new InvalidOperationException("该邮箱已被使用，请更换后重试");
+
+            var verificationCode = await GetValidEmailVerificationCodeAsync(
+                email,
+                changeEmailDto.verification_code,
+                EmailVerificationPurpose.ChangeEmail);
+
+            user.email = email;
+            user.updated_at = DateTime.UtcNow;
+            verificationCode.is_used = true;
+            verificationCode.used_at = DateTime.UtcNow;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (IsUniqueUserConflict(ex))
+            {
+                _logger.LogWarning(ex, "修改邮箱失败，唯一索引冲突: UserId={UserId}, Email={Email}", userId, email);
+                throw new InvalidOperationException("该邮箱已被使用，请更换后重试", ex);
+            }
+
+            _logger.LogInformation("用户邮箱修改成功: UserId={UserId}", userId);
+            return MapToUserResponse(user);
         }
 
         public async Task<UserResponseDto> RegisterAsync(UserRegistrationDto registrationDto)
@@ -104,6 +189,11 @@ namespace VideoCallAPI.Services
                 throw new InvalidOperationException("当前用户名或者邮箱被使用请重新输入");
             }
 
+            var verificationCode = await GetValidEmailVerificationCodeAsync(
+                email,
+                registrationDto.verification_code,
+                EmailVerificationPurpose.Registration);
+
             var user = new User
             {
                 username = username,
@@ -113,6 +203,8 @@ namespace VideoCallAPI.Services
             };
 
             _context.users.Add(user);
+            verificationCode.is_used = true;
+            verificationCode.used_at = DateTime.UtcNow;
             try
             {
                 await _context.SaveChangesAsync();
@@ -125,6 +217,76 @@ namespace VideoCallAPI.Services
 
             _logger.LogInformation("用户注册成功: UserId={UserId}, Username={Username}", user.id, user.username);
             return MapToUserResponse(user);
+        }
+
+        private async Task CreateAndSendEmailVerificationCodeAsync(
+            string email,
+            string displayName,
+            EmailVerificationPurpose purpose)
+        {
+            _emailService.EnsureConfigured();
+
+            var now = DateTime.UtcNow;
+            var activeCodes = await _context.EmailVerificationCodes
+                .Where(item => item.email == email && item.purpose == purpose && !item.is_used && item.expires_at > now)
+                .ToListAsync();
+            foreach (var activeCode in activeCodes)
+            {
+                activeCode.is_used = true;
+                activeCode.used_at = now;
+            }
+
+            var code = GenerateEmailVerificationCode();
+            _context.EmailVerificationCodes.Add(new EmailVerificationCode
+            {
+                email = email,
+                purpose = purpose,
+                code_hash = BCrypt.Net.BCrypt.HashPassword(code),
+                expires_at = now.AddMinutes(5),
+                created_at = now
+            });
+            await _context.SaveChangesAsync();
+
+            await _emailService.SendEmailVerificationCodeAsync(email, displayName, code, purpose);
+            _logger.LogInformation("邮箱验证码已发送: Email={Email}, Purpose={Purpose}", email, purpose);
+        }
+
+        private async Task<EmailVerificationCode> GetValidEmailVerificationCodeAsync(
+            string email,
+            string? suppliedCode,
+            EmailVerificationPurpose purpose)
+        {
+            var code = NormalizeEmailVerificationCode(suppliedCode);
+            var now = DateTime.UtcNow;
+            var verificationCode = await _context.EmailVerificationCodes
+                .Where(item => item.email == email && item.purpose == purpose && !item.is_used && item.expires_at > now)
+                .OrderByDescending(item => item.created_at)
+                .FirstOrDefaultAsync();
+
+            if (verificationCode == null)
+                throw new InvalidOperationException("邮箱验证码无效或已过期，请重新获取");
+            if (!BCrypt.Net.BCrypt.Verify(code, verificationCode.code_hash))
+                throw new InvalidOperationException("邮箱验证码不正确");
+
+            return verificationCode;
+        }
+
+        private string NormalizeEmailVerificationCode(string? value)
+        {
+            var code = _contentSecurity.NormalizeRequiredText(
+                value,
+                "邮箱验证码",
+                6,
+                filterSensitiveWords: false);
+            if (code.Length != 6 || !code.All(character => character >= '0' && character <= '9'))
+                throw new ArgumentException("邮箱验证码必须为6位数字");
+
+            return code;
+        }
+
+        private static string GenerateEmailVerificationCode()
+        {
+            return RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
         }
 
         public async Task<string> LoginAsync(UserLoginDto loginDto)
@@ -168,13 +330,41 @@ namespace VideoCallAPI.Services
             if (user == null)
                 throw new ArgumentException("用户不存在");
 
-            if (!BCrypt.Net.BCrypt.Verify(changePasswordDto.old_password, user.password_hash))
-                throw new UnauthorizedAccessException("原密码错误");
+            if (string.IsNullOrWhiteSpace(changePasswordDto.new_password) || changePasswordDto.new_password.Length < 6)
+                throw new ArgumentException("新密码至少6位");
+
+            EmailVerificationCode? verificationCode = null;
+            if (!string.IsNullOrWhiteSpace(changePasswordDto.old_password))
+            {
+                if (!BCrypt.Net.BCrypt.Verify(changePasswordDto.old_password, user.password_hash))
+                    throw new UnauthorizedAccessException("原密码错误");
+            }
+            else
+            {
+                verificationCode = await GetValidEmailVerificationCodeAsync(
+                    user.email,
+                    changePasswordDto.verification_code,
+                    EmailVerificationPurpose.ChangePassword);
+                verificationCode.is_used = true;
+                verificationCode.used_at = DateTime.UtcNow;
+            }
 
             user.password_hash = BCrypt.Net.BCrypt.HashPassword(changePasswordDto.new_password);
             await _context.SaveChangesAsync();
 
             return true;
+        }
+
+        public async Task RequestPasswordChangeEmailVerificationCodeAsync(int userId)
+        {
+            var user = await _context.users.FindAsync(userId);
+            if (user == null)
+                throw new ArgumentException("用户不存在");
+
+            await CreateAndSendEmailVerificationCodeAsync(
+                user.email,
+                GetDisplayName(user),
+                EmailVerificationPurpose.ChangePassword);
         }
 
         public async Task ForgotPasswordAsync(ForgotPasswordDto forgotPasswordDto)

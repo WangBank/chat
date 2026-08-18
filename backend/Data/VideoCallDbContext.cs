@@ -21,6 +21,7 @@ namespace VideoCallAPI.Data
         public DbSet<GroupChatMessage> GroupChatMessages { get; set; }
         public DbSet<FavoriteItem> FavoriteItems { get; set; }
         public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
+        public DbSet<EmailVerificationCode> EmailVerificationCodes { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -50,6 +51,13 @@ namespace VideoCallAPI.Data
                     .WithMany(p => p.PasswordResetTokens)
                     .HasForeignKey(d => d.user_id)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // 邮箱验证码表配置
+            modelBuilder.Entity<EmailVerificationCode>(entity =>
+            {
+                entity.HasIndex(e => new { e.email, e.purpose, e.expires_at });
+                entity.HasIndex(e => new { e.is_used, e.expires_at });
             });
 
             // Contact 表配置

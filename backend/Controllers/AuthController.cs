@@ -91,6 +91,85 @@ namespace VideoCallAPI.Controllers
             }
         }
 
+        [HttpPost("registration-email-code")]
+        public async Task<ActionResult<ApiResponse>> RequestRegistrationEmailCode(
+            RegistrationEmailVerificationCodeRequestDto requestDto)
+        {
+            try
+            {
+                await _userService.RequestRegistrationEmailVerificationCodeAsync(requestDto);
+                return Ok(new ApiResponse
+                {
+                    Success = true,
+                    Message = "验证码已发送，5分钟内有效"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "发送注册邮箱验证码失败: Username={Username}, Email={Email}", requestDto.username, requestDto.email);
+                return BadRequest(new ApiResponse
+                {
+                    Success = false,
+                    Message = ApiErrorMessage.ForClient(ex, "发送验证码失败"),
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("change-email-code")]
+        [Authorize]
+        public async Task<ActionResult<ApiResponse>> RequestEmailChangeCode(
+            ChangeEmailVerificationCodeRequestDto requestDto)
+        {
+            try
+            {
+                var userId = GetUserId();
+                await _userService.RequestEmailChangeVerificationCodeAsync(userId, requestDto);
+                return Ok(new ApiResponse
+                {
+                    Success = true,
+                    Message = "验证码已发送，5分钟内有效"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "发送修改邮箱验证码失败: UserId={UserId}, Email={Email}", GetUserId(), requestDto.email);
+                return BadRequest(new ApiResponse
+                {
+                    Success = false,
+                    Message = ApiErrorMessage.ForClient(ex, "发送验证码失败"),
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("change-email")]
+        [Authorize]
+        public async Task<ActionResult<ApiResponse<UserResponseDto>>> ChangeEmail(ChangeEmailDto changeEmailDto)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var user = await _userService.ChangeEmailAsync(userId, changeEmailDto);
+                return Ok(new ApiResponse<UserResponseDto>
+                {
+                    Success = true,
+                    Message = "邮箱修改成功",
+                    Data = user
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "修改邮箱失败: UserId={UserId}", GetUserId());
+                return BadRequest(new ApiResponse<UserResponseDto>
+                {
+                    Success = false,
+                    Message = ApiErrorMessage.ForClient(ex, "邮箱修改失败"),
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
         [HttpPost("login")]
         public async Task<ActionResult<ApiResponse<object>>> Login(UserLoginDto loginDto)
         {
@@ -306,6 +385,32 @@ namespace VideoCallAPI.Controllers
                 {
                     Success = false,
                     Message = "密码修改失败",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("change-password-code")]
+        [Authorize]
+        public async Task<ActionResult<ApiResponse>> RequestPasswordChangeCode()
+        {
+            try
+            {
+                var userId = GetUserId();
+                await _userService.RequestPasswordChangeEmailVerificationCodeAsync(userId);
+                return Ok(new ApiResponse
+                {
+                    Success = true,
+                    Message = "验证码已发送，5分钟内有效"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "发送修改密码验证码失败: UserId={UserId}", GetUserId());
+                return BadRequest(new ApiResponse
+                {
+                    Success = false,
+                    Message = ApiErrorMessage.ForClient(ex, "发送验证码失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }

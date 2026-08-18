@@ -15,6 +15,7 @@ interface LoginFormValues {
 
 interface RegisterFormValues extends LoginFormValues {
   email: string;
+  verification_code: string;
 }
 
 function getApiErrorMessage(error: unknown, fallback: string) {
@@ -31,6 +32,7 @@ const LoginPage = observer(() => {
   const [activeTab, setActiveTab] = useState('login');
   const [isQQCallbackProcessing, setIsQQCallbackProcessing] = useState(false);
   const [isQQRedirecting, setIsQQRedirecting] = useState(false);
+  const [isSendingRegistrationCode, setIsSendingRegistrationCode] = useState(false);
   const qqCallbackHandledRef = useRef(false);
   const qqCallbackParams = new URLSearchParams(location.search);
   const hasQQCallbackInUrl = Boolean(
@@ -118,7 +120,12 @@ const LoginPage = observer(() => {
   };
 
   const onRegister = async (values: RegisterFormValues) => {
-    const result = await authStore.register(values.username, values.email, values.password);
+    const result = await authStore.register(
+      values.username,
+      values.email,
+      values.password,
+      values.verification_code
+    );
     if (result.success) {
       message.success('注册成功');
       navigate(isAdminUser(authStore.user) ? '/admin' : '/chat');
@@ -127,13 +134,27 @@ const LoginPage = observer(() => {
     }
   };
 
-  const generateRandomAccount = () => {
-    const account = authStore.generateRandomAccount();
-    form.setFieldsValue({
-      username: account.username,
-      password: account.password,
-    });
-    message.info('已生成随机账号和密码');
+  const handleRequestRegistrationCode = async () => {
+    try {
+      const values = await form.validateFields(['username', 'email']);
+      setIsSendingRegistrationCode(true);
+      const response = await apiService.requestRegistrationEmailCode({
+        username: values.username.trim(),
+        email: values.email.trim(),
+      });
+      if (response.success) {
+        message.success(response.message || '验证码已发送，5分钟内有效');
+      } else {
+        message.error(response.message || '发送验证码失败');
+      }
+    } catch (error: unknown) {
+      const validationError = error as { errorFields?: unknown[] };
+      if (!validationError.errorFields) {
+        message.error(getApiErrorMessage(error, '发送验证码失败'));
+      }
+    } finally {
+      setIsSendingRegistrationCode(false);
+    }
   };
 
   const handleQQLogin = async () => {
@@ -245,10 +266,6 @@ const LoginPage = observer(() => {
                       </Button>
                     </Form.Item>
                     <div className="qq-login-links">
-                      <Button type="link" onClick={generateRandomAccount} disabled={isAuthBusy}>
-                        随机账号
-                      </Button>
-                      <span>|</span>
                       <Link to="/forgot-password">忘记密码</Link>
                     </div>
                   </Form>
@@ -298,6 +315,32 @@ const LoginPage = observer(() => {
                         disabled={isAuthBusy}
                       />
                     </Form.Item>
+                    <Form.Item
+                      name="verification_code"
+                      rules={[
+                        { required: true, message: '请输入邮箱验证码' },
+                        { pattern: /^\d{6}$/, message: '邮箱验证码为 6 位数字' },
+                      ]}
+                    >
+                      <Input
+                        prefix={<MailOutlined />}
+                        placeholder="邮箱验证码"
+                        size="large"
+                        maxLength={6}
+                        disabled={isAuthBusy}
+                        suffix={
+                          <Button
+                            type="link"
+                            size="small"
+                            loading={isSendingRegistrationCode}
+                            disabled={isAuthBusy}
+                            onClick={() => void handleRequestRegistrationCode()}
+                          >
+                            获取验证码
+                          </Button>
+                        }
+                      />
+                    </Form.Item>
                     <Form.Item>
                       <Button
                         type="primary"
@@ -310,11 +353,6 @@ const LoginPage = observer(() => {
                         注册
                       </Button>
                     </Form.Item>
-                    <div className="qq-login-links">
-                      <Button type="link" onClick={generateRandomAccount} disabled={isAuthBusy}>
-                        随机账号
-                      </Button>
-                    </div>
                   </Form>
                 ),
               },

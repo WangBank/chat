@@ -229,11 +229,26 @@ class ApiService {
   }
 
   // User APIs
-  async register(data: { username: string; email: string; password: string }) {
+  async register(data: { username: string; email: string; password: string; verification_code: string }) {
     const response = await this.api.post<ApiResponse<AuthApiResponse>>(
       '/api/auth/register',
       data
     );
+    return response.data;
+  }
+
+  async requestRegistrationEmailCode(data: { username: string; email: string }) {
+    const response = await this.api.post<ApiResponse>('/api/auth/registration-email-code', data);
+    return response.data;
+  }
+
+  async requestEmailChangeCode(data: { email: string }) {
+    const response = await this.api.post<ApiResponse>('/api/auth/change-email-code', data);
+    return response.data;
+  }
+
+  async changeEmail(data: { email: string; verification_code: string }) {
+    const response = await this.api.post<ApiResponse<UserApiResponse>>('/api/auth/change-email', data);
     return response.data;
   }
 
@@ -292,8 +307,13 @@ class ApiService {
     return response.data;
   }
 
-  async changePassword(data: { old_password: string; new_password: string }) {
+  async changePassword(data: { old_password?: string; verification_code?: string; new_password: string }) {
     const response = await this.api.post<ApiResponse>('/api/auth/change-password', data);
+    return response.data;
+  }
+
+  async requestPasswordChangeCode() {
+    const response = await this.api.post<ApiResponse>('/api/auth/change-password-code');
     return response.data;
   }
 

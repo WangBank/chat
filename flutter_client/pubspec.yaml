@@ -38,6 +38,7 @@ dependencies:
   
   # 聊天附件选择
   image_picker: ^1.0.7
+  image: ^4.5.4
   file_picker: ^11.0.3
   
   # 状态管理

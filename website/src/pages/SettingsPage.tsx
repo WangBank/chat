@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Card, Form, Input, Button, Upload, Avatar, message, Space, Divider } from 'antd';
+import { Card, Form, Input, Button, Upload, Avatar, message, Space, Divider, Radio } from 'antd';
 import { UserOutlined, LockOutlined, CameraOutlined, SaveOutlined, ArrowLeftOutlined, QqOutlined } from '@ant-design/icons';
 import { observer } from 'mobx-react-lite';
 import { useNavigate } from 'react-router-dom';
@@ -9,12 +9,85 @@ import { APP_CONFIG } from '../config/app.config';
 import type { UploadProps } from 'antd';
 import '../styles/common.css';
 
+const maxAvatarBytes = 100 * 1024;
+
+function loadImageElement(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('图片无法读取'));
+    };
+    image.src = objectUrl;
+  });
+}
+
+function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error('头像裁剪失败'));
+      }
+    }, 'image/jpeg', quality);
+  });
+}
+
+async function cropAvatarIfNeeded(file: File): Promise<File> {
+  if (file.size <= maxAvatarBytes) return file;
+
+  const image = await loadImageElement(file);
+  const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+  if (!sourceSize) throw new Error('图片尺寸无效');
+
+  const sourceX = Math.floor((image.naturalWidth - sourceSize) / 2);
+  const sourceY = Math.floor((image.naturalHeight - sourceSize) / 2);
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('浏览器不支持头像裁剪');
+
+  let size = Math.min(512, sourceSize);
+  let lastBlob: Blob | undefined;
+  while (size >= 64) {
+    canvas.width = size;
+    canvas.height = size;
+    context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, size, size);
+
+    for (const quality of [0.85, 0.7, 0.55, 0.4, 0.25]) {
+      const blob = await canvasToJpeg(canvas, quality);
+      lastBlob = blob;
+      if (blob.size <= maxAvatarBytes) {
+        const filename = `${file.name.replace(/\.[^.]+$/, '') || 'avatar'}.jpg`;
+        return new File([blob], filename, { type: 'image/jpeg' });
+      }
+    }
+    size = Math.floor(size * 0.75);
+  }
+
+  if (!lastBlob || lastBlob.size > maxAvatarBytes) {
+    throw new Error('头像无法裁剪到 100KB 以内');
+  }
+  const filename = `${file.name.replace(/\.[^.]+$/, '') || 'avatar'}.jpg`;
+  return new File([lastBlob], filename, { type: 'image/jpeg' });
+}
+
 const SettingsPage = observer(() => {
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [passwordForm] = Form.useForm();
+  const [emailForm] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordCodeLoading, setPasswordCodeLoading] = useState(false);
+  const [passwordVerificationMethod, setPasswordVerificationMethod] = useState<'old_password' | 'email_code'>('old_password');
+  const [emailCodeLoading, setEmailCodeLoading] = useState(false);
+  const [emailChangeLoading, setEmailChangeLoading] = useState(false);
   const [avatarLoading, setAvatarLoading] = useState(false);
   const [qqBindingLoading, setQqBindingLoading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string>('');
@@ -26,11 +99,12 @@ const SettingsPage = observer(() => {
         display_name: currentUser.display_name || '',
         signature: currentUser.signature || '',
       });
+      emailForm.setFieldsValue({ email: currentUser.email, verification_code: '' });
       if (currentUser.avatar_path) {
         setAvatarUrl(resolveAvatarUrl(currentUser.avatar_path));
       }
     }
-  }, [currentUser, form]);
+  }, [currentUser, emailForm, form]);
 
   const getErrorMessage = (error: unknown, fallback: string) => {
     const maybeError = error as { response?: { data?: { message?: unknown } } };
@@ -60,7 +134,12 @@ const SettingsPage = observer(() => {
     }
   };
 
-  const handleChangePassword = async (values: { old_password: string; new_password: string; confirm_password: string }) => {
+  const handleChangePassword = async (values: {
+    old_password?: string;
+    verification_code?: string;
+    new_password: string;
+    confirm_password: string;
+  }) => {
     if (values.new_password !== values.confirm_password) {
       message.error('The two passwords do not match');
       return;
@@ -69,7 +148,8 @@ const SettingsPage = observer(() => {
     setPasswordLoading(true);
     try {
       const response = await apiService.changePassword({
-        old_password: values.old_password,
+        old_password: passwordVerificationMethod === 'old_password' ? values.old_password : undefined,
+        verification_code: passwordVerificationMethod === 'email_code' ? values.verification_code : undefined,
         new_password: values.new_password,
       });
       if (response.success) {
@@ -85,14 +165,73 @@ const SettingsPage = observer(() => {
     }
   };
 
+  const handleRequestPasswordChangeCode = async () => {
+    setPasswordCodeLoading(true);
+    try {
+      const response = await apiService.requestPasswordChangeCode();
+      if (response.success) {
+        message.success(response.message || '验证码已发送，5分钟内有效');
+      } else {
+        message.error(response.message || '发送验证码失败');
+      }
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '发送验证码失败'));
+    } finally {
+      setPasswordCodeLoading(false);
+    }
+  };
+
+  const handleRequestEmailChangeCode = async () => {
+    try {
+      const { email } = await emailForm.validateFields(['email']);
+      setEmailCodeLoading(true);
+      const response = await apiService.requestEmailChangeCode({ email: email.trim() });
+      if (response.success) {
+        message.success(response.message || '验证码已发送，5分钟内有效');
+      } else {
+        message.error(response.message || '发送验证码失败');
+      }
+    } catch (error: unknown) {
+      const validationError = error as { errorFields?: unknown[] };
+      if (!validationError.errorFields) {
+        message.error(getErrorMessage(error, '发送验证码失败'));
+      }
+    } finally {
+      setEmailCodeLoading(false);
+    }
+  };
+
+  const handleChangeEmail = async (values: { email: string; verification_code: string }) => {
+    setEmailChangeLoading(true);
+    try {
+      const response = await apiService.changeEmail({
+        email: values.email.trim(),
+        verification_code: values.verification_code,
+      });
+      if (response.success && response.data) {
+        authStore.user = response.data;
+        localStorage.setItem('user', JSON.stringify(response.data));
+        emailForm.setFieldsValue({ email: response.data.email, verification_code: '' });
+        message.success(response.message || '邮箱修改成功');
+      } else {
+        message.error(response.message || '邮箱修改失败');
+      }
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '邮箱修改失败'));
+    } finally {
+      setEmailChangeLoading(false);
+    }
+  };
+
   const handleAvatarUpload: UploadProps['customRequest'] = async (options) => {
     const { file, onSuccess, onError } = options;
     setAvatarLoading(true);
 
-    const formData = new FormData();
-    formData.append('avatar', file as File);
-
     try {
+      const sourceFile = file as File;
+      const avatarFile = await cropAvatarIfNeeded(sourceFile);
+      const formData = new FormData();
+      formData.append('avatar', avatarFile);
       const response = await fetch(`${APP_CONFIG.API_BASE_URL}/api/auth/upload-avatar`, {
         method: 'POST',
         headers: {
@@ -113,6 +252,9 @@ const SettingsPage = observer(() => {
           : '';
         setAvatarUrl(newAvatarUrl);
         
+        if (avatarFile !== sourceFile) {
+          message.info('头像已自动裁剪压缩至 100KB 以内');
+        }
         message.success('Avatar uploaded successfully');
         onSuccess?.(result);
       } else {
@@ -271,6 +413,49 @@ const SettingsPage = observer(() => {
               </Button>
             </Form.Item>
           </Form>
+
+          <Divider />
+
+          <Form form={emailForm} layout="vertical" onFinish={handleChangeEmail} style={{ maxWidth: 400 }}>
+            <Form.Item
+              label="修改邮箱"
+              name="email"
+              rules={[
+                { required: true, message: '请输入邮箱' },
+                { type: 'email', message: '请输入有效邮箱' },
+              ]}
+            >
+              <Input placeholder="请输入新邮箱" />
+            </Form.Item>
+            <Form.Item
+              label="邮箱验证码"
+              name="verification_code"
+              rules={[
+                { required: true, message: '请输入邮箱验证码' },
+                { pattern: /^\d{6}$/, message: '邮箱验证码为 6 位数字' },
+              ]}
+            >
+              <Input
+                placeholder="请输入 6 位验证码"
+                maxLength={6}
+                suffix={
+                  <Button
+                    type="link"
+                    size="small"
+                    loading={emailCodeLoading}
+                    onClick={() => void handleRequestEmailChangeCode()}
+                  >
+                    获取验证码
+                  </Button>
+                }
+              />
+            </Form.Item>
+            <Form.Item>
+              <Button type="primary" htmlType="submit" loading={emailChangeLoading}>
+                保存邮箱
+              </Button>
+            </Form.Item>
+          </Form>
         </Space>
       </Card>
 
@@ -308,13 +493,58 @@ const SettingsPage = observer(() => {
           onFinish={handleChangePassword}
           style={{ maxWidth: 400 }}
         >
-          <Form.Item
-            label="Current Password"
-            name="old_password"
-            rules={[{ required: true, message: 'Please enter current password' }]}
-          >
-            <Input.Password prefix={<LockOutlined />} placeholder="Enter current password" />
+          <Form.Item label="验证方式">
+            <Radio.Group
+              value={passwordVerificationMethod}
+              onChange={(event) => {
+                setPasswordVerificationMethod(event.target.value);
+                passwordForm.setFieldsValue({ old_password: undefined, verification_code: undefined });
+              }}
+            >
+              <Radio value="old_password">旧密码</Radio>
+              <Radio value="email_code">邮箱验证码</Radio>
+            </Radio.Group>
           </Form.Item>
+          {passwordVerificationMethod === 'old_password' ? (
+            <Form.Item
+              label="Current Password"
+              name="old_password"
+              preserve={false}
+              rules={[{ required: true, message: 'Please enter current password' }]}
+            >
+              <Input.Password prefix={<LockOutlined />} placeholder="Enter current password" />
+            </Form.Item>
+          ) : (
+            <>
+              <div style={{ marginBottom: 12, color: '#667085', fontSize: 13 }}>
+                验证码会发送到当前邮箱：{authStore.user?.email}
+              </div>
+              <Form.Item
+                label="邮箱验证码"
+                name="verification_code"
+                preserve={false}
+                rules={[
+                  { required: true, message: '请输入邮箱验证码' },
+                  { pattern: /^\d{6}$/, message: '邮箱验证码为 6 位数字' },
+                ]}
+              >
+                <Input
+                  placeholder="请输入 6 位验证码"
+                  maxLength={6}
+                  suffix={
+                    <Button
+                      type="link"
+                      size="small"
+                      loading={passwordCodeLoading}
+                      onClick={() => void handleRequestPasswordChangeCode()}
+                    >
+                      获取验证码
+                    </Button>
+                  }
+                />
+              </Form.Item>
+            </>
+          )}
           <Form.Item
             label="New Password"
             name="new_password"
