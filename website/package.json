@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test:contracts": "node scripts/check-cross-platform-contracts.mjs",
+    "test:contracts": "node scripts/check-cross-platform-contracts.mjs && node scripts/check-account-profile-contracts.mjs",
+    "test:account-profile": "node scripts/check-account-profile-contracts.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
