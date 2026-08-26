@@ -452,10 +452,9 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _pickAndSendFile() async {
-    final result = await FilePicker.pickFiles(withData: false);
-    if (result == null || result.files.isEmpty) return;
+    final pickedFile = await FilePicker.pickFile();
+    if (pickedFile == null) return;
 
-    final pickedFile = result.files.single;
     final path = pickedFile.path;
     if (path == null || path.isEmpty) {
       if (!mounted) return;
