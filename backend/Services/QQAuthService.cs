@@ -362,6 +362,7 @@ namespace VideoCallAPI.Services
                 id = user.id,
                 username = user.username,
                 email = user.email,
+                email_verified = user.email_verified_at.HasValue,
                 display_name = user.display_name,
                 signature = user.signature,
                 gender = user.gender,

@@ -19,9 +19,18 @@ export interface IncomingCall {
   start_time: string;
 }
 
+// Keep these values aligned with backend/Models/WebRTCModels.cs and the
+// Flutter SignalR client. SignalR serializes the C# enum as its zero-based
+// numeric value, not as a one-based UI enum.
+export const WebRTCMessageType = {
+  Offer: 0,
+  Answer: 1,
+  IceCandidate: 2,
+} as const;
+
 export interface WebRTCMessage {
   call_id: string;
-  type: number; // 1: Offer, 2: Answer, 3: ICE Candidate
+  type: number; // WebRTCMessageType
   data: string;
   sender_id: number;
   receiver_id: number;

@@ -417,6 +417,20 @@ const SettingsPage = observer(() => {
           <Divider />
 
           <Form form={emailForm} layout="vertical" onFinish={handleChangeEmail} style={{ maxWidth: 400 }}>
+            <div
+              role="status"
+              style={{
+                marginBottom: 16,
+                padding: '10px 12px',
+                borderRadius: 8,
+                color: authStore.user?.email_verified ? '#237804' : '#ad6800',
+                background: authStore.user?.email_verified ? '#f6ffed' : '#fffbe6',
+              }}
+            >
+              {authStore.user?.email_verified
+                ? `当前邮箱已认证：${authStore.user.email}`
+                : '当前邮箱未认证。填写新邮箱并验证验证码后即可完成邮箱认证。'}
+            </div>
             <Form.Item
               label="修改邮箱"
               name="email"
@@ -502,7 +516,9 @@ const SettingsPage = observer(() => {
               }}
             >
               <Radio value="old_password">旧密码</Radio>
-              <Radio value="email_code">邮箱验证码</Radio>
+              <Radio value="email_code" disabled={!authStore.user?.email_verified}>
+                邮箱验证码{authStore.user?.email_verified ? '' : '（请先认证邮箱）'}
+              </Radio>
             </Radio.Group>
           </Form.Item>
           {passwordVerificationMethod === 'old_password' ? (

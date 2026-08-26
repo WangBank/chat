@@ -77,6 +77,7 @@ namespace VideoCallAPI.Models.DTOs
         public int id { get; set; }
         public string username { get; set; } = string.Empty;
         public string email { get; set; } = string.Empty;
+        public bool email_verified { get; set; }
         public string? display_name { get; set; }
         public string? signature { get; set; }
         public string? gender { get; set; }

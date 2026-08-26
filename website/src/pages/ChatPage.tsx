@@ -870,7 +870,10 @@ function formatScreenshotFileName() {
 
 function formatVoiceFileName() {
   const now = new Date();
-  return `voice-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.webm`;
+  // .weba makes the media intent unambiguous to the static-file server. The
+  // recorded bytes remain standard WebM/Opus and can be played by browsers
+  // and Android's media stack.
+  return `voice-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.weba`;
 }
 
 function formatScreenRecordingFileName() {

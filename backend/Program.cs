@@ -283,6 +283,16 @@ app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(chatFilesPath),
     RequestPath = "/chat-files",
+    ContentTypeProvider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider
+    {
+        Mappings =
+        {
+            [".weba"] = "audio/webm",
+            [".m4a"] = "audio/mp4",
+            [".aac"] = "audio/aac",
+            [".oga"] = "audio/ogg"
+        }
+    },
     OnPrepareResponse = context =>
     {
         var allowInline = IsSafeInlineMediaType(context.Context.Response.ContentType);

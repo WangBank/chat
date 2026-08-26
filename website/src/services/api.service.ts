@@ -12,6 +12,7 @@ export interface UserSummaryResponse {
   id?: number;
   username?: string;
   email?: string;
+  email_verified?: boolean;
   display_name?: string;
   signature?: string;
   gender?: string;

@@ -2,6 +2,7 @@ class User {
   final int id;
   final String username;
   final String email;
+  final bool emailVerified;
   final String? display_name;
   final String? signature;
   final String? avatarPath;
@@ -18,6 +19,7 @@ class User {
     required this.id,
     required this.username,
     required this.email,
+    this.emailVerified = false,
     this.display_name,
     this.signature,
     this.avatarPath,
@@ -36,6 +38,8 @@ class User {
       id: json['id'] as int,
       username: json['username'] as String,
       email: json['email'] as String,
+      emailVerified:
+          (json['email_verified'] ?? json['emailVerified']) as bool? ?? false,
       display_name: (json['display_name'] ?? json['displayName']) as String?,
       signature: json['signature'] as String?,
       avatarPath: (json['avatar_path'] ?? json['avatarPath']) as String?,
@@ -65,6 +69,7 @@ class User {
       'id': id,
       'username': username,
       'email': email,
+      'email_verified': emailVerified,
       'display_name': display_name,
       'signature': signature,
       'avatar_path': avatarPath,
@@ -83,6 +88,7 @@ class User {
     int? id,
     String? username,
     String? email,
+    bool? emailVerified,
     String? display_name,
     String? signature,
     String? avatarPath,
@@ -99,6 +105,7 @@ class User {
       id: id ?? this.id,
       username: username ?? this.username,
       email: email ?? this.email,
+      emailVerified: emailVerified ?? this.emailVerified,
       display_name: display_name ?? this.display_name,
       signature: signature ?? this.signature,
       avatarPath: avatarPath ?? this.avatarPath,

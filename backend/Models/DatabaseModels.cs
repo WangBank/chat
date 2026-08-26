@@ -17,6 +17,10 @@ namespace VideoCallAPI.Models
         [Required]
         [StringLength(100)]
         public string email { get; set; } = string.Empty;
+
+        // Null means the address has not completed the application's email
+        // verification flow (for example, a QQ-created placeholder address).
+        public DateTime? email_verified_at { get; set; }
         
         [Required]
         public string password_hash { get; set; } = string.Empty;

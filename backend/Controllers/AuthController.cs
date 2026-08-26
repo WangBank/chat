@@ -384,7 +384,7 @@ namespace VideoCallAPI.Controllers
                 return BadRequest(new ApiResponse
                 {
                     Success = false,
-                    Message = "密码修改失败",
+                    Message = ApiErrorMessage.ForClient(ex, "密码修改失败"),
                     Errors = new List<string> { ex.Message }
                 });
             }

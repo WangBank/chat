@@ -1,5 +1,9 @@
 import type { UserSummaryResponse } from './api.service';
-import { signalRService, type WebRTCMessage } from './signalr.service';
+import {
+  signalRService,
+  WebRTCMessageType,
+  type WebRTCMessage,
+} from './signalr.service';
 
 export const CallType = {
   Voice: 1,
@@ -90,7 +94,7 @@ class WebRTCService {
         if (callId && receiverId) {
           signalRService.sendWebRTCMessage({
             call_id: callId,
-            type: 3, // ICE Candidate
+            type: WebRTCMessageType.IceCandidate,
             data: candidate,
             receiver_id: receiverId,
           });
@@ -172,7 +176,7 @@ class WebRTCService {
     const receiverId = call.receiver.id;
     await signalRService.sendWebRTCMessage({
       call_id: call.callId,
-      type: 1, // Offer
+      type: WebRTCMessageType.Offer,
       data: JSON.stringify(offer),
       receiver_id: receiverId,
     });
@@ -223,7 +227,7 @@ class WebRTCService {
       const data = JSON.parse(message.data);
 
       switch (message.type) {
-        case 1: { // Offer
+        case WebRTCMessageType.Offer: {
           // Create peer connection if not created yet (callee side)
           if (!this.peerConnection) {
             // Ensure user media is available
@@ -250,14 +254,14 @@ class WebRTCService {
           const answerData = JSON.stringify(answer);
           await signalRService.sendWebRTCMessage({
             call_id: message.call_id,
-            type: 2, // Answer
+            type: WebRTCMessageType.Answer,
             data: answerData,
             receiver_id: message.sender_id,
           });
           break;
         }
 
-        case 2: // Answer
+        case WebRTCMessageType.Answer:
           if (!this.peerConnection) {
             console.error('Received answer without peer connection');
             return;
@@ -266,7 +270,7 @@ class WebRTCService {
           await this.flushPendingIceCandidates();
           break;
 
-        case 3: // ICE Candidate
+        case WebRTCMessageType.IceCandidate:
           if (!this.peerConnection) {
             console.warn('Received ICE candidate without peer connection; may still be initializing');
             this.pendingIceCandidates.push(data);

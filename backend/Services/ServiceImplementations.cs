@@ -154,6 +154,7 @@ namespace VideoCallAPI.Services
                 EmailVerificationPurpose.ChangeEmail);
 
             user.email = email;
+            user.email_verified_at = DateTime.UtcNow;
             user.updated_at = DateTime.UtcNow;
             verificationCode.is_used = true;
             verificationCode.used_at = DateTime.UtcNow;
@@ -198,6 +199,7 @@ namespace VideoCallAPI.Services
             {
                 username = username,
                 email = email,
+                email_verified_at = DateTime.UtcNow,
                 password_hash = BCrypt.Net.BCrypt.HashPassword(registrationDto.password),
                 created_at = DateTime.UtcNow
             };
@@ -341,6 +343,9 @@ namespace VideoCallAPI.Services
             }
             else
             {
+                if (!user.email_verified_at.HasValue)
+                    throw new InvalidOperationException("当前邮箱未认证，请先在个人资料中修改并验证邮箱，或使用旧密码修改");
+
                 verificationCode = await GetValidEmailVerificationCodeAsync(
                     user.email,
                     changePasswordDto.verification_code,
@@ -360,6 +365,8 @@ namespace VideoCallAPI.Services
             var user = await _context.users.FindAsync(userId);
             if (user == null)
                 throw new ArgumentException("用户不存在");
+            if (!user.email_verified_at.HasValue)
+                throw new InvalidOperationException("当前邮箱未认证，请先在个人资料中修改并验证邮箱");
 
             await CreateAndSendEmailVerificationCodeAsync(
                 user.email,
@@ -549,6 +556,7 @@ namespace VideoCallAPI.Services
                 id = user.id,
                 username = user.username,
                 email = user.email,
+                email_verified = user.email_verified_at.HasValue,
                 display_name = user.display_name,
                 signature = user.signature,
                 gender = user.gender,
@@ -1040,6 +1048,7 @@ namespace VideoCallAPI.Services
                 id = user.id,
                 username = user.username,
                 email = user.email,
+                email_verified = user.email_verified_at.HasValue,
                 display_name = user.display_name,
                 signature = user.signature,
                 gender = user.gender,
@@ -1476,6 +1485,7 @@ public async Task<ChatMessageDto> SendMessageAsync(int senderId, SendMessageDto 
                 id = user.id,
                 username = user.username,
                 email = user.email,
+                email_verified = user.email_verified_at.HasValue,
                 display_name = user.display_name,
                 signature = user.signature,
                 gender = user.gender,

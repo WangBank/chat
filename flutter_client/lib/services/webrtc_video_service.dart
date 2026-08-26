@@ -21,6 +21,9 @@ class WebRTCVideoService extends ChangeNotifier {
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
   MediaStream? _remoteStream;
+  Future<void>? _callSetupFuture;
+  final Map<String, List<String>> _pendingIceCandidates = {};
+  final Set<String> _remoteDescriptionsSet = {};
 
   // 🔧 防重复处理：记录正在处理的通话结束事件
   final Set<String> _processingCallEnded = {};
@@ -462,8 +465,13 @@ class WebRTCVideoService extends ChangeNotifier {
 
     // 监听远程流
     pc.onTrack = (RTCTrackEvent event) {
-      print('📹 收到远程视频流');
-      _remoteStream = event.streams[0];
+      if (event.streams.isEmpty) {
+        print('⚠️ 收到远程轨道但未携带媒体流: ${event.track.kind}');
+        return;
+      }
+
+      print('📹 收到远程媒体流: ${event.track.kind}');
+      _remoteStream = event.streams.first;
       _safeSetRendererSrcObject(_remoteRenderer, _remoteStream);
       notifyListeners();
     };
@@ -505,29 +513,31 @@ class WebRTCVideoService extends ChangeNotifier {
   }
 
   // 请求权限
-  Future<bool> _requestPermissions() async {
+  Future<bool> _requestPermissions(CallType callType) async {
     try {
-      print('🔐 请求摄像头和麦克风权限...');
-
-      // 请求摄像头权限
-      final cameraStatus = await Permission.camera.request();
-      print('📷 摄像头权限状态: $cameraStatus');
-
-      // 请求麦克风权限
+      print('🔐 请求${callType == CallType.video ? '摄像头和' : ''}麦克风权限...');
       final microphoneStatus = await Permission.microphone.request();
       print('🎤 麦克风权限状态: $microphoneStatus');
 
-      // 检查权限状态
-      if (cameraStatus.isGranted && microphoneStatus.isGranted) {
-        print('✅ 所有权限已授予');
-        return true;
-      } else if (microphoneStatus.isGranted) {
-        print('⚠️ 仅麦克风权限已授予，将使用音频通话');
-        return true;
-      } else {
+      if (!microphoneStatus.isGranted) {
         print('❌ 权限被拒绝');
         return false;
       }
+
+      if (callType == CallType.voice) {
+        print('✅ 语音通话麦克风权限已授予');
+        return true;
+      }
+
+      final cameraStatus = await Permission.camera.request();
+      print('📷 摄像头权限状态: $cameraStatus');
+      if (!cameraStatus.isGranted) {
+        print('❌ 摄像头权限被拒绝');
+        return false;
+      }
+
+      print('✅ 视频通话权限已授予');
+      return true;
     } catch (e) {
       print('❌ 权限请求失败: $e');
       return false;
@@ -535,32 +545,32 @@ class WebRTCVideoService extends ChangeNotifier {
   }
 
   // 获取本地媒体流
-  Future<MediaStream?> _getUserMedia() async {
+  Future<MediaStream> _getUserMedia(CallType callType) async {
     try {
-      print('📹 请求摄像头和麦克风权限...');
+      print('📹 请求${callType == CallType.video ? '摄像头和' : ''}麦克风权限...');
       print(
         '🔍 [_getUserMedia] 当前用户: ${_currentUser?.id}/${_currentUser?.username}',
       );
 
       // 先请求权限
-      final hasPermissions = await _requestPermissions();
+      final hasPermissions = await _requestPermissions(callType);
       if (!hasPermissions) {
-        // 在模拟器环境中，允许没有权限的情况下继续
-        print('⚠️ 权限被拒绝，但在模拟器环境中允许继续');
-        return null;
+        throw Exception('缺少${callType == CallType.video ? '摄像头或' : ''}麦克风权限');
       }
 
       final constraints = {
         'audio': true,
-        'video': {
-          'mandatory': {
-            'minWidth': '640',
-            'minHeight': '480',
-            'minFrameRate': '30',
-          },
-          'facingMode': 'user',
-          'optional': [],
-        },
+        'video': callType == CallType.video
+            ? {
+                'mandatory': {
+                  'minWidth': '640',
+                  'minHeight': '480',
+                  'minFrameRate': '30',
+                },
+                'facingMode': 'user',
+                'optional': [],
+              }
+            : false,
       };
 
       print('🔍 [_getUserMedia] 开始调用 getUserMedia...');
@@ -570,6 +580,10 @@ class WebRTCVideoService extends ChangeNotifier {
       print('🔍 [_getUserMedia] 获取到的轨道数: ${tracks.length}');
       for (var track in tracks) {
         print('🔍 [_getUserMedia] 轨道: kind=${track.kind}, id=${track.id}');
+      }
+      if (!tracks.any((track) => track.kind == 'audio')) {
+        stream.getTracks().forEach((track) => track.stop());
+        throw Exception('未获取到麦克风音频轨道');
       }
       return stream;
     } catch (e) {
@@ -588,24 +602,7 @@ class WebRTCVideoService extends ChangeNotifier {
         print('💡 提示：如果在同一台机器上使用不同浏览器，请确保另一个浏览器已完全释放摄像头');
       }
 
-      // 如果视频获取失败，尝试只获取音频
-      if (errorMsg.contains('video') || errorMsg.contains('camera')) {
-        try {
-          print('🔄 [_getUserMedia] 尝试仅获取音频流...');
-          final audioConstraints = {'audio': true, 'video': false};
-          final audioStream = await navigator.mediaDevices.getUserMedia(
-            audioConstraints,
-          );
-          print('✅ [_getUserMedia] 成功获取音频流');
-          return audioStream;
-        } catch (audioError) {
-          print('❌ [_getUserMedia] 音频流获取也失败: $audioError');
-        }
-      }
-
-      // 在模拟器环境中，允许没有媒体流的情况下继续
-      print('⚠️ [_getUserMedia] 无法获取媒体流，但在模拟器环境中允许继续');
-      return null;
+      rethrow;
     }
   }
 
@@ -636,8 +633,25 @@ class WebRTCVideoService extends ChangeNotifier {
     }
   }
 
-  // 开始视频通话
+  // 同一通话只允许一个初始化过程，避免 Offer 和接听流程并发创建两个 PeerConnection。
   Future<void> _startVideoCall() async {
+    if (_peerConnection != null) return;
+    final inFlight = _callSetupFuture;
+    if (inFlight != null) return inFlight;
+
+    final setup = _startVideoCallInternal();
+    _callSetupFuture = setup;
+    try {
+      await setup;
+    } finally {
+      if (identical(_callSetupFuture, setup)) {
+        _callSetupFuture = null;
+      }
+    }
+  }
+
+  // 开始视频或语音通话
+  Future<void> _startVideoCallInternal() async {
     print('🔍 [_startVideoCall] ========== 开始视频通话 ==========');
     print('🔍 [_startVideoCall] call: ${_currentCall?.callId}');
     print(
@@ -672,7 +686,11 @@ class WebRTCVideoService extends ChangeNotifier {
       );
       if (_localStream == null) {
         print('🔍 [_startVideoCall] 开始获取媒体流...');
-        _localStream = await _getUserMedia();
+        final callType = _currentCall?.callType;
+        if (callType == null) {
+          throw Exception('通话信息不存在，无法获取媒体流');
+        }
+        _localStream = await _getUserMedia(callType);
         print(
           '🔍 [_startVideoCall] 获取媒体流结果: ${_localStream != null ? "成功" : "失败"}',
         );
@@ -687,8 +705,6 @@ class WebRTCVideoService extends ChangeNotifier {
           }
           _safeSetRendererSrcObject(_localRenderer, _localStream);
           print('🔍 [_startVideoCall] 已设置本地渲染器');
-        } else {
-          print('⚠️ [_startVideoCall] 无法获取媒体流，但允许继续（模拟器环境）');
         }
       } else {
         print('⚠️ [_startVideoCall] _localStream 已存在，跳过获取');
@@ -698,7 +714,9 @@ class WebRTCVideoService extends ChangeNotifier {
 
       // 创建PeerConnection
       print('🔍 [_startVideoCall] 开始创建 PeerConnection...');
-      _peerConnection = await _createPeerConnection();
+      if (_peerConnection == null) {
+        _peerConnection = await _createPeerConnection();
+      }
       print('🔍 [_startVideoCall] PeerConnection 创建完成');
 
       notifyListeners();
@@ -1022,6 +1040,8 @@ class WebRTCVideoService extends ChangeNotifier {
 
       final offerDesc = RTCSessionDescription(sdp, 'offer');
       await _peerConnection!.setRemoteDescription(offerDesc);
+      _remoteDescriptionsSet.add(callId);
+      await _flushPendingIceCandidates(callId);
 
       final answer = await _peerConnection!.createAnswer();
       await _peerConnection!.setLocalDescription(answer);
@@ -1054,6 +1074,8 @@ class WebRTCVideoService extends ChangeNotifier {
 
       final answerDesc = RTCSessionDescription(sdp, 'answer');
       await _peerConnection!.setRemoteDescription(answerDesc);
+      _remoteDescriptionsSet.add(callId);
+      await _flushPendingIceCandidates(callId);
       print('✅ Answer处理成功');
     } catch (e) {
       print('❌ Answer处理失败: $e');
@@ -1067,14 +1089,28 @@ class WebRTCVideoService extends ChangeNotifier {
     String candidate,
     int senderId,
   ) async {
+    if (_peerConnection == null || !_remoteDescriptionsSet.contains(callId)) {
+      _pendingIceCandidates.putIfAbsent(callId, () => []).add(candidate);
+      print('⏳ ICE候选已缓存，等待远端描述: call=$callId');
+      return;
+    }
+
+    await _addIceCandidate(callId, candidate);
+  }
+
+  Future<void> _flushPendingIceCandidates(String callId) async {
+    final candidates = _pendingIceCandidates.remove(callId);
+    if (candidates == null || candidates.isEmpty) return;
+
+    for (final candidate in candidates) {
+      await _addIceCandidate(callId, candidate);
+    }
+  }
+
+  Future<void> _addIceCandidate(String callId, String candidate) async {
     try {
-      // PeerConnection 未就绪时直接忽略，避免异常
-      if (_peerConnection == null) {
-        print(
-          '⚠️ ICE候选到达但PeerConnection为空，忽略: call=$callId, user=${_currentUser?.id}/${_currentUser?.username}',
-        );
-        return;
-      }
+      final peerConnection = _peerConnection;
+      if (peerConnection == null) return;
 
       // 尝试解析 JSON；兼容纯字符串或类型不匹配情况
       dynamic decoded;
@@ -1116,7 +1152,7 @@ class WebRTCVideoService extends ChangeNotifier {
       );
 
       final iceCandidate = RTCIceCandidate(candStr, sdpMid, sdpMLineIndex);
-      await _peerConnection!.addCandidate(iceCandidate);
+      await peerConnection.addCandidate(iceCandidate);
       print('✅ ICE候选处理成功: call=$callId');
     } catch (e) {
       // 打印原始数据片段便于调试
@@ -1137,28 +1173,8 @@ class WebRTCVideoService extends ChangeNotifier {
         throw Exception('WebRTC服务未初始化');
       }
 
-      // 先获取本地媒体流，用于等待页面显示
-      print('📹 发起通话时获取本地视频流...');
-
-      // 确保渲染器已初始化
-      await _ensureRenderersInitialized();
-
-      _localStream = await _getUserMedia();
-      if (_localStream != null) {
-        _safeSetRendererSrcObject(_localRenderer, _localStream);
-        notifyListeners();
-        print('✅ 本地视频流已获取，可用于等待页面显示');
-      } else {
-        print('⚠️ 无法获取本地视频流，但允许继续（模拟器环境）');
-        notifyListeners();
-      }
-
-      // 通过SignalR发起通话
-      await _signalRService.initiateCall(
-        InitiateCallRequest(receiverId: receiver.id, callType: callType),
-      );
-
-      // 设置当前通话状态（临时ID，等待后端返回真实ID）
+      // Set a temporary call before signalling so a very fast accepted event
+      // always has a peer/call type to work with.
       _currentCall = Call(
         callId: 'temp_${DateTime.now().millisecondsSinceEpoch}',
         caller: _currentUser!,
@@ -1166,6 +1182,22 @@ class WebRTCVideoService extends ChangeNotifier {
         callType: callType,
         status: CallStatus.initiated,
         startTime: DateTime.now(),
+      );
+
+      // 先获取本地媒体流，用于等待页面显示
+      print('📹 发起通话时获取本地视频流...');
+
+      // 确保渲染器已初始化
+      await _ensureRenderersInitialized();
+
+      _localStream = await _getUserMedia(callType);
+      _safeSetRendererSrcObject(_localRenderer, _localStream);
+      notifyListeners();
+      print('✅ 本地媒体流已获取，可用于等待页面显示');
+
+      // 通过SignalR发起通话
+      await _signalRService.initiateCall(
+        InitiateCallRequest(receiverId: receiver.id, callType: callType),
       );
 
       print('📞 发起通话: ${receiver.username}');
@@ -1189,11 +1221,6 @@ class WebRTCVideoService extends ChangeNotifier {
         throw Exception('WebRTC服务未初始化');
       }
 
-      // 通过SignalR应答通话
-      await _signalRService.answerCall(
-        AnswerCallRequest(callId: callId, accept: accept),
-      );
-
       if (accept) {
         _isInCall = true;
 
@@ -1209,7 +1236,13 @@ class WebRTCVideoService extends ChangeNotifier {
           );
         }
 
+        // Prepare local media and the peer connection before notifying the
+        // caller. Otherwise its Offer can arrive while this client has no PC.
         await _startVideoCall();
+        await _signalRService.joinCall(callId);
+        await _signalRService.answerCall(
+          AnswerCallRequest(callId: callId, accept: true),
+        );
 
         // 被叫方接听后，通知CallManager状态变化
         if (_currentCall != null) {
@@ -1219,6 +1252,9 @@ class WebRTCVideoService extends ChangeNotifier {
         // 被叫方不需要创建Offer，等待主叫方的Offer
         print('📞 已接听通话，等待主叫方发送Offer');
       } else {
+        await _signalRService.answerCall(
+          AnswerCallRequest(callId: callId, accept: false),
+        );
         // 🔧 修复：被叫方拒绝通话时，释放可能已获取的摄像头
         print('🔍 [answerCall] 被叫方拒绝通话，检查是否需要释放摄像头...');
         print(

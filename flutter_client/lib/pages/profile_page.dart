@@ -743,6 +743,20 @@ class _ProfilePageState extends State<ProfilePage> {
                                           style:
                                               const TextStyle(color: _qqMuted),
                                         ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _currentUser!.emailVerified
+                                              ? '邮箱已认证'
+                                              : '邮箱未认证，请修改邮箱并完成验证码认证',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: _currentUser!.emailVerified
+                                                ? const Color(0xFF2E7D32)
+                                                : const Color(0xFFB26A00),
+                                            fontSize: 12,
+                                          ),
+                                        ),
                                         const SizedBox(height: 6),
                                         Text(
                                           signature,
@@ -873,7 +887,11 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ListTile(
                                   leading: const Icon(Icons.email_outlined),
                                   title: const Text('邮箱'),
-                                  subtitle: Text(_currentUser!.email),
+                                  subtitle: Text(
+                                    _currentUser!.emailVerified
+                                        ? '${_currentUser!.email}（已认证）'
+                                        : '${_currentUser!.email}（未认证，点击认证）',
+                                  ),
                                   trailing: const Icon(Icons.chevron_right),
                                   onTap: _isLoading ? null : _changeEmail,
                                 ),
