@@ -34,7 +34,8 @@ dependencies:
   shared_preferences: ^2.5.5
   
   # 权限管理
-  permission_handler: ^13.0.1
+  # 13.x requires Android API 37, which is not available on the GitHub runner yet.
+  permission_handler: ^12.0.3
   
   # 聊天附件选择
   image_picker: ^1.0.7
