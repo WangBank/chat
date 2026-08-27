@@ -11,6 +11,7 @@ const backendWebRtc = read('backend/Models/WebRTCModels.cs');
 const webSignalR = read('website/src/services/signalr.service.ts');
 const webWebRtc = read('website/src/services/webrtc.service.ts');
 const flutterSignalR = read('flutter_client/lib/services/signalr_service.dart');
+const flutterWebRtc = read('flutter_client/lib/services/webrtc_video_service.dart');
 const chatPage = read('website/src/pages/ChatPage.tsx');
 const program = read('backend/Program.cs');
 const userModel = read('backend/Models/DatabaseModels.cs');
@@ -27,6 +28,22 @@ assert.match(webSignalR, /IceCandidate:\s*2/, 'Web must send ICE as 2.');
 assert.match(webWebRtc, /WebRTCMessageType\.Offer/);
 assert.match(webWebRtc, /WebRTCMessageType\.Answer/);
 assert.match(webWebRtc, /WebRTCMessageType\.IceCandidate/);
+assert.match(program, /MapGet\("\/api\/system\/webrtc-config"/);
+assert.match(program, /WebRtc:TurnUrl/);
+assert.match(webWebRtc, /loadIceServers\(\)/);
+assert.match(webWebRtc, /\/api\/system\/webrtc-config/);
+assert.match(
+  webWebRtc,
+  /!this\.peerConnection\s*\|\|\s*!this\.peerConnection\.remoteDescription/,
+  'Web must queue ICE candidates until the remote description is available.',
+);
+assert.match(webWebRtc, /await this\.flushPendingIceCandidates\(\)/);
+assert.match(
+  flutterWebRtc,
+  /for \(final track in localStream\.getTracks\(\)\)\s*\{\s*await pc\.addTrack\(track, localStream\);/s,
+  'Flutter must finish registering local tracks before creating an offer or answer.',
+);
+assert.match(flutterSignalR, /case 'Offer':\s*return 0/);
 assert.match(flutterSignalR, /case 'Offer':\s*return 0/);
 assert.match(flutterSignalR, /case 'Answer':\s*return 1/);
 assert.match(flutterSignalR, /case 'IceCandidate':\s*return 2/);

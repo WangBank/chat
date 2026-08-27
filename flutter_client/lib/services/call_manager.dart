@@ -172,6 +172,10 @@ class CallManager extends ChangeNotifier {
       }
       notifyListeners();
     } catch (e) {
+      _currentCall = null;
+      _isInCall = false;
+      _isWaitingForAnswer = false;
+      notifyListeners();
       print('❌ 应答通话失败: $e');
       rethrow;
     }

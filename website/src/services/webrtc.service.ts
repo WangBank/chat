@@ -4,6 +4,7 @@ import {
   WebRTCMessageType,
   type WebRTCMessage,
 } from './signalr.service';
+import { APP_CONFIG } from '../config/app.config';
 
 export const CallType = {
   Voice: 1,
@@ -29,6 +30,7 @@ class WebRTCService {
   private currentCall: Call | null = null;
   private isInCall: boolean = false;
   private pendingIceCandidates: RTCIceCandidateInit[] = [];
+  private iceServersPromise: Promise<RTCIceServer[]> | null = null;
 
   // Callbacks
   onLocalStream?: (stream: MediaStream) => void;
@@ -45,12 +47,9 @@ class WebRTCService {
   }
 
   // Create peer connection
-  private createPeerConnection(): RTCPeerConnection {
+  private async createPeerConnection(): Promise<RTCPeerConnection> {
     const configuration: RTCConfiguration = {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-      ],
+      iceServers: await this.loadIceServers(),
     };
 
     const pc = new RTCPeerConnection(configuration);
@@ -105,12 +104,62 @@ class WebRTCService {
     // Listen for connection state
     pc.onconnectionstatechange = () => {
       console.log('Connection state:', pc.connectionState);
+      console.log('ICE state:', pc.iceConnectionState, 'signaling:', pc.signalingState);
       if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
         this.endCall();
       }
     };
+    pc.oniceconnectionstatechange = () => {
+      console.log('ICE connection state:', pc.iceConnectionState);
+    };
+    pc.onicecandidateerror = (event) => {
+      console.warn('ICE candidate error:', event.errorCode, event.errorText || '');
+    };
 
     return pc;
+  }
+
+  private async loadIceServers(): Promise<RTCIceServer[]> {
+    if (!this.iceServersPromise) {
+      this.iceServersPromise = this.fetchIceServers();
+    }
+    return this.iceServersPromise;
+  }
+
+  private async fetchIceServers(): Promise<RTCIceServer[]> {
+    const fallback: RTCIceServer[] = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ];
+
+    try {
+      const response = await fetch(`${APP_CONFIG.API_BASE_URL}/api/system/webrtc-config`);
+      if (!response.ok) return fallback;
+
+      const payload = await response.json() as { ice_servers?: unknown };
+      if (!Array.isArray(payload.ice_servers)) return fallback;
+
+      const iceServers = payload.ice_servers.flatMap((server): RTCIceServer[] => {
+        if (!server || typeof server !== 'object') return [];
+        const value = server as { urls?: unknown; username?: unknown; credential?: unknown };
+        const urls = Array.isArray(value.urls)
+          ? value.urls.filter((url): url is string => typeof url === 'string' && url.length > 0)
+          : typeof value.urls === 'string' && value.urls.length > 0
+            ? value.urls
+            : [];
+        if (Array.isArray(urls) && urls.length === 0) return [];
+
+        return [{
+          urls,
+          ...(typeof value.username === 'string' ? { username: value.username } : {}),
+          ...(typeof value.credential === 'string' ? { credential: value.credential } : {}),
+        }];
+      });
+
+      return iceServers.length > 0 ? iceServers : fallback;
+    } catch {
+      return fallback;
+    }
   }
 
   // Get user media
@@ -138,7 +187,7 @@ class WebRTCService {
       await this.getUserMedia(callType);
 
       // Create peer connection
-      this.peerConnection = this.createPeerConnection();
+      this.peerConnection = await this.createPeerConnection();
 
       // Initiate call. Offer is created only after the receiver accepts.
       await signalRService.initiateCall({
@@ -165,7 +214,7 @@ class WebRTCService {
     }
 
     if (!this.peerConnection) {
-      this.peerConnection = this.createPeerConnection();
+      this.peerConnection = await this.createPeerConnection();
     }
 
     await signalRService.joinCall(call.callId);
@@ -192,7 +241,7 @@ class WebRTCService {
       await this.getUserMedia(call.callType);
 
       // Create peer connection
-      this.peerConnection = this.createPeerConnection();
+        this.peerConnection = await this.createPeerConnection();
 
       // Join call
       await signalRService.joinCall(call.callId);
@@ -240,16 +289,32 @@ class WebRTCService {
                 await this.getUserMedia(CallType.Video);
               }
             }
-            this.peerConnection = this.createPeerConnection();
+            this.peerConnection = await this.createPeerConnection();
           }
 
           // Set remote description (offer)
           await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data));
+          console.log('Remote offer installed:', {
+            signaling: this.peerConnection.signalingState,
+            transceivers: this.peerConnection.getTransceivers().map((item) => ({
+              direction: item.direction,
+              currentDirection: item.currentDirection,
+              kind: item.receiver.track.kind,
+            })),
+          });
           await this.flushPendingIceCandidates();
           
           // Create answer
           const answer = await this.peerConnection.createAnswer();
           await this.peerConnection.setLocalDescription(answer);
+          console.log('Local answer created:', {
+            signaling: this.peerConnection.signalingState,
+            transceivers: this.peerConnection.getTransceivers().map((item) => ({
+              direction: item.direction,
+              currentDirection: item.currentDirection,
+              kind: item.receiver.track.kind,
+            })),
+          });
 
           const answerData = JSON.stringify(answer);
           await signalRService.sendWebRTCMessage({
@@ -271,8 +336,11 @@ class WebRTCService {
           break;
 
         case WebRTCMessageType.IceCandidate:
-          if (!this.peerConnection) {
-            console.warn('Received ICE candidate without peer connection; may still be initializing');
+          // ICE delivery can race ahead of the offer/answer. WebRTC rejects a
+          // candidate until the matching remote description is installed, so
+          // preserve it and flush immediately after setRemoteDescription.
+          if (!this.peerConnection || !this.peerConnection.remoteDescription) {
+            console.warn('Received ICE candidate before remote description; queued for later');
             this.pendingIceCandidates.push(data);
             return;
           }

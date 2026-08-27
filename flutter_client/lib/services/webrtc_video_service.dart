@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
+import '../config/app_config.dart';
 import '../models/call.dart';
 import '../models/user.dart';
 import '../utils/webrtc_debug.dart';
@@ -22,6 +24,7 @@ class WebRTCVideoService extends ChangeNotifier {
   MediaStream? _localStream;
   MediaStream? _remoteStream;
   Future<void>? _callSetupFuture;
+  Future<List<Map<String, dynamic>>>? _iceServersFuture;
   final Map<String, List<String>> _pendingIceCandidates = {};
   final Set<String> _remoteDescriptionsSet = {};
 
@@ -441,10 +444,7 @@ class WebRTCVideoService extends ChangeNotifier {
   // 创建PeerConnection
   Future<RTCPeerConnection> _createPeerConnection() async {
     final configuration = {
-      'iceServers': [
-        {'urls': 'stun:stun.l.google.com:19302'},
-        {'urls': 'stun:stun1.l.google.com:19302'},
-      ],
+      'iceServers': await _loadIceServers(),
     };
 
     final constraints = {
@@ -455,10 +455,15 @@ class WebRTCVideoService extends ChangeNotifier {
     final pc = await createPeerConnection(configuration, constraints);
 
     // 添加本地流
-    if (_localStream != null) {
-      _localStream!.getTracks().forEach((track) {
-        pc.addTrack(track, _localStream!);
-      });
+    final localStream = _localStream;
+    if (localStream != null) {
+      // `addTrack` is asynchronous on flutter_webrtc.  An answer generated
+      // before these futures complete is receive-only, which leaves the web
+      // peer without the mobile audio/video track.  Finish registering every
+      // local track before returning the connection to the offer handler.
+      for (final track in localStream.getTracks()) {
+        await pc.addTrack(track, localStream);
+      }
     } else {
       print('⚠️ 没有本地流，跳过添加本地轨道（模拟器环境）');
     }
@@ -512,8 +517,61 @@ class WebRTCVideoService extends ChangeNotifier {
     return pc;
   }
 
+  Future<List<Map<String, dynamic>>> _loadIceServers() {
+    return _iceServersFuture ??= _fetchIceServers();
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchIceServers() async {
+    const fallback = <Map<String, dynamic>>[
+      {'urls': 'stun:stun.l.google.com:19302'},
+      {'urls': 'stun:stun1.l.google.com:19302'},
+    ];
+
+    try {
+      final response = await http.get(
+        Uri.parse('${AppConfig.baseUrl}/system/webrtc-config'),
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return fallback;
+      }
+
+      final payload = jsonDecode(response.body);
+      if (payload is! Map || payload['ice_servers'] is! List) {
+        return fallback;
+      }
+
+      final iceServers = <Map<String, dynamic>>[];
+      for (final item in payload['ice_servers'] as List) {
+        if (item is! Map) continue;
+        final urls = item['urls'];
+        final hasValidUrl = urls is String
+            ? urls.isNotEmpty
+            : urls is List && urls.any((value) => value is String && value.isNotEmpty);
+        if (!hasValidUrl) continue;
+
+        iceServers.add(Map<String, dynamic>.from(item));
+      }
+
+      return iceServers.isEmpty ? fallback : iceServers;
+    } catch (error) {
+      print('⚠️ 获取ICE服务器配置失败，使用STUN回退: $error');
+      return fallback;
+    }
+  }
+
   // 请求权限
   Future<bool> _requestPermissions(CallType callType) async {
+    // Desktop and web implementations delegate camera/microphone permission to
+    // flutter_webrtc/getUserMedia. permission_handler has no macOS channel in
+    // this project, so requesting it here prevents every desktop call before
+    // WebRTC gets a chance to ask the operating system for access.
+    if (kIsWeb ||
+        (defaultTargetPlatform != TargetPlatform.android &&
+            defaultTargetPlatform != TargetPlatform.iOS)) {
+      print('🔐 当前平台由 WebRTC 原生媒体请求处理权限');
+      return true;
+    }
+
     try {
       print('🔐 请求${callType == CallType.video ? '摄像头和' : ''}麦克风权限...');
       final microphoneStatus = await Permission.microphone.request();
@@ -1216,6 +1274,7 @@ class WebRTCVideoService extends ChangeNotifier {
 
   // 应答通话
   Future<void> answerCall(String callId, bool accept) async {
+    var acceptedBySignalR = false;
     try {
       if (!_isInitialized) {
         throw Exception('WebRTC服务未初始化');
@@ -1243,6 +1302,7 @@ class WebRTCVideoService extends ChangeNotifier {
         await _signalRService.answerCall(
           AnswerCallRequest(callId: callId, accept: true),
         );
+        acceptedBySignalR = true;
 
         // 被叫方接听后，通知CallManager状态变化
         if (_currentCall != null) {
@@ -1302,6 +1362,27 @@ class WebRTCVideoService extends ChangeNotifier {
       print('📞 ${accept ? "应答" : "拒绝"}通话: $callId');
     } catch (e) {
       print('❌ 应答通话失败: $e');
+      try {
+        await _endVideoCall();
+      } catch (cleanupError) {
+        print('⚠️ 应答失败后的媒体清理失败: $cleanupError');
+      }
+
+      try {
+        if (acceptedBySignalR) {
+          await _signalRService.endCall(callId);
+        } else {
+          await _signalRService.answerCall(
+            AnswerCallRequest(callId: callId, accept: false),
+          );
+        }
+      } catch (signalError) {
+        print('⚠️ 应答失败后的信令清理失败: $signalError');
+      }
+
+      _currentCall = null;
+      _isInCall = false;
+      notifyListeners();
       onError?.call('应答通话失败: $e');
       rethrow;
     }
