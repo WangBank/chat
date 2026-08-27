@@ -72,6 +72,7 @@ import CallModal from '../components/CallModal';
 import CallPage from './CallPage';
 import { APP_CONFIG } from '../config/app.config';
 import { isAdminEmail } from '../utils/admin.utils';
+import { cropAvatarIfNeeded } from '../utils/avatar';
 import {
   gifStickerCategories,
   gifStickers,
@@ -1610,11 +1611,12 @@ const ChatPage = observer(() => {
       return;
     }
 
-    const formData = new FormData();
-    formData.append('avatar', file);
     setProfileAvatarUploading(true);
 
     try {
+      const avatarFile = await cropAvatarIfNeeded(file);
+      const formData = new FormData();
+      formData.append('avatar', avatarFile);
       const response = await fetch(`${APP_CONFIG.API_BASE_URL}/api/auth/upload-avatar`, {
         method: 'POST',
         headers: {
@@ -1626,6 +1628,9 @@ const ChatPage = observer(() => {
       if (result.success && result.data) {
         authStore.user = result.data;
         localStorage.setItem('user', JSON.stringify(result.data));
+        if (avatarFile !== file) {
+          message.info('头像已自动裁剪压缩至 100KB 以内');
+        }
         message.success('头像已更新');
       } else {
         message.error(result.message || '头像上传失败');

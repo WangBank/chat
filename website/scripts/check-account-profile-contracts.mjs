@@ -11,6 +11,8 @@ const authController = read('backend/Controllers/AuthController.cs');
 const userService = read('backend/Services/ServiceImplementations.cs');
 const qqAuthService = read('backend/Services/QQAuthService.cs');
 const settingsPage = read('website/src/pages/SettingsPage.tsx');
+const chatPage = read('website/src/pages/ChatPage.tsx');
+const avatarUtility = read('website/src/utils/avatar.ts');
 const mobileProfilePage = read('flutter_client/lib/pages/profile_page.dart');
 
 // A signed-in web user must be able to choose either current-password or
@@ -42,11 +44,13 @@ assert.match(qqAuthService, /string\.IsNullOrWhiteSpace\(user\.avatar_path\)/);
 
 // Both web and mobile reduce any oversized avatar to a square JPEG under the
 // 100 KiB limit before upload, with a clear error if that cannot be achieved.
-assert.match(settingsPage, /const maxAvatarBytes = 100 \* 1024/);
-assert.match(settingsPage, /const sourceSize = Math\.min\(image\.naturalWidth, image\.naturalHeight\)/);
-assert.match(settingsPage, /canvasToJpeg\(canvas, quality\)/);
-assert.match(settingsPage, /blob\.size <= maxAvatarBytes/);
-assert.match(settingsPage, /头像无法裁剪到 100KB 以内/);
+assert.match(settingsPage, /cropAvatarIfNeeded\(sourceFile\)/);
+assert.match(chatPage, /cropAvatarIfNeeded\(file\)/);
+assert.match(avatarUtility, /const MAX_AVATAR_BYTES = 100 \* 1024/);
+assert.match(avatarUtility, /const sourceSize = Math\.min\(image\.naturalWidth, image\.naturalHeight\)/);
+assert.match(avatarUtility, /canvasToJpeg\(canvas, quality\)/);
+assert.match(avatarUtility, /blob\.size <= MAX_AVATAR_BYTES/);
+assert.match(avatarUtility, /头像无法裁剪到 100KB 以内/);
 assert.match(mobileProfilePage, /const maxBytes = 100 \* 1024/);
 assert.match(mobileProfilePage, /final cropped = image\.copyCrop\(/);
 assert.match(mobileProfilePage, /encoded\.length <= maxBytes/);
