@@ -20,6 +20,10 @@ const webCaptchaModal = read('website/src/components/EmailCodeCaptchaModal.tsx')
 const mobileLoginPage = read('flutter_client/lib/pages/login_page.dart');
 const mobileApiService = read('flutter_client/lib/services/api_service.dart');
 const mobileCaptchaDialog = read('flutter_client/lib/widgets/email_code_captcha_dialog.dart');
+const adminErrorPanel = read('website/src/components/AdminErrorMessagePanel.tsx');
+const adminErrorStore = read('website/src/stores/error-message.store.ts');
+const webErrorUtility = read('website/src/utils/error-message.ts');
+const adminPage = read('website/src/pages/AdminPage.tsx');
 
 // A signed-in web user must be able to choose either current-password or
 // verified-email-code authentication for a password change.
@@ -81,5 +85,12 @@ assert.match(mobileApiService, /Future<EmailCodeCaptchaChallenge> createEmailCod
 assert.match(mobileLoginPage, /showEmailCodeCaptchaDialog\([\s\S]*?purpose: 'registration'/s);
 assert.match(mobileProfilePage, /showEmailCodeCaptchaDialog\([\s\S]*?purpose: 'change_email'/s);
 assert.match(mobileCaptchaDialog, /class EmailCodeCaptchaDialog[\s\S]*?captchaAnswer: List<int>\.from\(_selected\)/s);
+assert.match(mobileApiService, /auth\/email-code-captcha[\s\S]*?Duration\(seconds: 15\)/s);
+assert.match(mobileApiService, /安全校验服务暂不可用，请稍后重试/);
+assert.match(adminErrorPanel, /系统错误消息[\s\S]*?清空记录/s);
+assert.match(adminErrorStore, /messages: ErrorMessageEntry\[\]/);
+assert.match(webErrorUtility, /服务正在维护，请稍后重试/);
+assert.match(adminPage, /<AdminErrorMessagePanel[\s\S]*?errorMessageStore\.messages/s);
+assert.match(webApiService, /errorMessageStore\.add\(/);
 
 console.log('Account, profile, avatar-size, and email-code captcha contracts passed.');

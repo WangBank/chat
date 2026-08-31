@@ -42,8 +42,8 @@ class EmailCodeCaptchaTile {
 
   factory EmailCodeCaptchaTile.fromJson(Map<String, dynamic> json) {
     return EmailCodeCaptchaTile(
-      position: (json['position'] as num?)?.toInt() ?? -1,
-      symbol: json['symbol']?.toString() ?? '',
+      position: ((json['position'] ?? json['Position']) as num?)?.toInt() ?? -1,
+      symbol: (json['symbol'] ?? json['Symbol'])?.toString() ?? '',
     );
   }
 }
@@ -60,10 +60,16 @@ class EmailCodeCaptchaChallenge {
   });
 
   factory EmailCodeCaptchaChallenge.fromJson(Map<String, dynamic> json) {
-    final rawTiles = json['tiles'] as List<dynamic>? ?? const [];
-    final rawSequence = json['target_sequence'] as List<dynamic>? ?? const [];
+    final rawTiles =
+        (json['tiles'] ?? json['Tiles']) as List<dynamic>? ?? const [];
+    final rawSequence = (json['target_sequence'] ??
+            json['targetSequence'] ??
+            json['TargetSequence']) as List<dynamic>? ??
+        const [];
     return EmailCodeCaptchaChallenge(
-      captchaId: json['captcha_id']?.toString() ?? '',
+      captchaId: (json['captcha_id'] ?? json['captchaId'] ?? json['CaptchaId'])
+              ?.toString() ??
+          '',
       tiles: rawTiles
           .whereType<Map>()
           .map((item) => EmailCodeCaptchaTile.fromJson(
@@ -147,10 +153,26 @@ class ApiService {
         final message = responseData['message'];
         if (message is String && message.isNotEmpty) return message;
         final errors = responseData['errors'];
-        if (errors is List && errors.isNotEmpty) return errors.join('\n');
+        if (errors is List && errors.isNotEmpty) {
+          return errors.map((item) => item.toString()).join('\n');
+        }
+        if (errors is Map && errors.isNotEmpty) {
+          final values = <String>[];
+          for (final value in errors.values) {
+            if (value is List) {
+              values.addAll(value.map((item) => item.toString()));
+            } else if (value != null) {
+              values.add(value.toString());
+            }
+          }
+          if (values.isNotEmpty) return values.join('\n');
+        }
       }
     } catch (_) {
       // 保留默认错误信息，避免解析失败掩盖原始请求失败。
+    }
+    if (response.statusCode == 404) {
+      return '安全校验服务暂不可用，请稍后重试';
     }
     return fallback;
   }
@@ -288,20 +310,26 @@ class ApiService {
     String? email,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/email-code-captcha'),
-        headers: _headers,
-        body: jsonEncode({
-          'purpose': purpose,
-          if (username != null) 'username': username,
-          if (email != null) 'email': email,
-        }),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/email-code-captcha'),
+            headers: _headers,
+            body: jsonEncode({
+              'purpose': purpose,
+              if (username != null) 'username': username,
+              if (email != null) 'email': email,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        final data =
-            responseData is Map<String, dynamic> ? responseData['data'] : null;
-        if (responseData['success'] == true && data is Map<String, dynamic>) {
+        final data = responseData is Map<String, dynamic>
+            ? (responseData['data'] ?? responseData['Data'])
+            : null;
+        final success = responseData is Map<String, dynamic>
+            ? (responseData['success'] ?? responseData['Success']) == true
+            : false;
+        if (success && data is Map<String, dynamic>) {
           final challenge = EmailCodeCaptchaChallenge.fromJson(data);
           if (challenge.captchaId.isNotEmpty &&
               challenge.tiles.length == 9 &&

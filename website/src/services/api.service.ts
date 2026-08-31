@@ -1,11 +1,13 @@
 import axios, { type AxiosInstance, type AxiosError } from 'axios';
 import { APP_CONFIG } from '../config/app.config';
+import { errorMessageStore } from '../stores/error-message.store';
+import { getApiErrorMessage as getWebApiErrorMessage } from '../utils/error-message';
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
   message?: string;
   data?: T;
-  errors?: string[];
+  errors?: unknown;
 }
 
 export interface UserSummaryResponse {
@@ -192,18 +194,7 @@ export interface CallHistoryApiResponse {
 }
 
 export function getApiErrorMessage(error: unknown, fallback: string) {
-  if (axios.isAxiosError<ApiResponse>(error)) {
-    const responseMessage = error.response?.data?.message;
-    if (typeof responseMessage === 'string' && responseMessage.trim()) {
-      return responseMessage;
-    }
-  }
-
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-
-  return fallback;
+  return getWebApiErrorMessage(error, fallback);
 }
 
 class ApiService {
@@ -241,6 +232,10 @@ class ApiService {
           localStorage.removeItem('user');
           window.location.href = '/login';
         }
+        errorMessageStore.add(
+          `${error.config?.method?.toUpperCase() || '请求'} ${error.config?.url || '接口'}`,
+          getWebApiErrorMessage(error, '请求失败'),
+        );
         return Promise.reject(error);
       }
     );

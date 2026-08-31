@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, Modal, Spin, Typography, message } from 'antd';
 import { ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { apiService, type EmailCodeCaptchaChallenge } from '../services/api.service';
+import { getApiErrorMessage } from '../utils/error-message';
 
 export type EmailCodeCaptchaPurpose = 'registration' | 'change_email' | 'change_password';
 
@@ -56,20 +57,16 @@ export default function EmailCodeCaptchaModal({
       setChallenge(response.data);
     } catch (error) {
       setChallenge(undefined);
-      const requestError = error as { response?: { data?: { message?: string } }; message?: string };
-      message.error(requestError.response?.data?.message || requestError.message || '图案校验获取失败');
+      message.error(getApiErrorMessage(error, '图案校验获取失败'));
     } finally {
       setLoading(false);
     }
   }, [email, purpose, username]);
 
   useEffect(() => {
-    if (open) {
-      void loadChallenge();
-    } else {
-      setChallenge(undefined);
-      setSelected([]);
-    }
+    if (!open) return;
+    const timer = window.setTimeout(() => void loadChallenge(), 0);
+    return () => window.clearTimeout(timer);
   }, [loadChallenge, open]);
 
   const selectTile = (position: number) => {

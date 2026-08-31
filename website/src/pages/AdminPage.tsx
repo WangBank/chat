@@ -54,6 +54,9 @@ import { APP_CONFIG } from '../config/app.config';
 import { apiService } from '../services/api.service';
 import { isAdminUser } from '../utils/admin.utils';
 import { formatFullTime, formatTime } from '../utils/time.utils';
+import AdminErrorMessagePanel from '../components/AdminErrorMessagePanel';
+import { errorMessageStore } from '../stores/error-message.store';
+import { getApiErrorMessage } from '../utils/error-message';
 
 type AdminTab = 'all' | 'online';
 type UserDialogMode = 'create' | 'edit';
@@ -106,20 +109,6 @@ function filterUsers(users: User[], searchText: string) {
   );
 }
 
-function getApiErrorMessage(error: unknown, fallback: string) {
-  const apiError = error as { response?: { data?: { message?: unknown; errors?: unknown[] } }; message?: unknown };
-  if (typeof apiError.response?.data?.message === 'string') {
-    return apiError.response.data.message;
-  }
-  if (Array.isArray(apiError.response?.data?.errors) && typeof apiError.response.data.errors[0] === 'string') {
-    return apiError.response.data.errors[0];
-  }
-  if (typeof apiError.message === 'string') {
-    return apiError.message;
-  }
-  return fallback;
-}
-
 const AdminPage = observer(() => {
   const navigate = useNavigate();
   const [searchText, setSearchText] = useState('');
@@ -142,6 +131,9 @@ const AdminPage = observer(() => {
 
   const notify = (message: string, severity: NoticeState['severity'] = 'info') => {
     setNotice({ open: true, severity, message });
+    if (severity === 'error') {
+      errorMessageStore.add('管理员操作', message, severity);
+    }
   };
 
   useEffect(() => {
@@ -159,6 +151,7 @@ const AdminPage = observer(() => {
 
     authStore.ensureSignalRConnection().catch((error) => {
       console.error('SignalR connection failed:', error);
+      errorMessageStore.add('管理员 / 实时连接', getApiErrorMessage(error, '实时连接失败'));
     });
 
     void adminStore.loadOnlineUsers();
@@ -439,6 +432,12 @@ const AdminPage = observer(() => {
               </Paper>
             </Grid>
           </Grid>
+
+          <AdminErrorMessagePanel
+            messages={errorMessageStore.messages}
+            onClear={() => errorMessageStore.clear()}
+            onRefresh={handleRefresh}
+          />
 
           <Paper sx={{ borderRadius: 2.5, overflow: 'hidden' }}>
             <Stack

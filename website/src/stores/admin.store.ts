@@ -1,5 +1,6 @@
 import { makeAutoObservable } from 'mobx';
-import { apiService } from '../services/api.service';
+import { apiService, getApiErrorMessage } from '../services/api.service';
+import { errorMessageStore } from './error-message.store';
 
 export interface User {
   id: number;
@@ -33,9 +34,15 @@ class AdminStore {
       const response = await apiService.getOnlineUsers();
       if (response.success && response.data) {
         this.onlineUsers = response.data;
+      } else {
+        errorMessageStore.add(
+          '管理员 / 在线用户',
+          getApiErrorMessage({ response: { data: response } }, '获取在线用户失败'),
+        );
       }
     } catch (error) {
       console.error('Failed to load online users:', error);
+      errorMessageStore.add('管理员 / 在线用户', getApiErrorMessage(error, '获取在线用户失败'));
     } finally {
       if (!options.silent) {
         this.isLoading = false;
@@ -53,9 +60,15 @@ class AdminStore {
       if (response.success && response.data) {
         this.allUsers = response.data.users || [];
         this.totalUsers = response.data.total_count || 0;
+      } else {
+        errorMessageStore.add(
+          '管理员 / 用户列表',
+          getApiErrorMessage({ response: { data: response } }, '获取用户列表失败'),
+        );
       }
     } catch (error) {
       console.error('Failed to load all users:', error);
+      errorMessageStore.add('管理员 / 用户列表', getApiErrorMessage(error, '获取用户列表失败'));
     } finally {
       if (!options.silent) {
         this.isLoading = false;
