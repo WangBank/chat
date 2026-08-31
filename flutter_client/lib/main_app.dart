@@ -18,6 +18,7 @@ import 'pages/waiting_call_page.dart';
 import 'pages/video_call_page.dart';
 import 'services/app_update_service.dart';
 import 'services/storage_service.dart';
+import 'utils/network_error.dart';
 
 void main() {
   runApp(const MainApp());
@@ -54,6 +55,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   bool _restoringOnlinePresence = false;
   bool _checkingForUpdate = false;
   bool _showingUpdateDialog = false;
+  bool _serviceUnavailable = false;
+  bool _retryingServiceConnection = false;
   File? _pendingInstallApkFile;
   AppUpdateInfo? _pendingInstallUpdate;
   String? _visibleCallRouteName;
@@ -112,8 +115,18 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
             _currentUser = user;
           });
 
-          // 初始化WebRTC服务
-          _callManager.initialize(token, user);
+          // 初始化WebRTC服务。失败时保留本地登录态，允许用户稍后重试连接。
+          try {
+            await _callManager.initialize(token, user);
+            if (mounted) {
+              setState(() => _serviceUnavailable = false);
+            }
+          } catch (e) {
+            print('❌ 自动恢复实时连接失败: $e');
+            if (mounted) {
+              setState(() => _serviceUnavailable = true);
+            }
+          }
         }
       }
     } catch (e) {
@@ -136,8 +149,18 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       print('❌ 保存登录信息失败: $e');
     }
 
-    // 初始化WebRTC服务
-    _callManager.initialize(_apiService.token ?? '', user);
+    // 初始化WebRTC服务。连接失败不清除登录信息，用户可以直接重试。
+    try {
+      await _callManager.initialize(_apiService.token ?? '', user);
+      if (mounted) {
+        setState(() => _serviceUnavailable = false);
+      }
+    } catch (e) {
+      print('❌ 登录后初始化实时连接失败: $e');
+      if (mounted) {
+        setState(() => _serviceUnavailable = true);
+      }
+    }
   }
 
   Future<void> _restoreOnlinePresence() async {
@@ -155,6 +178,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       await _callManager.ensureOnline(token);
       if (mounted) {
         setState(() {
+          _serviceUnavailable = false;
           _contactsRefreshToken++;
           _chatRefreshToken++;
         });
@@ -162,8 +186,41 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       print('✅ App回到前台，在线状态已恢复');
     } catch (e) {
       print('❌ App回到前台恢复在线状态失败: $e');
+      if (mounted) {
+        setState(() => _serviceUnavailable = true);
+      }
     } finally {
       _restoringOnlinePresence = false;
+    }
+  }
+
+  Future<void> _retryServiceConnection() async {
+    if (_retryingServiceConnection || _currentUser == null) return;
+
+    setState(() => _retryingServiceConnection = true);
+    try {
+      final token = _apiService.token ?? await StorageService.getToken();
+      if (token == null || token.isEmpty) {
+        throw Exception('登录状态已失效，请重新登录');
+      }
+
+      await _callManager.ensureOnline(token);
+      if (mounted) {
+        setState(() {
+          _serviceUnavailable = false;
+          _contactsRefreshToken++;
+          _chatRefreshToken++;
+        });
+      }
+    } catch (e) {
+      print('❌ 手动恢复服务连接失败: $e');
+      if (mounted) {
+        setState(() => _serviceUnavailable = true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _retryingServiceConnection = false);
+      }
     }
   }
 
@@ -807,6 +864,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
                 call: _callManager.currentCall!,
                 callManager: _callManager,
               ),
+            if (_serviceUnavailable)
+              Positioned.fill(child: _buildServiceUnavailableScreen()),
           ],
         ),
         bottomNavigationBar: NavigationBar(
@@ -858,6 +917,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     final normalizedMessage = message
         .replaceFirst(RegExp(r'^Exception:\s*'), '')
         .replaceFirst(RegExp(r'^Error:\s*'), '');
+    final isServiceFailure = isServiceUnavailableError(message) ||
+        normalizedMessage == serviceMaintenanceMessage;
 
     return Material(
       color: _qqShell,
@@ -906,7 +967,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          '请确认后端服务已启动，或稍后重试。',
+                          serviceMaintenanceMessage,
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: _qqMuted,
@@ -914,26 +975,36 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
                             height: 1.4,
                           ),
                         ),
-                        const SizedBox(height: 14),
-                        Container(
-                          constraints: const BoxConstraints(maxHeight: 120),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF7FAFC),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFE1E8EF)),
-                          ),
-                          child: SingleChildScrollView(
-                            child: Text(
-                              normalizedMessage,
-                              style: const TextStyle(
-                                color: Color(0xFF5F6975),
-                                fontSize: 12,
-                                height: 1.35,
+                        if (!isServiceFailure) ...[
+                          const SizedBox(height: 14),
+                          Container(
+                            constraints: const BoxConstraints(maxHeight: 120),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF7FAFC),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFFE1E8EF),
                               ),
-                              softWrap: true,
+                            ),
+                            child: SingleChildScrollView(
+                              child: Text(
+                                normalizedMessage,
+                                style: const TextStyle(
+                                  color: Color(0xFF5F6975),
+                                  fontSize: 12,
+                                  height: 1.35,
+                                ),
+                                softWrap: true,
+                              ),
                             ),
                           ),
+                        ],
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: _retryServiceConnection,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('重试连接'),
                         ),
                       ],
                     ),
@@ -942,6 +1013,82 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildServiceUnavailableScreen() {
+    return Material(
+      color: _qqShell,
+      child: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxWidth: 420),
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 24,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Icon(
+                    Icons.cloud_off_outlined,
+                    size: 42,
+                    color: _qqBlue,
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    '服务暂时不可用',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _qqText,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    serviceMaintenanceMessage,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _qqMuted,
+                      fontSize: 14,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: _retryingServiceConnection
+                        ? null
+                        : _retryServiceConnection,
+                    icon: _retryingServiceConnection
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.refresh),
+                    label: Text(
+                      _retryingServiceConnection ? '正在重试连接…' : '重试连接',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

@@ -4,6 +4,7 @@ import '../services/call_manager.dart';
 import '../models/contact.dart';
 import '../config/app_config.dart';
 import '../widgets/load_error_state.dart';
+import '../utils/network_error.dart';
 import 'chat_page.dart';
 
 class ChatHistoryPage extends StatefulWidget {
@@ -78,10 +79,27 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
       });
     } catch (e) {
       setState(() {
-        _errorMessage = normalizeErrorMessage(e, fallback: '加载聊天记录失败');
+        _errorMessage = userFacingServiceError(e, fallback: '加载聊天记录失败');
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _retryConnectionsAndLoadContacts() async {
+    try {
+      final token = widget.apiService.token;
+      if (token == null || token.isEmpty) {
+        throw Exception('登录状态已失效，请重新登录');
+      }
+      await widget.callManager.ensureOnline(token);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = userFacingServiceError(e, fallback: '加载聊天记录失败');
+      });
+      return;
+    }
+    await _loadContacts();
   }
 
   Future<void> _deleteChatHistory(Contact contact) async {
@@ -340,9 +358,9 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
             : _errorMessage != null
                 ? LoadErrorState(
                     title: '聊天记录加载失败',
-                    message: '请确认后端服务已启动，或稍后重试。',
+                    message: serviceMaintenanceMessage,
                     details: _errorMessage,
-                    onRetry: _loadContacts,
+                    onRetry: _retryConnectionsAndLoadContacts,
                     accentColor: _qqBlue,
                     textColor: _qqText,
                     mutedColor: _qqMuted,

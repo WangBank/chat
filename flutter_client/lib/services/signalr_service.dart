@@ -2,6 +2,7 @@ import 'package:signalr_netcore/signalr_client.dart';
 import '../models/call.dart';
 import '../models/chat_message.dart';
 import '../config/app_config.dart';
+import '../utils/network_error.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -123,7 +124,8 @@ class SignalRService {
     } catch (e) {
       _connection = null;
       print('SignalR connection failed: $e');
-      throw Exception('SignalR连接失败: $e');
+      throw Exception(
+          userFacingServiceError(e, fallback: serviceMaintenanceMessage));
     }
   }
 
@@ -136,7 +138,22 @@ class SignalRService {
       await connect(token);
     }
 
-    await authenticate(userId);
+    try {
+      await authenticate(userId);
+    } catch (e) {
+      // 网络切换后底层状态有时仍报告 Connected，但该连接已经不能完成认证。
+      // 主动重建一次连接，避免用户必须退出登录才能恢复。
+      print('⚠️ SignalR当前连接认证失败，准备重建连接: $e');
+      final staleConnection = _connection;
+      _connection = null;
+      try {
+        await staleConnection?.stop();
+      } catch (stopError) {
+        print('停止失效SignalR连接失败: $stopError');
+      }
+      await connect(token);
+      await authenticate(userId);
+    }
   }
 
   // 用户认证

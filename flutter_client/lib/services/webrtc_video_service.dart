@@ -151,6 +151,8 @@ class WebRTCVideoService extends ChangeNotifier {
     } catch (e) {
       print('❌ WebRTC视频服务初始化失败: $e');
       onError?.call('WebRTC视频服务初始化失败: $e');
+      // 连接失败必须向上层传播，让界面进入“服务维护”状态，而不是误判为初始化成功。
+      rethrow;
     }
   }
 

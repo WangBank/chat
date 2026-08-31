@@ -7,6 +7,7 @@ import '../models/contact.dart';
 import '../models/friend_request.dart';
 import '../models/chat_message.dart';
 import '../config/app_config.dart';
+import '../utils/network_error.dart';
 
 class ChatUploadResult {
   final String fileName;
@@ -85,6 +86,10 @@ class ApiService {
   Map<String, String> get currentHeaders => _headers;
 
   String _responseErrorMessage(http.Response response, String fallback) {
+    if (isServiceUnavailableStatusCode(response.statusCode)) {
+      return serviceMaintenanceMessage;
+    }
+
     try {
       final responseData = jsonDecode(response.body);
       if (responseData is Map<String, dynamic>) {
@@ -138,6 +143,9 @@ class ApiService {
         print('✅ 注册成功');
         return data;
       } else {
+        if (isServiceUnavailableStatusCode(response.statusCode)) {
+          throw Exception(serviceMaintenanceMessage);
+        }
         // 解析错误信息，提供用户友好的错误提示
         String errorMessage = '注册失败';
         try {
@@ -190,13 +198,7 @@ class ApiService {
       }
     } catch (e) {
       print('❌ 注册错误: $e');
-      if (e.toString().contains('SocketException')) {
-        throw Exception('网络连接失败，请检查服务器地址和网络连接');
-      } else if (e.toString().contains('TimeoutException')) {
-        throw Exception('请求超时，请检查网络连接');
-      } else {
-        throw Exception(e.toString().replaceAll('Exception: ', ''));
-      }
+      throw Exception(userFacingServiceError(e, fallback: '注册失败'));
     }
   }
 
@@ -204,35 +206,43 @@ class ApiService {
     required String username,
     required String email,
   }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/registration-email-code'),
-      headers: _headers,
-      body: jsonEncode({'username': username, 'email': email}),
-    );
-    if (response.statusCode == 200) {
-      final responseData = jsonDecode(response.body);
-      if (responseData is Map<String, dynamic> &&
-          responseData['success'] == true) {
-        return responseData;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/registration-email-code'),
+        headers: _headers,
+        body: jsonEncode({'username': username, 'email': email}),
+      );
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData is Map<String, dynamic> &&
+            responseData['success'] == true) {
+          return responseData;
+        }
       }
+      throw Exception(_responseErrorMessage(response, '发送验证码失败'));
+    } catch (e) {
+      throw Exception(userFacingServiceError(e, fallback: '发送验证码失败'));
     }
-    throw Exception(_responseErrorMessage(response, '发送验证码失败'));
   }
 
   Future<void> requestEmailChangeCode({required String email}) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/change-email-code'),
-      headers: _headers,
-      body: jsonEncode({'email': email}),
-    );
-    if (response.statusCode == 200) {
-      final responseData = jsonDecode(response.body);
-      if (responseData is Map<String, dynamic> &&
-          responseData['success'] == true) {
-        return;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/change-email-code'),
+        headers: _headers,
+        body: jsonEncode({'email': email}),
+      );
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData is Map<String, dynamic> &&
+            responseData['success'] == true) {
+          return;
+        }
       }
+      throw Exception(_responseErrorMessage(response, '发送验证码失败'));
+    } catch (e) {
+      throw Exception(userFacingServiceError(e, fallback: '发送验证码失败'));
     }
-    throw Exception(_responseErrorMessage(response, '发送验证码失败'));
   }
 
   Future<User> changeEmail({
@@ -308,6 +318,9 @@ class ApiService {
           throw Exception('登录失败: 响应格式错误');
         }
       } else {
+        if (isServiceUnavailableStatusCode(response.statusCode)) {
+          throw Exception(serviceMaintenanceMessage);
+        }
         print('❌ HTTP错误: ${response.statusCode}');
 
         try {
@@ -359,14 +372,8 @@ class ApiService {
       }
     } catch (e) {
       print(' 异常详情: $e');
-
-      if (e.toString().contains('SocketException')) {
-        throw Exception('网络连接失败，请检查服务器地址和网络连接');
-      } else if (e.toString().contains('TimeoutException')) {
-        throw Exception('请求超时，请检查网络连接');
-      } else {
-        throw Exception('登录错误: $errorMessage');
-      }
+      throw Exception(
+          userFacingServiceError(e, fallback: '登录错误: $errorMessage'));
     }
   }
 
@@ -513,13 +520,16 @@ class ApiService {
           throw Exception(errorMessage);
         }
       } else {
+        if (isServiceUnavailableStatusCode(response.statusCode)) {
+          throw Exception(serviceMaintenanceMessage);
+        }
         final errorData = jsonDecode(response.body);
         errorMessage = '获取联系人失败: ${errorData['message'] ?? response.body}';
         throw Exception(errorMessage);
       }
     } catch (e) {
-      print('❌ 获取联系人错误: $errorMessage');
-      throw Exception('获取联系人错误: $errorMessage');
+      print('❌ 获取联系人错误: $e');
+      throw Exception(userFacingServiceError(e, fallback: errorMessage));
     }
   }
 
@@ -565,6 +575,9 @@ class ApiService {
           throw Exception('发送好友申请失败: 响应格式错误');
         }
       } else {
+        if (isServiceUnavailableStatusCode(response.statusCode)) {
+          throw Exception(serviceMaintenanceMessage);
+        }
         final errorData = jsonDecode(response.body);
         throw Exception('发送好友申请失败: ${errorData['message'] ?? response.body}');
       }
@@ -689,6 +702,9 @@ class ApiService {
           throw Exception('修改联系人备注失败: 响应格式错误');
         }
       } else {
+        if (isServiceUnavailableStatusCode(response.statusCode)) {
+          throw Exception(serviceMaintenanceMessage);
+        }
         final errorData = jsonDecode(response.body);
         throw Exception('修改联系人备注失败: ${errorData['message'] ?? response.body}');
       }
@@ -1003,12 +1019,15 @@ class ApiService {
           throw Exception('获取个人资料失败: 响应格式错误');
         }
       } else {
+        if (isServiceUnavailableStatusCode(response.statusCode)) {
+          throw Exception(serviceMaintenanceMessage);
+        }
         final errorData = jsonDecode(response.body);
         throw Exception('获取个人资料失败: ${errorData['message'] ?? response.body}');
       }
     } catch (e) {
       print('❌ 获取个人资料错误: $e');
-      throw Exception('获取个人资料错误: $e');
+      throw Exception(userFacingServiceError(e, fallback: '获取个人资料失败'));
     }
   }
 

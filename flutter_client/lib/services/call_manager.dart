@@ -115,7 +115,7 @@ class CallManager extends ChangeNotifier {
   Future<void> ensureOnline(String token) async {
     final user = _currentUser;
     if (user == null) {
-      return;
+      throw Exception('登录状态已失效，请重新登录');
     }
 
     await _webRTCService.ensureSignalRConnection(token, user);

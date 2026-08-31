@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import '../utils/network_error.dart';
 
 String normalizeErrorMessage(Object? error, {String fallback = '请求失败'}) {
+  if (isServiceUnavailableError(error)) return serviceMaintenanceMessage;
+
   final raw = error?.toString().trim() ?? '';
   if (raw.isEmpty) return fallback;
 
@@ -109,7 +112,8 @@ class LoadErrorState extends StatelessWidget {
                         height: 1.4,
                       ),
                     ),
-                    if (normalizedDetails.isNotEmpty) ...[
+                    if (normalizedDetails.isNotEmpty &&
+                        normalizedDetails != serviceMaintenanceMessage) ...[
                       const SizedBox(height: 14),
                       Container(
                         constraints: const BoxConstraints(maxHeight: 110),

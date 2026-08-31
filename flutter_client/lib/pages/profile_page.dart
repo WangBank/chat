@@ -11,6 +11,8 @@ import '../services/signalr_service.dart';
 import '../services/storage_service.dart';
 import '../models/user.dart';
 import '../config/app_config.dart';
+import '../utils/network_error.dart';
+import '../widgets/load_error_state.dart';
 
 class ProfilePage extends StatefulWidget {
   final ApiService apiService;
@@ -94,10 +96,27 @@ class _ProfilePageState extends State<ProfilePage> {
       });
     } catch (e) {
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = userFacingServiceError(e, fallback: '获取个人资料失败');
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _retryProfile() async {
+    try {
+      final token = widget.apiService.token;
+      if (token == null || token.isEmpty) {
+        throw Exception('登录状态已失效，请重新登录');
+      }
+      await widget.callManager.ensureOnline(token);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = userFacingServiceError(e, fallback: '获取个人资料失败');
+      });
+      return;
+    }
+    await _loadUserProfile();
   }
 
   Future<void> _pickImage() async {
@@ -647,18 +666,14 @@ class _ProfilePageState extends State<ProfilePage> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _errorMessage != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('加载失败: $_errorMessage'),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadUserProfile,
-                        child: const Text('重试'),
-                      ),
-                    ],
-                  ),
+              ? LoadErrorState(
+                  title: '个人资料加载失败',
+                  message: serviceMaintenanceMessage,
+                  details: _errorMessage,
+                  onRetry: _retryProfile,
+                  accentColor: _qqBlue,
+                  textColor: _qqText,
+                  mutedColor: _qqMuted,
                 )
               : _currentUser == null
                   ? const Center(child: Text('用户信息为空'))

@@ -9,6 +9,7 @@ import '../services/call_manager.dart';
 import '../services/signalr_service.dart';
 import '../config/app_config.dart';
 import '../widgets/load_error_state.dart';
+import '../utils/network_error.dart';
 import 'user_search_page.dart';
 import 'chat_page.dart';
 
@@ -101,7 +102,7 @@ class _ContactsPageState extends State<ContactsPage> {
       setState(() {
         _isLoading = false;
         if (showLoading || _contacts.isEmpty) {
-          _contactsErrorMessage = normalizeErrorMessage(
+          _contactsErrorMessage = userFacingServiceError(
             e,
             fallback: '获取联系人失败',
           );
@@ -112,6 +113,27 @@ class _ContactsPageState extends State<ContactsPage> {
         showCompactErrorSnackBar(context, '联系人刷新失败，请稍后重试');
       }
     }
+  }
+
+  Future<void> _retryContacts() async {
+    try {
+      final token = widget.apiService.token;
+      if (token == null || token.isEmpty) {
+        throw Exception('登录状态已失效，请重新登录');
+      }
+      await widget.callManager.ensureOnline(token);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _contactsErrorMessage = userFacingServiceError(
+          e,
+          fallback: '获取联系人失败',
+        );
+      });
+      return;
+    }
+    await _loadContacts();
+    await _loadFriendRequests(showLoading: false);
   }
 
   Future<void> _loadFriendRequests({bool showLoading = true}) async {
@@ -796,9 +818,9 @@ class _ContactsPageState extends State<ContactsPage> {
                   : _contactsErrorMessage != null
                       ? LoadErrorState(
                           title: '联系人加载失败',
-                          message: '请确认后端服务已启动，或稍后重试。',
+                          message: serviceMaintenanceMessage,
                           details: _contactsErrorMessage,
-                          onRetry: _loadContacts,
+                          onRetry: _retryContacts,
                           accentColor: _qqBlue,
                           textColor: _qqText,
                           mutedColor: _qqMuted,
