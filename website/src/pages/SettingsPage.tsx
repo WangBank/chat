@@ -7,6 +7,7 @@ import { authStore } from '../stores/auth.store';
 import { apiService } from '../services/api.service';
 import { APP_CONFIG } from '../config/app.config';
 import { cropAvatarIfNeeded } from '../utils/avatar';
+import EmailCodeCaptchaModal, { type EmailCodeCaptchaResult } from '../components/EmailCodeCaptchaModal';
 import type { UploadProps } from 'antd';
 import '../styles/common.css';
 
@@ -21,6 +22,8 @@ const SettingsPage = observer(() => {
   const [passwordVerificationMethod, setPasswordVerificationMethod] = useState<'old_password' | 'email_code'>('old_password');
   const [emailCodeLoading, setEmailCodeLoading] = useState(false);
   const [emailChangeLoading, setEmailChangeLoading] = useState(false);
+  const [captchaFlow, setCaptchaFlow] = useState<'change_email' | 'change_password' | null>(null);
+  const [pendingEmailCodeEmail, setPendingEmailCodeEmail] = useState<string>();
   const [avatarLoading, setAvatarLoading] = useState(false);
   const [qqBindingLoading, setQqBindingLoading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string>('');
@@ -99,38 +102,57 @@ const SettingsPage = observer(() => {
   };
 
   const handleRequestPasswordChangeCode = async () => {
-    setPasswordCodeLoading(true);
-    try {
-      const response = await apiService.requestPasswordChangeCode();
-      if (response.success) {
-        message.success(response.message || '验证码已发送，5分钟内有效');
-      } else {
-        message.error(response.message || '发送验证码失败');
-      }
-    } catch (error: unknown) {
-      message.error(getErrorMessage(error, '发送验证码失败'));
-    } finally {
-      setPasswordCodeLoading(false);
-    }
+    setCaptchaFlow('change_password');
   };
 
   const handleRequestEmailChangeCode = async () => {
     try {
       const { email } = await emailForm.validateFields(['email']);
-      setEmailCodeLoading(true);
-      const response = await apiService.requestEmailChangeCode({ email: email.trim() });
-      if (response.success) {
-        message.success(response.message || '验证码已发送，5分钟内有效');
-      } else {
-        message.error(response.message || '发送验证码失败');
-      }
+      setPendingEmailCodeEmail(email.trim());
+      setCaptchaFlow('change_email');
     } catch (error: unknown) {
       const validationError = error as { errorFields?: unknown[] };
       if (!validationError.errorFields) {
         message.error(getErrorMessage(error, '发送验证码失败'));
       }
-    } finally {
-      setEmailCodeLoading(false);
+    }
+  };
+
+  const sendEmailCodeAfterCaptcha = async (captcha: EmailCodeCaptchaResult) => {
+    if (captchaFlow === 'change_email') {
+      if (!pendingEmailCodeEmail) return;
+      setCaptchaFlow(null);
+      setEmailCodeLoading(true);
+      try {
+        const response = await apiService.requestEmailChangeCode({ email: pendingEmailCodeEmail, ...captcha });
+        if (response.success) {
+          message.success(response.message || '验证码已发送，5分钟内有效');
+        } else {
+          message.error(response.message || '发送验证码失败');
+        }
+      } catch (error: unknown) {
+        message.error(getErrorMessage(error, '发送验证码失败'));
+      } finally {
+        setEmailCodeLoading(false);
+      }
+      return;
+    }
+
+    if (captchaFlow === 'change_password') {
+      setCaptchaFlow(null);
+      setPasswordCodeLoading(true);
+      try {
+        const response = await apiService.requestPasswordChangeCode(captcha);
+        if (response.success) {
+          message.success(response.message || '验证码已发送，5分钟内有效');
+        } else {
+          message.error(response.message || '发送验证码失败');
+        }
+      } catch (error: unknown) {
+        message.error(getErrorMessage(error, '发送验证码失败'));
+      } finally {
+        setPasswordCodeLoading(false);
+      }
     }
   };
 
@@ -528,6 +550,14 @@ const SettingsPage = observer(() => {
           </Form.Item>
         </Form>
       </Card>
+
+      <EmailCodeCaptchaModal
+        open={captchaFlow !== null}
+        purpose={captchaFlow ?? 'change_email'}
+        email={captchaFlow === 'change_email' ? pendingEmailCodeEmail : undefined}
+        onCancel={() => setCaptchaFlow(null)}
+        onVerified={(captcha) => void sendEmailCodeAfterCaptcha(captcha)}
+      />
 
       <div className="version-badge">
         Love Chat v{APP_CONFIG.VERSION}

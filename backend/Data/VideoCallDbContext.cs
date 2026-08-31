@@ -22,6 +22,7 @@ namespace VideoCallAPI.Data
         public DbSet<FavoriteItem> FavoriteItems { get; set; }
         public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
         public DbSet<EmailVerificationCode> EmailVerificationCodes { get; set; }
+        public DbSet<EmailCodeCaptchaChallenge> EmailCodeCaptchaChallenges { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -58,6 +59,12 @@ namespace VideoCallAPI.Data
             {
                 entity.HasIndex(e => new { e.email, e.purpose, e.expires_at });
                 entity.HasIndex(e => new { e.is_used, e.expires_at });
+            });
+
+            modelBuilder.Entity<EmailCodeCaptchaChallenge>(entity =>
+            {
+                entity.HasIndex(e => new { e.is_used, e.expires_at });
+                entity.HasIndex(e => new { e.purpose, e.binding_hash, e.created_at });
             });
 
             // Contact 表配置

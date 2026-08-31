@@ -36,6 +36,7 @@ namespace VideoCallAPI.Models.DTOs
     }
 
     public class RegistrationEmailVerificationCodeRequestDto
+        : EmailCodeCaptchaVerificationDto
     {
         [Required(ErrorMessage = "用户名是必填的")]
         public string username { get; set; } = string.Empty;
@@ -46,10 +47,50 @@ namespace VideoCallAPI.Models.DTOs
     }
 
     public class ChangeEmailVerificationCodeRequestDto
+        : EmailCodeCaptchaVerificationDto
     {
         [Required(ErrorMessage = "邮箱是必填的")]
         [EmailAddress(ErrorMessage = "邮箱格式不正确")]
         public string email { get; set; } = string.Empty;
+    }
+
+    public class EmailCodeCaptchaVerificationDto
+    {
+        [Required(ErrorMessage = "请先完成图案校验")]
+        [StringLength(64, MinimumLength = 16, ErrorMessage = "图案校验已失效，请重新验证")]
+        public string captcha_id { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "请先完成图案校验")]
+        [MinLength(3, ErrorMessage = "图案校验不完整")]
+        [MaxLength(3, ErrorMessage = "图案校验不完整")]
+        public List<int> captcha_answer { get; set; } = new();
+    }
+
+    public class EmailCodeCaptchaRequestDto
+    {
+        [Required(ErrorMessage = "图案校验用途不能为空")]
+        [RegularExpression("^(registration|change_email|change_password)$", ErrorMessage = "不支持的图案校验用途")]
+        public string purpose { get; set; } = string.Empty;
+
+        [EmailAddress(ErrorMessage = "邮箱格式不正确")]
+        public string? email { get; set; }
+
+        [StringLength(50, ErrorMessage = "用户名长度不能超过50位")]
+        public string? username { get; set; }
+    }
+
+    public class EmailCodeCaptchaChallengeDto
+    {
+        public string captcha_id { get; set; } = string.Empty;
+        public List<EmailCodeCaptchaTileDto> tiles { get; set; } = new();
+        public List<string> target_sequence { get; set; } = new();
+        public DateTime expires_at { get; set; }
+    }
+
+    public class EmailCodeCaptchaTileDto
+    {
+        public int position { get; set; }
+        public string symbol { get; set; } = string.Empty;
     }
 
     public class ChangeEmailDto

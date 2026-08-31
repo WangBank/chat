@@ -118,6 +118,31 @@ namespace VideoCallAPI.Models
         public DateTime created_at { get; set; }
     }
 
+    // 邮箱验证码发送前的人机校验挑战。仅保存答案与请求绑定信息的 HMAC，
+    // 不保留原始 IP、邮箱或用户代理。
+    public class EmailCodeCaptchaChallenge
+    {
+        [Key]
+        [StringLength(64)]
+        public string id { get; set; } = string.Empty;
+
+        public EmailVerificationPurpose purpose { get; set; }
+
+        [Required]
+        [StringLength(64)]
+        public string answer_hash { get; set; } = string.Empty;
+
+        [Required]
+        [StringLength(64)]
+        public string binding_hash { get; set; } = string.Empty;
+
+        public DateTime expires_at { get; set; }
+        public int failed_attempts { get; set; }
+        public bool is_used { get; set; }
+        public DateTime? used_at { get; set; }
+        public DateTime created_at { get; set; }
+    }
+
     // 密码重置令牌表
     public class PasswordResetToken
     {

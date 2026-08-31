@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
 import '../services/storage_service.dart';
+import '../widgets/email_code_captcha_dialog.dart';
 
 class LoginPage extends StatefulWidget {
   final Function(User user)? onLoginSuccess;
@@ -222,6 +223,15 @@ class _LoginPageState extends State<LoginPage> {
     }
     if (_isLoading || _isSendingVerificationCode) return;
 
+    final captcha = await showEmailCodeCaptchaDialog(
+      context: context,
+      apiService: _apiService,
+      purpose: 'registration',
+      username: username,
+      email: email,
+    );
+    if (captcha == null || !mounted) return;
+
     setState(() {
       _isSendingVerificationCode = true;
       _errorMessage = null;
@@ -230,6 +240,7 @@ class _LoginPageState extends State<LoginPage> {
       final response = await _apiService.requestRegistrationEmailCode(
         username: username,
         email: email,
+        captcha: captcha,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -43,6 +43,23 @@ export interface AuthApiResponse {
   user: UserApiResponse;
 }
 
+export interface EmailCodeCaptchaTile {
+  position: number;
+  symbol: string;
+}
+
+export interface EmailCodeCaptchaChallenge {
+  captcha_id: string;
+  tiles: EmailCodeCaptchaTile[];
+  target_sequence: string[];
+  expires_at: string;
+}
+
+export interface EmailCodeCaptchaVerification {
+  captcha_id: string;
+  captcha_answer: number[];
+}
+
 export interface QQLoginUrlApiResponse {
   auth_url: string;
   state: string;
@@ -238,12 +255,21 @@ class ApiService {
     return response.data;
   }
 
-  async requestRegistrationEmailCode(data: { username: string; email: string }) {
+  async createEmailCodeCaptcha(data: {
+    purpose: 'registration' | 'change_email' | 'change_password';
+    username?: string;
+    email?: string;
+  }) {
+    const response = await this.api.post<ApiResponse<EmailCodeCaptchaChallenge>>('/api/auth/email-code-captcha', data);
+    return response.data;
+  }
+
+  async requestRegistrationEmailCode(data: { username: string; email: string } & EmailCodeCaptchaVerification) {
     const response = await this.api.post<ApiResponse>('/api/auth/registration-email-code', data);
     return response.data;
   }
 
-  async requestEmailChangeCode(data: { email: string }) {
+  async requestEmailChangeCode(data: { email: string } & EmailCodeCaptchaVerification) {
     const response = await this.api.post<ApiResponse>('/api/auth/change-email-code', data);
     return response.data;
   }
@@ -313,8 +339,8 @@ class ApiService {
     return response.data;
   }
 
-  async requestPasswordChangeCode() {
-    const response = await this.api.post<ApiResponse>('/api/auth/change-password-code');
+  async requestPasswordChangeCode(data: EmailCodeCaptchaVerification) {
+    const response = await this.api.post<ApiResponse>('/api/auth/change-password-code', data);
     return response.data;
   }
 

@@ -18,12 +18,12 @@ namespace VideoCallAPI.Services
     public interface IUserService
     {
         Task<UserResponseDto> RegisterAsync(UserRegistrationDto registrationDto);
-        Task RequestRegistrationEmailVerificationCodeAsync(RegistrationEmailVerificationCodeRequestDto requestDto);
-        Task RequestEmailChangeVerificationCodeAsync(int userId, ChangeEmailVerificationCodeRequestDto requestDto);
+        Task RequestRegistrationEmailVerificationCodeAsync(RegistrationEmailVerificationCodeRequestDto requestDto, string clientFingerprint);
+        Task RequestEmailChangeVerificationCodeAsync(int userId, ChangeEmailVerificationCodeRequestDto requestDto, string clientFingerprint);
         Task<UserResponseDto> ChangeEmailAsync(int userId, ChangeEmailDto changeEmailDto);
         Task<string> LoginAsync(UserLoginDto loginDto);
         Task<UserResponseDto> GetUserByIdAsync(int userId);
-        Task RequestPasswordChangeEmailVerificationCodeAsync(int userId);
+        Task RequestPasswordChangeEmailVerificationCodeAsync(int userId, EmailCodeCaptchaVerificationDto captchaDto, string clientFingerprint);
         Task<bool> ChangePasswordAsync(int userId, ChangePasswordDto changePasswordDto);
         Task<UserResponseDto> UpdateProfileAsync(int userId, UpdateProfileDto updateProfileDto);
         Task<UserResponseDto> UploadAvatarAsync(int userId, IFormFile avatar);
@@ -32,6 +32,12 @@ namespace VideoCallAPI.Services
         Task MarkOfflineAsync(int userId);
         Task ForgotPasswordAsync(ForgotPasswordDto forgotPasswordDto);
         Task ResetPasswordAsync(ResetPasswordDto resetPasswordDto);
+    }
+
+    public interface IEmailCodeCaptchaService
+    {
+        Task<EmailCodeCaptchaChallengeDto> CreateAsync(EmailCodeCaptchaRequestDto requestDto, int? userId, string clientFingerprint);
+        Task VerifyAsync(EmailCodeCaptchaVerificationDto captchaDto, EmailVerificationPurpose purpose, string? email, string? username, int? userId, string clientFingerprint);
     }
 
     public interface IQQAuthService

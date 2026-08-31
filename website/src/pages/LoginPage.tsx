@@ -6,6 +6,7 @@ import { observer } from 'mobx-react-lite';
 import { authStore } from '../stores/auth.store';
 import { apiService } from '../services/api.service';
 import { isAdminUser } from '../utils/admin.utils';
+import EmailCodeCaptchaModal, { type EmailCodeCaptchaResult } from '../components/EmailCodeCaptchaModal';
 import '../styles/common.css';
 
 interface LoginFormValues {
@@ -33,6 +34,8 @@ const LoginPage = observer(() => {
   const [isQQCallbackProcessing, setIsQQCallbackProcessing] = useState(false);
   const [isQQRedirecting, setIsQQRedirecting] = useState(false);
   const [isSendingRegistrationCode, setIsSendingRegistrationCode] = useState(false);
+  const [registrationCaptchaOpen, setRegistrationCaptchaOpen] = useState(false);
+  const [registrationCodeRequest, setRegistrationCodeRequest] = useState<{ username: string; email: string }>();
   const qqCallbackHandledRef = useRef(false);
   const qqCallbackParams = new URLSearchParams(location.search);
   const hasQQCallbackInUrl = Boolean(
@@ -137,10 +140,29 @@ const LoginPage = observer(() => {
   const handleRequestRegistrationCode = async () => {
     try {
       const values = await form.validateFields(['username', 'email']);
-      setIsSendingRegistrationCode(true);
-      const response = await apiService.requestRegistrationEmailCode({
+      setRegistrationCodeRequest({
         username: values.username.trim(),
         email: values.email.trim(),
+      });
+      setRegistrationCaptchaOpen(true);
+    } catch (error: unknown) {
+      const validationError = error as { errorFields?: unknown[] };
+      if (!validationError.errorFields) {
+        message.error(getApiErrorMessage(error, '发送验证码失败'));
+      }
+    }
+  };
+
+  const sendRegistrationCodeAfterCaptcha = async (captcha: EmailCodeCaptchaResult) => {
+    const request = registrationCodeRequest;
+    if (!request) return;
+
+    setRegistrationCaptchaOpen(false);
+    setIsSendingRegistrationCode(true);
+    try {
+      const response = await apiService.requestRegistrationEmailCode({
+        ...request,
+        ...captcha,
       });
       if (response.success) {
         message.success(response.message || '验证码已发送，5分钟内有效');
@@ -148,10 +170,7 @@ const LoginPage = observer(() => {
         message.error(response.message || '发送验证码失败');
       }
     } catch (error: unknown) {
-      const validationError = error as { errorFields?: unknown[] };
-      if (!validationError.errorFields) {
-        message.error(getApiErrorMessage(error, '发送验证码失败'));
-      }
+      message.error(getApiErrorMessage(error, '发送验证码失败'));
     } finally {
       setIsSendingRegistrationCode(false);
     }
@@ -376,6 +395,14 @@ const LoginPage = observer(() => {
             <span>QQ</span>
           </div>
         </Card>
+        <EmailCodeCaptchaModal
+          open={registrationCaptchaOpen}
+          purpose="registration"
+          username={registrationCodeRequest?.username}
+          email={registrationCodeRequest?.email}
+          onCancel={() => setRegistrationCaptchaOpen(false)}
+          onVerified={(captcha) => void sendRegistrationCodeAfterCaptcha(captcha)}
+        />
       </section>
     </div>
   );

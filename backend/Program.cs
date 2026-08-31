@@ -8,6 +8,7 @@ using VideoCallAPI.Data;
 using VideoCallAPI.Hubs;
 using VideoCallAPI.Services;
 using VideoCallAPI.Models;
+using VideoCallAPI.Models.DTOs;
 using Microsoft.Extensions.FileProviders;
 using BCrypt.Net;
 using Serilog;
@@ -64,6 +65,17 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        var response = context.HttpContext.Response;
+        response.StatusCode = StatusCodes.Status429TooManyRequests;
+        response.ContentType = "application/json; charset=utf-8";
+        await response.WriteAsJsonAsync(new ApiResponse
+        {
+            Success = false,
+            Message = "操作过于频繁，请稍后再试"
+        }, cancellationToken);
+    };
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
     {
         var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -76,6 +88,34 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0,
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 Window = TimeSpan.FromMinutes(1)
+            });
+    });
+
+    // 邮箱验证码是付费/可滥用资源：挑战获取放宽，真正发送接口严格限流。
+    options.AddPolicy("EmailCodeChallenge", httpContext =>
+    {
+        var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"email-captcha:{clientIp}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 20,
+                QueueLimit = 0,
+                Window = TimeSpan.FromMinutes(10)
+            });
+    });
+    options.AddPolicy("EmailCodeSend", httpContext =>
+    {
+        var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"email-code-send:{clientIp}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 5,
+                QueueLimit = 0,
+                Window = TimeSpan.FromMinutes(10)
             });
     });
 });
@@ -141,6 +181,7 @@ builder.Services.AddScoped<ICallService, CallService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IContentSecurityService, ContentSecurityService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IEmailCodeCaptchaService, EmailCodeCaptchaService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<IQQAuthService, QQAuthService>();
 builder.Services.AddSingleton<IWebRTCService, WebRTCService>();

@@ -20,6 +20,7 @@ namespace VideoCallAPI.Services
         private readonly IContentSecurityService _contentSecurity;
         private readonly IConfiguration _configuration;
         private readonly IEmailService _emailService;
+        private readonly IEmailCodeCaptchaService _emailCodeCaptchaService;
 
         public UserService(
             VideoCallDbContext context,
@@ -27,7 +28,8 @@ namespace VideoCallAPI.Services
             ILogger<UserService> logger,
             IContentSecurityService contentSecurity,
             IConfiguration configuration,
-            IEmailService emailService)
+            IEmailService emailService,
+            IEmailCodeCaptchaService emailCodeCaptchaService)
         {
             _context = context;
             _jwtService = jwtService;
@@ -35,6 +37,7 @@ namespace VideoCallAPI.Services
             _contentSecurity = contentSecurity;
             _configuration = configuration;
             _emailService = emailService;
+            _emailCodeCaptchaService = emailCodeCaptchaService;
         }
 
         private string NormalizeEmail(string? value)
@@ -96,7 +99,8 @@ namespace VideoCallAPI.Services
         }
 
         public async Task RequestRegistrationEmailVerificationCodeAsync(
-            RegistrationEmailVerificationCodeRequestDto requestDto)
+            RegistrationEmailVerificationCodeRequestDto requestDto,
+            string clientFingerprint)
         {
             var username = _contentSecurity.NormalizeRequiredText(
                 requestDto.username,
@@ -110,6 +114,15 @@ namespace VideoCallAPI.Services
             if (await IsUsernameOrEmailUsedAsync(username, email))
                 throw new InvalidOperationException("当前用户名或者邮箱被使用请重新输入");
 
+            await EnsureEmailCodeSendRateLimitAsync(email);
+            await _emailCodeCaptchaService.VerifyAsync(
+                requestDto,
+                EmailVerificationPurpose.Registration,
+                email,
+                username,
+                null,
+                clientFingerprint);
+
             await CreateAndSendEmailVerificationCodeAsync(
                 email,
                 username,
@@ -118,7 +131,8 @@ namespace VideoCallAPI.Services
 
         public async Task RequestEmailChangeVerificationCodeAsync(
             int userId,
-            ChangeEmailVerificationCodeRequestDto requestDto)
+            ChangeEmailVerificationCodeRequestDto requestDto,
+            string clientFingerprint)
         {
             var user = await _context.users.FindAsync(userId);
             if (user == null)
@@ -129,6 +143,15 @@ namespace VideoCallAPI.Services
                 throw new InvalidOperationException("新邮箱与当前邮箱一致");
             if (await IsEmailUsedAsync(email, userId))
                 throw new InvalidOperationException("该邮箱已被使用，请更换后重试");
+
+            await EnsureEmailCodeSendRateLimitAsync(email);
+            await _emailCodeCaptchaService.VerifyAsync(
+                requestDto,
+                EmailVerificationPurpose.ChangeEmail,
+                email,
+                null,
+                userId,
+                clientFingerprint);
 
             await CreateAndSendEmailVerificationCodeAsync(
                 email,
@@ -253,6 +276,23 @@ namespace VideoCallAPI.Services
             _logger.LogInformation("邮箱验证码已发送: Email={Email}, Purpose={Purpose}", email, purpose);
         }
 
+        private async Task EnsureEmailCodeSendRateLimitAsync(string email)
+        {
+            var now = DateTime.UtcNow;
+            var oneMinuteAgo = now.AddMinutes(-1);
+            var dailyLimitStart = now.AddDays(-1);
+
+            var sentInLastMinute = await _context.EmailVerificationCodes
+                .AnyAsync(item => item.email == email && item.created_at > oneMinuteAgo);
+            if (sentInLastMinute)
+                throw new InvalidOperationException("操作过于频繁，请60秒后再试");
+
+            var sentToday = await _context.EmailVerificationCodes
+                .CountAsync(item => item.email == email && item.created_at > dailyLimitStart);
+            if (sentToday >= 10)
+                throw new InvalidOperationException("该邮箱今日验证码发送次数已达上限，请24小时后再试");
+        }
+
         private async Task<EmailVerificationCode> GetValidEmailVerificationCodeAsync(
             string email,
             string? suppliedCode,
@@ -360,13 +400,25 @@ namespace VideoCallAPI.Services
             return true;
         }
 
-        public async Task RequestPasswordChangeEmailVerificationCodeAsync(int userId)
+        public async Task RequestPasswordChangeEmailVerificationCodeAsync(
+            int userId,
+            EmailCodeCaptchaVerificationDto captchaDto,
+            string clientFingerprint)
         {
             var user = await _context.users.FindAsync(userId);
             if (user == null)
                 throw new ArgumentException("用户不存在");
             if (!user.email_verified_at.HasValue)
                 throw new InvalidOperationException("当前邮箱未认证，请先在个人资料中修改并验证邮箱");
+
+            await EnsureEmailCodeSendRateLimitAsync(user.email);
+            await _emailCodeCaptchaService.VerifyAsync(
+                captchaDto,
+                EmailVerificationPurpose.ChangePassword,
+                null,
+                null,
+                userId,
+                clientFingerprint);
 
             await CreateAndSendEmailVerificationCodeAsync(
                 user.email,

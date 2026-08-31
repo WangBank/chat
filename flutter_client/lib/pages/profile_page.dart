@@ -13,6 +13,7 @@ import '../models/user.dart';
 import '../config/app_config.dart';
 import '../utils/network_error.dart';
 import '../widgets/load_error_state.dart';
+import '../widgets/email_code_captcha_dialog.dart';
 
 class ProfilePage extends StatefulWidget {
   final ApiService apiService;
@@ -406,10 +407,21 @@ class _ProfilePageState extends State<ProfilePage> {
                               );
                               return;
                             }
+                            final captcha = await showEmailCodeCaptchaDialog(
+                              context: context,
+                              apiService: widget.apiService,
+                              purpose: 'change_email',
+                              email: email,
+                            );
+                            if (captcha == null || !dialogContext.mounted) {
+                              return;
+                            }
                             setDialogState(() => isSendingCode = true);
                             try {
-                              await widget.apiService
-                                  .requestEmailChangeCode(email: email);
+                              await widget.apiService.requestEmailChangeCode(
+                                email: email,
+                                captcha: captcha,
+                              );
                               if (!mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(content: Text('验证码已发送，5分钟内有效')),

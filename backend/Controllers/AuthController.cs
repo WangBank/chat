@@ -10,6 +10,7 @@ using VideoCallAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using VideoCallAPI.Hubs;
 using BCrypt.Net;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace VideoCallAPI.Controllers
 {
@@ -27,18 +28,50 @@ namespace VideoCallAPI.Controllers
         private readonly IUserService _userService;
         private readonly IJwtService _jwtService;
         private readonly IQQAuthService _qqAuthService;
+        private readonly IEmailCodeCaptchaService _emailCodeCaptchaService;
         private readonly ILogger<AuthController> _logger;
 
         public AuthController(
             IUserService userService,
             IJwtService jwtService,
             IQQAuthService qqAuthService,
+            IEmailCodeCaptchaService emailCodeCaptchaService,
             ILogger<AuthController> logger)
         {
             _userService = userService;
             _jwtService = jwtService;
             _qqAuthService = qqAuthService;
+            _emailCodeCaptchaService = emailCodeCaptchaService;
             _logger = logger;
+        }
+
+        [HttpPost("email-code-captcha")]
+        [EnableRateLimiting("EmailCodeChallenge")]
+        public async Task<ActionResult<ApiResponse<EmailCodeCaptchaChallengeDto>>> CreateEmailCodeCaptcha(
+            EmailCodeCaptchaRequestDto requestDto)
+        {
+            try
+            {
+                int? userId = User.Identity?.IsAuthenticated == true ? GetUserId() : null;
+                var challenge = await _emailCodeCaptchaService.CreateAsync(
+                    requestDto,
+                    userId,
+                    GetCaptchaClientFingerprint());
+                return Ok(new ApiResponse<EmailCodeCaptchaChallengeDto>
+                {
+                    Success = true,
+                    Data = challenge
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "创建邮箱验证码图案校验失败: Purpose={Purpose}", requestDto.purpose);
+                return BadRequest(new ApiResponse<EmailCodeCaptchaChallengeDto>
+                {
+                    Success = false,
+                    Message = ApiErrorMessage.ForClient(ex, "图案校验获取失败")
+                });
+            }
         }
 
         [HttpPost("register")]
@@ -92,12 +125,15 @@ namespace VideoCallAPI.Controllers
         }
 
         [HttpPost("registration-email-code")]
+        [EnableRateLimiting("EmailCodeSend")]
         public async Task<ActionResult<ApiResponse>> RequestRegistrationEmailCode(
             RegistrationEmailVerificationCodeRequestDto requestDto)
         {
             try
             {
-                await _userService.RequestRegistrationEmailVerificationCodeAsync(requestDto);
+                await _userService.RequestRegistrationEmailVerificationCodeAsync(
+                    requestDto,
+                    GetCaptchaClientFingerprint());
                 return Ok(new ApiResponse
                 {
                     Success = true,
@@ -118,13 +154,17 @@ namespace VideoCallAPI.Controllers
 
         [HttpPost("change-email-code")]
         [Authorize]
+        [EnableRateLimiting("EmailCodeSend")]
         public async Task<ActionResult<ApiResponse>> RequestEmailChangeCode(
             ChangeEmailVerificationCodeRequestDto requestDto)
         {
             try
             {
                 var userId = GetUserId();
-                await _userService.RequestEmailChangeVerificationCodeAsync(userId, requestDto);
+                await _userService.RequestEmailChangeVerificationCodeAsync(
+                    userId,
+                    requestDto,
+                    GetCaptchaClientFingerprint());
                 return Ok(new ApiResponse
                 {
                     Success = true,
@@ -392,12 +432,17 @@ namespace VideoCallAPI.Controllers
 
         [HttpPost("change-password-code")]
         [Authorize]
-        public async Task<ActionResult<ApiResponse>> RequestPasswordChangeCode()
+        [EnableRateLimiting("EmailCodeSend")]
+        public async Task<ActionResult<ApiResponse>> RequestPasswordChangeCode(
+            EmailCodeCaptchaVerificationDto captchaDto)
         {
             try
             {
                 var userId = GetUserId();
-                await _userService.RequestPasswordChangeEmailVerificationCodeAsync(userId);
+                await _userService.RequestPasswordChangeEmailVerificationCodeAsync(
+                    userId,
+                    captchaDto,
+                    GetCaptchaClientFingerprint());
                 return Ok(new ApiResponse
                 {
                     Success = true,
@@ -642,6 +687,13 @@ namespace VideoCallAPI.Controllers
                 return userId;
             }
             throw new UnauthorizedAccessException("用户未登录");
+        }
+
+        private string GetCaptchaClientFingerprint()
+        {
+            var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var userAgent = Request.Headers.UserAgent.ToString();
+            return $"{clientIp}|{userAgent}";
         }
 
         private static string NormalizeContentType(string? contentType)

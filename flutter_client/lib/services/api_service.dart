@@ -34,6 +34,57 @@ class ChatUploadResult {
   bool get isImage => contentType.toLowerCase().startsWith('image/');
 }
 
+class EmailCodeCaptchaTile {
+  final int position;
+  final String symbol;
+
+  const EmailCodeCaptchaTile({required this.position, required this.symbol});
+
+  factory EmailCodeCaptchaTile.fromJson(Map<String, dynamic> json) {
+    return EmailCodeCaptchaTile(
+      position: (json['position'] as num?)?.toInt() ?? -1,
+      symbol: json['symbol']?.toString() ?? '',
+    );
+  }
+}
+
+class EmailCodeCaptchaChallenge {
+  final String captchaId;
+  final List<EmailCodeCaptchaTile> tiles;
+  final List<String> targetSequence;
+
+  const EmailCodeCaptchaChallenge({
+    required this.captchaId,
+    required this.tiles,
+    required this.targetSequence,
+  });
+
+  factory EmailCodeCaptchaChallenge.fromJson(Map<String, dynamic> json) {
+    final rawTiles = json['tiles'] as List<dynamic>? ?? const [];
+    final rawSequence = json['target_sequence'] as List<dynamic>? ?? const [];
+    return EmailCodeCaptchaChallenge(
+      captchaId: json['captcha_id']?.toString() ?? '',
+      tiles: rawTiles
+          .whereType<Map>()
+          .map((item) => EmailCodeCaptchaTile.fromJson(
+                Map<String, dynamic>.from(item),
+              ))
+          .toList(),
+      targetSequence: rawSequence.map((item) => item.toString()).toList(),
+    );
+  }
+}
+
+class EmailCodeCaptchaVerification {
+  final String captchaId;
+  final List<int> captchaAnswer;
+
+  const EmailCodeCaptchaVerification({
+    required this.captchaId,
+    required this.captchaAnswer,
+  });
+}
+
 class ApiService {
   static String get baseUrl => AppConfig.baseUrl;
 
@@ -205,12 +256,18 @@ class ApiService {
   Future<Map<String, dynamic>> requestRegistrationEmailCode({
     required String username,
     required String email,
+    required EmailCodeCaptchaVerification captcha,
   }) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/registration-email-code'),
         headers: _headers,
-        body: jsonEncode({'username': username, 'email': email}),
+        body: jsonEncode({
+          'username': username,
+          'email': email,
+          'captcha_id': captcha.captchaId,
+          'captcha_answer': captcha.captchaAnswer,
+        }),
       );
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
@@ -225,12 +282,53 @@ class ApiService {
     }
   }
 
-  Future<void> requestEmailChangeCode({required String email}) async {
+  Future<EmailCodeCaptchaChallenge> createEmailCodeCaptcha({
+    required String purpose,
+    String? username,
+    String? email,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/email-code-captcha'),
+        headers: _headers,
+        body: jsonEncode({
+          'purpose': purpose,
+          if (username != null) 'username': username,
+          if (email != null) 'email': email,
+        }),
+      );
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        final data =
+            responseData is Map<String, dynamic> ? responseData['data'] : null;
+        if (responseData['success'] == true && data is Map<String, dynamic>) {
+          final challenge = EmailCodeCaptchaChallenge.fromJson(data);
+          if (challenge.captchaId.isNotEmpty &&
+              challenge.tiles.length == 9 &&
+              challenge.targetSequence.length == 3) {
+            return challenge;
+          }
+        }
+      }
+      throw Exception(_responseErrorMessage(response, '图案校验获取失败'));
+    } catch (e) {
+      throw Exception(userFacingServiceError(e, fallback: '图案校验获取失败'));
+    }
+  }
+
+  Future<void> requestEmailChangeCode({
+    required String email,
+    required EmailCodeCaptchaVerification captcha,
+  }) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/change-email-code'),
         headers: _headers,
-        body: jsonEncode({'email': email}),
+        body: jsonEncode({
+          'email': email,
+          'captcha_id': captcha.captchaId,
+          'captcha_answer': captcha.captchaAnswer,
+        }),
       );
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
