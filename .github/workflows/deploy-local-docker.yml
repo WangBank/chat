@@ -31,6 +31,19 @@ jobs:
       API_PUBLIC_URL: ${{ vars.API_PUBLIC_URL }}
       WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
       SIGNALR_PUBLIC_URL: ${{ vars.SIGNALR_PUBLIC_URL }}
+      COMPOSE_PROFILES: ${{ vars.COMPOSE_PROFILES }}
+      WEBRTC_TURN_URL: ${{ vars.WEBRTC_TURN_URL }}
+      WEBRTC_SFU_PUBLIC_IP: ${{ vars.WEBRTC_SFU_PUBLIC_IP }}
+      WEBRTC_SFU_BIND_ADDRESS: ${{ vars.WEBRTC_SFU_BIND_ADDRESS || '0.0.0.0' }}
+      WEBRTC_SFU_PORT_MIN: ${{ vars.WEBRTC_SFU_PORT_MIN || '40000' }}
+      WEBRTC_SFU_PORT_MAX: ${{ vars.WEBRTC_SFU_PORT_MAX || '40100' }}
+      SFU_BIND_HOST: ${{ vars.SFU_BIND_HOST || '0.0.0.0' }}
+      TURN_EXTERNAL_IP: ${{ vars.TURN_EXTERNAL_IP }}
+      TURN_REALM: ${{ vars.TURN_REALM || 'turn.wangbank.top' }}
+      TURN_PORT: ${{ vars.TURN_PORT || '3478' }}
+      TURN_RELAY_MIN_PORT: ${{ vars.TURN_RELAY_MIN_PORT || '49160' }}
+      TURN_RELAY_MAX_PORT: ${{ vars.TURN_RELAY_MAX_PORT || '49200' }}
+      TURN_BIND_HOST: ${{ vars.TURN_BIND_HOST || '0.0.0.0' }}
       EXTRA_CORS_ORIGIN: ${{ vars.EXTRA_CORS_ORIGIN || 'https://chat.wangbank.top' }}
       SWAGGER_ENABLED: ${{ vars.SWAGGER_ENABLED || 'false' }}
       USE_HTTPS_REDIRECTION: ${{ vars.USE_HTTPS_REDIRECTION || 'false' }}
@@ -51,6 +64,8 @@ jobs:
       Email__PasswordResetTokenMinutes: ${{ vars.EMAIL_PASSWORD_RESET_TOKEN_MINUTES || '30' }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      WEBRTC_TURN_USERNAME: ${{ secrets.WEBRTC_TURN_USERNAME }}
+      WEBRTC_TURN_CREDENTIAL: ${{ secrets.WEBRTC_TURN_CREDENTIAL }}
 
     steps:
       - name: Check out main

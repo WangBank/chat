@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/call_manager.dart';
 import '../models/contact.dart';
+import '../models/call.dart';
 import '../config/app_config.dart';
 import '../widgets/load_error_state.dart';
+import '../utils/chat_time.dart';
 import '../utils/network_error.dart';
 import 'chat_page.dart';
 
@@ -122,6 +124,77 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
         ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
       }
     }
+  }
+
+  Future<void> _showCallHistory() async {
+    try {
+      final calls = await widget.apiService.getCallHistory();
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        showDragHandle: true,
+        builder: (sheetContext) {
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.of(sheetContext).size.height * 0.75,
+              child: calls.isEmpty
+                  ? const Center(child: Text('暂无通话记录'))
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      itemCount: calls.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, index) =>
+                          _buildCallHistoryTile(calls[index]),
+                    ),
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('通话记录加载失败: $e')),
+      );
+    }
+  }
+
+  Widget _buildCallHistoryTile(Call call) {
+    final currentUserId = widget.apiService.currentUser?.id;
+    final isOutgoing = currentUserId == call.caller.id;
+    final peer = isOutgoing ? call.receiver : call.caller;
+    final name = peer.display_name?.trim().isNotEmpty == true
+        ? peer.display_name!.trim()
+        : peer.username;
+    final icon = call.callType == CallType.video
+        ? Icons.videocam_outlined
+        : Icons.call_outlined;
+    final typeText = call.callType == CallType.video ? '视频通话' : '语音通话';
+    final statusText = switch (call.status) {
+      CallStatus.ended => '已结束',
+      CallStatus.missed => '未接听',
+      CallStatus.rejected => '已拒绝',
+      CallStatus.inProgress => '通话中',
+      _ => isOutgoing ? '呼出' : '呼入',
+    };
+    final localTime = call.startTime.toLocal();
+    final dateText =
+        '${localTime.year}-${localTime.month.toString().padLeft(2, '0')}-'
+        '${localTime.day.toString().padLeft(2, '0')} '
+        '${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')}';
+    final durationText = call.duration == null ? '' : ' · ${call.duration}秒';
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon,
+          color: call.status == CallStatus.missed ? Colors.red : _qqBlue),
+      title: Text(name),
+      subtitle: Text(
+          '${isOutgoing ? '呼出' : '呼入'} · $typeText · $statusText$durationText'),
+      trailing:
+          Text(dateText, style: const TextStyle(color: _qqMuted, fontSize: 11)),
+    );
   }
 
   void _showDeleteDialog(Contact contact) {
@@ -348,6 +421,11 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
       appBar: AppBar(
         title: const Text('聊天记录'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.phone_in_talk_outlined),
+            tooltip: '通话记录',
+            onPressed: _showCallHistory,
+          ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _loadContacts),
         ],
       ),
@@ -397,17 +475,6 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
   }
 
   String _formatTime(DateTime time) {
-    final now = DateTime.now();
-    final difference = now.difference(time);
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays}天前';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}小时前';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}分钟前';
-    } else {
-      return '刚刚';
-    }
+    return formatConversationTime(time);
   }
 }

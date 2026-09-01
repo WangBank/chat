@@ -59,6 +59,8 @@ class _ChatPageState extends State<ChatPage> {
   ChatMessage? _replyingToMessage;
   late Contact _contact;
   OnUserOnlineStatusChangedCallback? _onlineStatusListener;
+  String? _activeCallIdForCurrentContact;
+  bool _refreshingAfterCall = false;
   Timer? _voiceTimer;
   DateTime? _voiceStartedAt;
   StreamSubscription<void>? _audioCompleteSubscription;
@@ -225,6 +227,7 @@ class _ChatPageState extends State<ChatPage> {
       widget.callManager!.webRTCService.signalRService.addOnlineStatusListener(
         _onlineStatusListener!,
       );
+      widget.callManager!.addListener(_onCallManagerChanged);
 
       widget.callManager!.webRTCService.signalRService.onNewMessage =
           (message) {
@@ -254,6 +257,43 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  bool _isCallWithCurrentContact(Call call) {
+    final currentUserId = widget.apiService.currentUser?.id;
+    if (currentUserId == null) return false;
+
+    final peerUserId = call.caller.id == currentUserId
+        ? call.receiver.id
+        : call.caller.id;
+    return peerUserId == _contact.contactUser.id;
+  }
+
+  void _onCallManagerChanged() {
+    if (!mounted || widget.callManager == null) return;
+
+    final activeCall = widget.callManager!.currentCall;
+    if (activeCall != null) {
+      if (_isCallWithCurrentContact(activeCall)) {
+        _activeCallIdForCurrentContact = activeCall.callId;
+      }
+      return;
+    }
+
+    // The API persists the concise call-history message on call creation. A
+    // ChatPage can remain below the full-screen call route, so it will not be
+    // rebuilt or receive NewMessage while the call is active. Reload that
+    // conversation as soon as its call returns to the page.
+    if (_activeCallIdForCurrentContact == null || _refreshingAfterCall) return;
+    _activeCallIdForCurrentContact = null;
+    _refreshingAfterCall = true;
+    unawaited(() async {
+      try {
+        await _loadMessages();
+      } finally {
+        _refreshingAfterCall = false;
+      }
+    }());
+  }
+
   @override
   void dispose() {
     _messageController.dispose();
@@ -265,6 +305,7 @@ class _ChatPageState extends State<ChatPage> {
 
     // 清理消息监听器
     if (widget.callManager != null) {
+      widget.callManager!.removeListener(_onCallManagerChanged);
       widget.callManager!.webRTCService.signalRService.onNewMessage = null;
       if (_onlineStatusListener != null) {
         widget.callManager!.webRTCService.signalRService
@@ -1900,13 +1941,17 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   String _formatTime(DateTime time) {
+    // API timestamps are UTC (`...Z`).  DateTime.parse preserves that UTC
+    // zone, so reading `hour` directly made a just-finished call appear eight
+    // hours earlier on China Standard Time devices.
+    final localTime = time.toLocal();
     final now = DateTime.now();
-    final difference = now.difference(time);
+    final difference = now.difference(localTime);
 
     if (difference.inDays > 0) {
-      return '${time.month}-${time.day} ${time.hour}:${time.minute.toString().padLeft(2, '0')}';
+      return '${localTime.month}-${localTime.day} ${localTime.hour}:${localTime.minute.toString().padLeft(2, '0')}';
     } else if (difference.inHours > 0) {
-      return '${time.hour}:${time.minute.toString().padLeft(2, '0')}';
+      return '${localTime.hour}:${localTime.minute.toString().padLeft(2, '0')}';
     } else if (difference.inMinutes > 0) {
       return '${difference.inMinutes}分钟前';
     } else {

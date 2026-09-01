@@ -32,15 +32,24 @@ class _VideoCallPageState extends State<VideoCallPage> {
   @override
   void initState() {
     super.initState();
-    // 监听CallManager状态变化
+    // CallManager驱动通话路由和结束状态；WebRTC服务驱动远端轨道到达。
+    // 只监听前者时，远端 renderer 在页面创建后才绑定 srcObject 不会触发
+    // 重建，主画面会持续黑屏，直到用户手动交换大小窗口。
     widget.callManager.addListener(_onCallManagerChanged);
+    widget.callManager.webRTCService.addListener(_onWebRTCStateChanged);
   }
 
   @override
   void dispose() {
-    // 移除监听器
     widget.callManager.removeListener(_onCallManagerChanged);
+    widget.callManager.webRTCService.removeListener(_onWebRTCStateChanged);
     super.dispose();
+  }
+
+  void _onWebRTCStateChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _safePop() {
@@ -186,7 +195,7 @@ class _VideoCallPageState extends State<VideoCallPage> {
                         setState(() {
                           _isMuted = !_isMuted;
                         });
-                        // TODO: 实现静音功能
+                        widget.callManager.webRTCService.setMuted(_isMuted);
                       },
                     ),
 
@@ -198,7 +207,8 @@ class _VideoCallPageState extends State<VideoCallPage> {
                         setState(() {
                           _isCameraOff = !_isCameraOff;
                         });
-                        // TODO: 实现摄像头开关功能
+                        widget.callManager.webRTCService
+                            .setCameraEnabled(!_isCameraOff);
                       },
                     ),
 
@@ -210,7 +220,8 @@ class _VideoCallPageState extends State<VideoCallPage> {
                         setState(() {
                           _isSpeakerOn = !_isSpeakerOn;
                         });
-                        // TODO: 实现扬声器开关功能
+                        widget.callManager.webRTCService
+                            .setSpeakerphoneEnabled(_isSpeakerOn);
                       },
                     ),
 

@@ -59,6 +59,57 @@ flutter run `
 Opening the ports to the public internet still requires Windows Firewall,
 router/NAT forwarding, or a reverse proxy/tunnel outside this repository.
 
+## Reliable mobile calls (TURN)
+
+Direct WebRTC works only while the two devices can find a peer-to-peer route.
+For calls between mobile networks, different Wi-Fi networks, or restrictive
+NATs, configure a TURN relay. The API returns the relay only when all three
+`WEBRTC_TURN_*` values are present; it never stores them in the mobile app.
+
+The Compose stack includes the maintained open-source `coturn/coturn` image as
+an optional `turn` profile. On the public relay host, add the following to the
+protected shared environment file (or supply the same values as GitHub Actions
+variables and secrets):
+
+```dotenv
+COMPOSE_PROFILES=turn
+TURN_EXTERNAL_IP=PUBLIC_IPV4_OF_THIS_HOST
+TURN_REALM=turn.wangbank.top
+TURN_PORT=3478
+TURN_RELAY_MIN_PORT=49160
+TURN_RELAY_MAX_PORT=49200
+WEBRTC_TURN_URL=turn:turn.wangbank.top:3478?transport=udp
+WEBRTC_TURN_USERNAME=TURN_USERNAME
+WEBRTC_TURN_CREDENTIAL=TURN_PASSWORD
+```
+
+Treat the username and credential as secrets. In GitHub Actions, set
+`WEBRTC_TURN_URL`, `COMPOSE_PROFILES`, `TURN_EXTERNAL_IP`, `TURN_REALM`, and
+the port settings as repository variables; set `WEBRTC_TURN_USERNAME` and
+`WEBRTC_TURN_CREDENTIAL` as repository secrets. The deployment workflow passes
+them to both the API and the optional TURN container without writing them to the
+repository.
+
+Use a dedicated hostname such as `turn.wangbank.top` with a DNS-only record
+pointing to the relay's public IPv4. Do not put that hostname behind an HTTP
+proxy or Cloudflare proxy: TURN relays require direct UDP/TCP forwarding and
+the `chat.wangbank.top` web hostname can remain independently proxied.
+
+Open or forward TCP and UDP port `3478`, plus UDP ports `49160-49200`, to the
+Docker host. `TURN_EXTERNAL_IP` must be the public address seen by mobile
+clients rather than a LAN or Docker bridge address. After deployment, verify
+that the response includes a `turn:` URL without printing credentials:
+
+```bash
+curl -fsS https://chat.wangbank.top/api/system/webrtc-config \
+  | jq '[.ice_servers[] | .urls] | flatten | map(select(startswith("turn:"))) | length'
+```
+
+The expected result is at least `1`. Then place two physical phones on
+different networks (for example Wi-Fi and mobile data), complete a video and a
+voice call in both directions, and confirm each side receives remote audio and
+video.
+
 ## Version control
 
 `VERSION` is the base SemVer version. Local deploys append a local build suffix.
@@ -161,3 +212,25 @@ This creates a separate runner in `%USERPROFILE%\actions-runner-chat`, leaving
 any existing runner directories untouched. Keep the runner running for automatic
 deployments, or install it as a service from the runner directory using the
 current GitHub runner instructions shown on the GitHub setup page.
+
+## C# SFU media plane
+
+The API now contains an SFU media plane backed by SIPSorcery. After a call is
+accepted, each mobile client negotiates its own DTLS-SRTP PeerConnection with
+the API. The API decrypts each inbound packet, fans it out to the other legs,
+and encrypts it again; it does not decode or mix the media (MCU).
+
+This is independent of the optional coturn relay. A public server must expose
+the SFU UDP range and advertise its public IPv4 address:
+
+```dotenv
+WEBRTC_SFU_PUBLIC_IP=PUBLIC_IPV4_OF_THIS_HOST
+WEBRTC_SFU_BIND_ADDRESS=0.0.0.0
+WEBRTC_SFU_PORT_MIN=40000
+WEBRTC_SFU_PORT_MAX=40100
+```
+
+Open/forward UDP `40000-40100` (or the configured range) to the API host. The
+HTTP reverse proxy is only used for REST and SignalR signalling; it cannot carry
+the SFU's UDP media sockets. The API logs active PeerConnection and forwarded
+RTP counts, but never logs SDP credentials or media contents.

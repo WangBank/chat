@@ -7,6 +7,7 @@ namespace VideoCallAPI.Services
         // 会话管理
         Task<WebRTCSession> CreateSessionAsync(int callerId, int receiverId, CallType callType, string? callId = null);
         Task<WebRTCSession?> GetSessionAsync(string callId);
+        Task<List<WebRTCSession>> GetActiveSessionsForUserAsync(int userId);
         Task<bool> EndSessionAsync(string callId);
         
         // 信令消息

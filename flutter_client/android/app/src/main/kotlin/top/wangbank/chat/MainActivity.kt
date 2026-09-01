@@ -55,6 +55,7 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(openQQAuthUrl(url))
                     }
+                    "isQQInstalled" -> result.success(isQQInstalled())
                     else -> result.notImplemented()
                 }
             }
@@ -150,5 +151,16 @@ class MainActivity : FlutterActivity() {
         }
 
         return false
+    }
+
+    private fun isQQInstalled(): Boolean {
+        return qqPackages.any { qqPackage ->
+            try {
+                packageManager.getPackageInfo(qqPackage, 0)
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
     }
 }

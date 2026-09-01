@@ -4,4 +4,7 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Local API/SFU validation uses the emulator's 10.0.2.2 HTTP bridge.
+         This applies to debug builds only; release traffic still requires HTTPS. -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>

@@ -26,6 +26,19 @@ namespace VideoCallAPI.Models
         public DateTime timestamp { get; set; } = DateTime.UtcNow;
     }
 
+    // 服务端 SFU 协商请求。SDP 只在信令通道短暂传输，不写入通话历史。
+    public class SfuOfferRequest
+    {
+        public string call_id { get; set; } = string.Empty;
+        public string sdp { get; set; } = string.Empty;
+    }
+
+    public class SfuIceCandidateRequest
+    {
+        public string call_id { get; set; } = string.Empty;
+        public string candidate { get; set; } = string.Empty;
+    }
+
     // 通话请求
     public class CallRequest
     {

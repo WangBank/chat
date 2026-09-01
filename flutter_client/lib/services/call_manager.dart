@@ -24,6 +24,16 @@ class CallManager extends ChangeNotifier {
 
   // 设置WebRTC事件处理器
   void _setupWebRTCHandlers() {
+    _webRTCService.onCallInitiated = (call) {
+      // 用服务端回传的真实 call_id 替换发起阶段临时 ID，确保取消、
+      // 接听和媒体信令都属于同一个会话。
+      _currentCall = call;
+      _isInCall = false;
+      _isWaitingForAnswer = true;
+      notifyListeners();
+      print('📞 通话已创建: ${call.callId}');
+    };
+
     _webRTCService.onIncomingCall = (call) {
       _currentCall = call;
       _isInCall = false; // 收到来电时，还没有接听，所以不是通话中
@@ -82,10 +92,12 @@ class CallManager extends ChangeNotifier {
   Future<void> initialize(String token, User user) async {
     try {
       _currentUser = user;
-      await _webRTCService.initialize(token, user);
-
-      // 在WebRTCService初始化后设置处理器
+      // Install the callbacks before connecting/authenticating SignalR.  The
+      // server can replay an active IncomingCall immediately from Authenticate;
+      // registering afterwards loses that event on a fast mobile connection.
       _setupWebRTCHandlers();
+
+      await _webRTCService.initialize(token, user);
 
       // 验证回调是否正确设置
       print('🔍 CallManager: 验证回调设置');
@@ -132,14 +144,7 @@ class CallManager extends ChangeNotifier {
 
       // 发起成功后，设置等待状态
       _isWaitingForAnswer = true;
-      _currentCall = Call(
-        callId: 'temp_${DateTime.now().millisecondsSinceEpoch}', // 临时ID
-        caller: _currentUser!,
-        receiver: receiver,
-        callType: callType,
-        status: CallStatus.initiated,
-        startTime: DateTime.now(),
-      );
+      _currentCall = _webRTCService.currentCall;
       notifyListeners();
 
       print('📞 发起通话成功: ${receiver.username}');

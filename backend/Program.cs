@@ -185,6 +185,7 @@ builder.Services.AddScoped<IEmailCodeCaptchaService, EmailCodeCaptchaService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<IQQAuthService, QQAuthService>();
 builder.Services.AddSingleton<IWebRTCService, WebRTCService>();
+builder.Services.AddSingleton<ISfuMediaService, SfuMediaService>();
 
 // 配置SignalR
 builder.Services.AddSignalR(options =>
@@ -365,6 +366,12 @@ app.MapGet("/api/system/webrtc-config", (IConfiguration configuration) => Result
 {
     ice_servers = BuildWebRtcIceServers(configuration)
 }));
+
+app.MapGet("/api/system/webrtc-sfu-status", (ISfuMediaService sfu) => Results.Ok(new
+{
+    active_peer_connections = sfu.ActivePeerConnectionCount,
+    forwarded_rtp_packets = sfu.ForwardedRtpPacketCount
+})).RequireAuthorization();
 
 app.MapControllers();
 

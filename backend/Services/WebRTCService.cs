@@ -47,6 +47,16 @@ namespace VideoCallAPI.Services
             }
         }
 
+        public Task<List<WebRTCSession>> GetActiveSessionsForUserAsync(int userId)
+        {
+            lock (_lock)
+            {
+                return Task.FromResult(_sessions.Values
+                    .Where(session => session.caller_id == userId || session.receiver_id == userId)
+                    .ToList());
+            }
+        }
+
         public async Task<bool> EndSessionAsync(string callId)
         {
             lock (_lock)

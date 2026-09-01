@@ -1273,13 +1273,22 @@ public async Task<ChatMessageDto> SendMessageAsync(int senderId, SendMessageDto 
     _context.ChatMessages.Add(message);
     await _context.SaveChangesAsync();
 
-    // 更新联系人的最后消息时间
-    var contact = await _context.Contacts
-        .FirstOrDefaultAsync(c => c.user_id == sendMessageDto.receiver_id && c.contact_user_id == senderId);
-    if (contact != null)
+    // 更新双方联系人记录。此前仅更新接收方，发送方的聊天列表会停留在旧日期。
+    var relatedContacts = await _context.Contacts
+        .Where(c =>
+            (c.user_id == senderId && c.contact_user_id == sendMessageDto.receiver_id) ||
+            (c.user_id == sendMessageDto.receiver_id && c.contact_user_id == senderId))
+        .ToListAsync();
+    foreach (var contact in relatedContacts)
     {
-        contact.last_message_at = DateTime.UtcNow;
-        contact.unread_count++;
+        contact.last_message_at = message.timestamp;
+        if (contact.user_id == sendMessageDto.receiver_id)
+        {
+            contact.unread_count++;
+        }
+    }
+    if (relatedContacts.Count > 0)
+    {
         await _context.SaveChangesAsync();
     }
 

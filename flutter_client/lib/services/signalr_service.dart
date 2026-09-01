@@ -7,6 +7,7 @@ import 'dart:async';
 import 'dart:convert';
 
 typedef OnIncomingCallCallback = void Function(Call call);
+typedef OnCallInitiatedCallback = void Function(Call call);
 typedef OnCallAcceptedCallback = void Function(String callId);
 typedef OnCallRejectedCallback = void Function(String callId);
 typedef OnCallEndedCallback = void Function(String callId);
@@ -16,6 +17,8 @@ typedef OnAnswerReceivedCallback = void Function(
     String callId, String answer, int senderId);
 typedef OnIceCandidateReceivedCallback = void Function(
     String callId, String candidate, int senderId);
+typedef OnSfuAnswerReceivedCallback = void Function(
+    String callId, String answer);
 typedef OnNewMessageCallback = void Function(ChatMessage message);
 typedef OnUserOnlineStatusChangedCallback = void Function(
     int userId, bool isOnline);
@@ -28,18 +31,21 @@ class SignalRService {
   String? _lastToken;
   Timer? _heartbeatTimer;
   Timer? _reconnectTimer;
+  Future<void>? _connectFuture;
   bool _heartbeatInFlight = false;
   bool _reconnectInFlight = false;
   bool _manualDisconnect = false;
 
   // 回调函数
   OnIncomingCallCallback? onIncomingCall;
+  OnCallInitiatedCallback? onCallInitiated;
   OnCallAcceptedCallback? onCallAccepted;
   OnCallRejectedCallback? onCallRejected;
   OnCallEndedCallback? onCallEnded;
   OnOfferReceivedCallback? onOfferReceived;
   OnAnswerReceivedCallback? onAnswerReceived;
   OnIceCandidateReceivedCallback? onIceCandidateReceived;
+  OnSfuAnswerReceivedCallback? onSfuAnswerReceived;
   OnNewMessageCallback? onNewMessage;
   final Set<OnUserOnlineStatusChangedCallback> _onlineStatusListeners = {};
 
@@ -63,6 +69,27 @@ class SignalRService {
       return;
     }
 
+    // 登录恢复、回到前台等入口可能在同一个事件循环内并发调用连接。
+    // 若不共用同一个 Future，会同时建立多条 Hub 连接，导致同一来电、
+    // 接听和 WebRTC 信令被重复投递给客户端。
+    final connecting = _connectFuture;
+    if (connecting != null) {
+      print('SignalR connection is already in progress');
+      return connecting;
+    }
+
+    final connectFuture = _connectInternal(token);
+    _connectFuture = connectFuture;
+    try {
+      await connectFuture;
+    } finally {
+      if (identical(_connectFuture, connectFuture)) {
+        _connectFuture = null;
+      }
+    }
+  }
+
+  Future<void> _connectInternal(String token) async {
     try {
       _stopReconnectTimer();
       _stopHeartbeat();
@@ -82,6 +109,11 @@ class SignalRService {
             hubUrl,
             options: HttpConnectionOptions(
               accessTokenFactory: () async => token,
+              // signalr_netcore defaults this to 2 seconds. On a cold mobile
+              // connection the negotiate request plus JWT/Hub initialisation can
+              // legitimately exceed that, leaving the chat page unable to receive
+              // an incoming call even though the server later accepts the socket.
+              requestTimeout: 15000,
             ),
           )
           .withAutomaticReconnect()
@@ -250,7 +282,10 @@ class SignalRService {
     _connection!.on('IncomingCall', (arguments) {
       print('IncomingCall: $arguments');
       try {
-        final data = arguments?[0] as Map<String, dynamic>;
+        final data = _eventData(arguments);
+        if (data == null) {
+          throw const FormatException('IncomingCall 负载为空或格式不正确');
+        }
         final call = Call.fromJson(data);
         print('Incoming call from: ${call.caller.username}');
         onIncomingCall?.call(call);
@@ -259,11 +294,30 @@ class SignalRService {
       }
     });
 
+    // 呼叫者需要使用服务端生成的真实 call_id。若继续保留临时 ID，
+    // 取消呼叫及 ICE 信令都会发往不存在的会话。
+    _connection!.on('CallInitiated', (arguments) {
+      try {
+        final data = _eventData(arguments);
+        if (data == null) {
+          throw const FormatException('CallInitiated 负载为空或格式不正确');
+        }
+        final call = Call.fromJson(data);
+        print('Call initiated: ${call.callId}');
+        onCallInitiated?.call(call);
+      } catch (e) {
+        print('Error parsing call initiated: $e');
+      }
+    });
+
     // 通话被接受
     _connection!.on('CallAccepted', (arguments) {
       try {
-        final data = arguments?[0] as Map<String, dynamic>;
-        final callId = data['call_id'] as String;
+        final data = _eventData(arguments);
+        final callId = data?['call_id']?.toString();
+        if (callId == null || callId.isEmpty) {
+          throw const FormatException('CallAccepted 缺少 call_id');
+        }
         print('Call accepted: $callId');
         onCallAccepted?.call(callId);
       } catch (e) {
@@ -274,8 +328,11 @@ class SignalRService {
     // 通话被拒绝
     _connection!.on('CallRejected', (arguments) {
       try {
-        final data = arguments?[0] as Map<String, dynamic>;
-        final callId = data['call_id'] as String;
+        final data = _eventData(arguments);
+        final callId = data?['call_id']?.toString();
+        if (callId == null || callId.isEmpty) {
+          throw const FormatException('CallRejected 缺少 call_id');
+        }
         print('Call rejected: $callId');
         onCallRejected?.call(callId);
       } catch (e) {
@@ -329,16 +386,28 @@ class SignalRService {
     // 接收WebRTC消息
     _connection!.on('WebRTCMessage', (arguments) {
       try {
-        final data = arguments?[0] as Map<String, dynamic>;
-        final callId = data['call_id'] as String;
+        final data = _eventData(arguments);
+        if (data == null) {
+          throw const FormatException('WebRTCMessage 负载为空或格式不正确');
+        }
+        final callId = data['call_id']?.toString();
+        if (callId == null || callId.isEmpty) {
+          throw const FormatException('WebRTCMessage 缺少 call_id');
+        }
 
         final dynamic typeVal = data['type'];
         final String type = typeVal is String
             ? typeVal
             : _webRTCTypeIntToString((typeVal as num).toInt());
 
-        final messageData = data['data'] as String;
-        final senderId = data['sender_id'] as int;
+        final messageData = data['data']?.toString();
+        final senderIdRaw = data['sender_id'];
+        final senderId = senderIdRaw is num
+            ? senderIdRaw.toInt()
+            : int.tryParse(senderIdRaw?.toString() ?? '');
+        if (messageData == null || senderId == null) {
+          throw const FormatException('WebRTCMessage 缺少 data 或 sender_id');
+        }
 
         print(
           'Received WebRTC message: call=$callId, type=$type, sender_id=$senderId, current_user=$_currentUserId',
@@ -362,10 +431,28 @@ class SignalRService {
       }
     });
 
+    _connection!.on('SfuAnswer', (arguments) {
+      try {
+        final data = _eventData(arguments);
+        final callId = data?['call_id']?.toString();
+        final sdp = data?['sdp']?.toString();
+        if (callId == null || callId.isEmpty || sdp == null || sdp.isEmpty) {
+          throw const FormatException('SfuAnswer 缺少 call_id 或 sdp');
+        }
+        print('Received SFU answer: call=$callId');
+        onSfuAnswerReceived?.call(callId, sdp);
+      } catch (e) {
+        print('Error parsing SfuAnswer: $e');
+      }
+    });
+
     // 接收新消息
     _connection!.on('NewMessage', (arguments) {
       try {
-        final data = arguments?[0] as Map<String, dynamic>;
+        final data = _eventData(arguments);
+        if (data == null) {
+          throw const FormatException('NewMessage 负载为空或格式不正确');
+        }
         print('Received new message: $data');
 
         final message = ChatMessage.fromJson(data);
@@ -504,6 +591,20 @@ class SignalRService {
     );
   }
 
+  Future<void> sendSfuOffer(String callId, String sdp) async {
+    if (!isConnected) throw Exception('SignalR未连接');
+    await _connection!.invoke('SendSfuOffer', args: [
+      {'call_id': callId, 'sdp': sdp}
+    ]);
+  }
+
+  Future<void> sendSfuIceCandidate(String callId, String candidate) async {
+    if (!isConnected) throw Exception('SignalR未连接');
+    await _connection!.invoke('SendSfuIceCandidate', args: [
+      {'call_id': callId, 'candidate': candidate}
+    ]);
+  }
+
   // 加入通话
   Future<void> joinCall(String callId) async {
     if (!isConnected) throw Exception('SignalR未连接');
@@ -553,13 +654,33 @@ class SignalRService {
   void dispose() {
     disconnect();
     onIncomingCall = null;
+    onCallInitiated = null;
     onCallAccepted = null;
     onCallRejected = null;
     onCallEnded = null;
     onOfferReceived = null;
     onAnswerReceived = null;
     onIceCandidateReceived = null;
+    onSfuAnswerReceived = null;
     onNewMessage = null;
+  }
+
+  Map<String, dynamic>? _eventData(List<Object?>? arguments) {
+    final arg0 = arguments?.isNotEmpty == true ? arguments!.first : null;
+    if (arg0 is Map) {
+      return arg0.map((key, value) => MapEntry(key.toString(), value));
+    }
+    if (arg0 is String) {
+      try {
+        final decoded = jsonDecode(arg0);
+        if (decoded is Map) {
+          return decoded.map((key, value) => MapEntry(key.toString(), value));
+        }
+      } catch (_) {
+        // 统一返回 null，由每个事件处理器输出可诊断的错误信息。
+      }
+    }
+    return null;
   }
 
   int _webRTCTypeToInt(String type) {

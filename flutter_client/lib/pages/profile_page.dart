@@ -2,9 +2,12 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:app_links/app_links.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as image;
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 import '../services/call_manager.dart';
 import '../services/signalr_service.dart';
@@ -43,7 +46,16 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _isLoading = true;
   String? _errorMessage;
   final ImagePicker _picker = ImagePicker();
+  final AppLinks _appLinks = AppLinks();
   late final OnUserOnlineStatusChangedCallback _onlineStatusListener;
+  StreamSubscription<Uri>? _qqLinkSubscription;
+  bool _isBindingQQ = false;
+  bool _isCompletingQQBinding = false;
+  static const String _qqCallbackScheme = 'lovechat';
+  static const String _qqCallbackHost = 'qq-callback';
+  static const String _qqHttpsCallbackHost = 'chat.wangbank.top';
+  static const String _qqHttpsCallbackPath = '/qq-callback';
+  static const MethodChannel _qqChannel = MethodChannel('top.wangbank.chat/qq');
 
   @override
   void initState() {
@@ -52,7 +64,63 @@ class _ProfilePageState extends State<ProfilePage> {
     widget.callManager.webRTCService.signalRService.addOnlineStatusListener(
       _onlineStatusListener,
     );
+    _listenForQQCallbackLinks();
     _loadUserProfile();
+  }
+
+  void _listenForQQCallbackLinks() {
+    _qqLinkSubscription = _appLinks.uriLinkStream.listen(
+      _handleIncomingQQLink,
+      onError: (error) => print('❌ QQ绑定回调监听失败: $error'),
+    );
+    unawaited(_handleInitialQQCallback());
+  }
+
+  Future<void> _handleInitialQQCallback() async {
+    try {
+      final uri = await _appLinks.getInitialLink();
+      if (uri != null) _handleIncomingQQLink(uri);
+    } catch (error) {
+      print('❌ 获取QQ绑定初始回调失败: $error');
+    }
+  }
+
+  void _handleIncomingQQLink(Uri uri) {
+    final isCustomSchemeCallback =
+        uri.scheme == _qqCallbackScheme && uri.host == _qqCallbackHost;
+    final isHttpsAppLinkCallback = uri.scheme == 'https' &&
+        uri.host == _qqHttpsCallbackHost &&
+        uri.path == _qqHttpsCallbackPath;
+    if (!isCustomSchemeCallback && !isHttpsAppLinkCallback) return;
+
+    final authorizationError = uri.queryParameters['error_description'] ??
+        uri.queryParameters['error'];
+    if (authorizationError != null && authorizationError.isNotEmpty) {
+      _showQQBindingResult('QQ授权失败：$authorizationError', failed: true);
+      return;
+    }
+
+    final code = uri.queryParameters['code'] ?? uri.queryParameters['qq_code'];
+    final state =
+        uri.queryParameters['state'] ?? uri.queryParameters['qq_state'];
+    if (code == null || code.isEmpty || state == null || state.isEmpty) {
+      _showQQBindingResult('QQ授权回调缺少必要参数', failed: true);
+      return;
+    }
+    _completeQQBinding(code: code, state: state);
+  }
+
+  void _showQQBindingResult(String message, {bool failed = false}) {
+    if (!mounted) return;
+    setState(() {
+      _isBindingQQ = false;
+      _isCompletingQQBinding = false;
+      _isLoading = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content: Text(message), backgroundColor: failed ? Colors.red : null),
+    );
   }
 
   void _handleOnlineStatusChanged(int userId, bool isOnline) {
@@ -77,6 +145,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   void dispose() {
+    _qqLinkSubscription?.cancel();
     widget.callManager.webRTCService.signalRService.removeOnlineStatusListener(
       _onlineStatusListener,
     );
@@ -560,38 +629,124 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _bindQQ() async {
-    final user = _currentUser;
-    if (user == null) return;
+    if (_isBindingQQ || _isLoading) return;
 
     try {
       setState(() {
         _isLoading = true;
+        _isBindingQQ = true;
       });
 
-      final updatedUser = await widget.apiService.qqDevBind(
-        openId: 'dev_qq_profile_${user.id}',
-        nickname: user.display_name?.isNotEmpty == true
-            ? user.display_name
-            : user.username,
-      );
+      // 先给出设备侧可执行的反馈。此前先请求服务端授权 URL，若后端还
+      // 没配置 OAuth，未安装 QQ 的用户只会看到泛化的“绑定失败”，而不
+      // 知道应先安装并登录 QQ。
+      final qqInstalled = await _isQQInstalled();
+      if (qqInstalled == false) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _isBindingQQ = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('未检测到手机 QQ，请先安装并登录 QQ 后重试')),
+        );
+        return;
+      }
+
+      final response = await widget.apiService.getQQLoginUrl(mode: 'bind');
+      final data = response['data'];
+      final authUrl = data is Map ? data['auth_url']?.toString() : null;
+      final configured = data is Map && data['configured'] == true;
+      if (!configured || authUrl == null || authUrl.isEmpty) {
+        throw Exception(response['message']?.toString() ?? 'QQ绑定尚未配置');
+      }
+
+      final launched =
+          await _launchQQAuthUrl(_withMobileQQHints(Uri.parse(authUrl)));
+      if (!launched) {
+        throw Exception('未检测到可用的 QQ 或浏览器，请安装并登录手机 QQ 后重试');
+      }
 
       if (!mounted) return;
       setState(() {
-        _setCurrentUser(updatedUser);
         _isLoading = false;
+        // 授权页面可能被用户取消；此时仍允许重新发起一次绑定。
+        _isBindingQQ = false;
       });
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('QQ绑定成功')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请在 QQ 授权页完成登录，授权完成后会自动返回 Love Chat')),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
+        _isBindingQQ = false;
       });
+      final message = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('QQ绑定失败: $e')));
+      ).showSnackBar(SnackBar(content: Text('QQ绑定失败: $message')));
+    }
+  }
+
+  Uri _withMobileQQHints(Uri authUrl) {
+    final query = Map<String, String>.from(authUrl.queryParameters);
+    query.putIfAbsent('display', () => 'mobile');
+    return authUrl.replace(queryParameters: query);
+  }
+
+  Future<bool?> _isQQInstalled() async {
+    try {
+      return await _qqChannel.invokeMethod<bool>('isQQInstalled');
+    } catch (e) {
+      // 非 Android 平台或旧客户端没有该原生方法时仍尝试系统授权流程。
+      print('⚠️ 无法检测手机 QQ 安装状态: $e');
+      return null;
+    }
+  }
+
+  Future<bool> _launchQQAuthUrl(Uri authUrl) async {
+    try {
+      final launchedInNativeQQ = await _qqChannel.invokeMethod<bool>(
+        'openQQAuthUrl',
+        {'url': authUrl.toString()},
+      );
+      if (launchedInNativeQQ == true) return true;
+    } catch (e) {
+      print('⚠️ 手机QQ原生唤起不可用，继续尝试系统应用: $e');
+    }
+
+    try {
+      if (await launchUrl(
+        authUrl,
+        mode: LaunchMode.externalNonBrowserApplication,
+      )) {
+        return true;
+      }
+    } catch (e) {
+      print('⚠️ 未能直接唤起手机QQ，改用浏览器授权: $e');
+    }
+    return launchUrl(authUrl, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _completeQQBinding({
+    required String code,
+    required String state,
+  }) async {
+    if (_isCompletingQQBinding || !mounted) return;
+    setState(() {
+      _isBindingQQ = true;
+      _isCompletingQQBinding = true;
+      _isLoading = true;
+    });
+    try {
+      final updatedUser =
+          await widget.apiService.qqBind(code: code, state: state);
+      if (!mounted) return;
+      setState(() => _setCurrentUser(updatedUser));
+      _showQQBindingResult('QQ绑定成功');
+    } catch (e) {
+      _showQQBindingResult('QQ绑定失败: $e', failed: true);
     }
   }
 

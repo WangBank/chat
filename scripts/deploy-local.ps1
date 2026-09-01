@@ -174,6 +174,10 @@ function Ensure-EnvFile {
             "Email__FromName=Forever Love",
             "Email__PasswordResetBaseUrl=https://chat.wangbank.top/reset-password",
             "Email__PasswordResetTokenMinutes=30",
+            "WEBRTC_SFU_PUBLIC_IP=",
+            "WEBRTC_SFU_BIND_ADDRESS=0.0.0.0",
+            "WEBRTC_SFU_PORT_MIN=40000",
+            "WEBRTC_SFU_PORT_MAX=40100",
             "SWAGGER_ENABLED=false",
             "USE_HTTPS_REDIRECTION=false",
             "EXTRA_CORS_ORIGIN=https://chat.wangbank.top"
@@ -260,6 +264,25 @@ function Ensure-EnvFile {
             [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($emailDefault.Key))) {
             Add-DotEnvValue -Path $Path -Name $emailDefault.Key -Value $emailDefault.Value
             Write-DeployLog "Added $($emailDefault.Key) to .env."
+        }
+    }
+
+    # A public SFU candidate is required when the API runs in Docker on a host
+    # that is reached by mobile devices outside the LAN. Keep the address blank
+    # by default because it is host-specific, but make the required keys visible
+    # in every generated shared environment file.
+    $sfuDefaults = [ordered]@{
+        "WEBRTC_SFU_PUBLIC_IP" = ""
+        "WEBRTC_SFU_BIND_ADDRESS" = "0.0.0.0"
+        "WEBRTC_SFU_PORT_MIN" = "40000"
+        "WEBRTC_SFU_PORT_MAX" = "40100"
+    }
+
+    foreach ($sfuDefault in $sfuDefaults.GetEnumerator()) {
+        if (-not $values.ContainsKey($sfuDefault.Key) -and
+            [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($sfuDefault.Key))) {
+            Add-DotEnvValue -Path $Path -Name $sfuDefault.Key -Value $sfuDefault.Value
+            Write-DeployLog "Added $($sfuDefault.Key) to .env."
         }
     }
 

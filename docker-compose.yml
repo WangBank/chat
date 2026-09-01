@@ -59,6 +59,10 @@ services:
       WebRtc__TurnUrl: ${WEBRTC_TURN_URL:-}
       WebRtc__TurnUsername: ${WEBRTC_TURN_USERNAME:-}
       WebRtc__TurnCredential: ${WEBRTC_TURN_CREDENTIAL:-}
+      WebRtc__SfuBindAddress: ${WEBRTC_SFU_BIND_ADDRESS:-}
+      WebRtc__SfuPublicIp: ${WEBRTC_SFU_PUBLIC_IP:-}
+      WebRtc__SfuPortMin: ${WEBRTC_SFU_PORT_MIN:-40000}
+      WebRtc__SfuPortMax: ${WEBRTC_SFU_PORT_MAX:-40100}
       Cors__AllowedOrigins__0: ${WEB_PUBLIC_URL:-http://localhost:17102}
       Cors__AllowedOrigins__1: http://localhost:${WEB_PORT:-17102}
       Cors__AllowedOrigins__2: http://127.0.0.1:${WEB_PORT:-17102}
@@ -67,6 +71,8 @@ services:
       Security__UseHttpsRedirection: ${USE_HTTPS_REDIRECTION:-false}
     ports:
       - "${API_BIND_HOST:-0.0.0.0}:${API_PORT:-17101}:17101"
+      # SFU DTLS-SRTP media sockets. Keep this range in sync with WebRtc__SfuPortMin/Max.
+      - "${SFU_BIND_HOST:-0.0.0.0}:${WEBRTC_SFU_PORT_MIN:-40000}-${WEBRTC_SFU_PORT_MAX:-40100}:${WEBRTC_SFU_PORT_MIN:-40000}-${WEBRTC_SFU_PORT_MAX:-40100}/udp"
     volumes:
       - type: bind
         source: ${API_LOGS_DIR:-./.docker/api/logs}
@@ -77,6 +83,33 @@ services:
       - type: bind
         source: ${API_CHAT_FILES_DIR:-./.docker/api/chat-files}
         target: /app/chat-files
+    networks:
+      - chat
+
+  # Enable with COMPOSE_PROFILES=turn when this host is the public TURN relay.
+  # Credentials are shared with the API through WEBRTC_TURN_*; keep them only
+  # in the protected deployment environment, never in this file.
+  turn:
+    image: coturn/coturn:latest
+    container_name: ${TURN_CONTAINER:-foreverlove-chat-turn}
+    profiles: ["turn"]
+    restart: unless-stopped
+    command:
+      - -n
+      - --log-file=stdout
+      - --realm=${TURN_REALM:-turn.wangbank.top}
+      - --fingerprint
+      - --lt-cred-mech
+      - --user=${WEBRTC_TURN_USERNAME:-}:${WEBRTC_TURN_CREDENTIAL:-}
+      - --external-ip=${TURN_EXTERNAL_IP:-}
+      - --listening-port=${TURN_PORT:-3478}
+      - --min-port=${TURN_RELAY_MIN_PORT:-49160}
+      - --max-port=${TURN_RELAY_MAX_PORT:-49200}
+      - --no-cli
+    ports:
+      - "${TURN_BIND_HOST:-0.0.0.0}:${TURN_PORT:-3478}:3478/tcp"
+      - "${TURN_BIND_HOST:-0.0.0.0}:${TURN_PORT:-3478}:3478/udp"
+      - "${TURN_BIND_HOST:-0.0.0.0}:${TURN_RELAY_MIN_PORT:-49160}-${TURN_RELAY_MAX_PORT:-49200}:${TURN_RELAY_MIN_PORT:-49160}-${TURN_RELAY_MAX_PORT:-49200}/udp"
     networks:
       - chat
 

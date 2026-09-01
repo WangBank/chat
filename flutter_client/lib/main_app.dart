@@ -32,6 +32,7 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
+  static const String _incomingCallRouteName = '/call/incoming';
   static const String _voiceCallRouteName = '/call/voice';
   static const String _videoCallRouteName = '/call/video';
   static const String _waitingCallRouteName = '/call/waiting';
@@ -532,13 +533,18 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     final currentCall = _callManager.currentCall;
 
     if (currentCall == null) {
-      // 通话结束，隐藏所有通话相关界面
+      // The API persists the call entry and its matching chat message when the
+      // call is created. The chat-history tab remains alive below the full
+      // screen call route, so refresh it when that route settles instead of
+      // making the user leave and re-enter the tab to see the new record.
+      if (mounted) {
+        setState(() => _chatRefreshToken++);
+      }
+
+      // 通话结束，关闭所有通话相关界面。
       if (_showingIncomingCall) {
-        print('📞 通话结束，隐藏来电界面');
+        print('📞 通话结束，关闭来电界面');
         _showingIncomingCall = false;
-        setState(() {
-          // 触发重建以隐藏来电界面
-        });
       }
 
       // 关闭所有通话相关页面
@@ -562,9 +568,6 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       );
       if (_showingIncomingCall) {
         _showingIncomingCall = false;
-        setState(() {
-          // 触发重建以隐藏来电界面
-        });
       }
       print('📞 MainApp: 立即执行显示通话页面');
       _showCallPage();
@@ -575,9 +578,6 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     if (_callManager.isWaitingForAnswer) {
       if (_showingIncomingCall) {
         _showingIncomingCall = false;
-        setState(() {
-          // 触发重建以隐藏来电界面
-        });
       }
       print('📞 显示等待接听页面');
       _showWaitingCallPage();
@@ -588,9 +588,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     if (!_showingIncomingCall) {
       print('📞 检测到来电，准备显示来电界面');
       _showingIncomingCall = true;
-      setState(() {
-        // 触发重建以显示来电界面
-      });
+      _showIncomingCallPage();
     }
   }
 
@@ -643,6 +641,26 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     }
   }
 
+  void _showIncomingCallPage() {
+    final currentCall = _callManager.currentCall;
+    if (currentCall == null) return;
+
+    // 来电必须走根 Navigator。ChatPage 是独立的 MaterialPageRoute，
+    // 仅在主页 Scaffold 内叠加的来电层会被它完全遮住。
+    _showUniqueCallRoute(
+      routeName: _incomingCallRouteName,
+      callId: currentCall.callId,
+      route: MaterialPageRoute(
+        fullscreenDialog: true,
+        settings: const RouteSettings(name: _incomingCallRouteName),
+        builder: (context) => IncomingCallPage(
+          call: currentCall,
+          callManager: _callManager,
+        ),
+      ),
+    );
+  }
+
   void _showUniqueCallRoute({
     required String routeName,
     required String callId,
@@ -680,7 +698,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
 
   bool _isCallRoute(Route<dynamic> route) {
     final routeName = route.settings.name;
-    return routeName == _voiceCallRouteName ||
+    return routeName == _incomingCallRouteName ||
+        routeName == _voiceCallRouteName ||
         routeName == _videoCallRouteName ||
         routeName == _waitingCallRouteName;
   }
@@ -858,12 +877,6 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
                 ),
               ],
             ),
-            // 来电界面覆盖层
-            if (_showingIncomingCall && _callManager.currentCall != null)
-              IncomingCallPage(
-                call: _callManager.currentCall!,
-                callManager: _callManager,
-              ),
             if (_serviceUnavailable)
               Positioned.fill(child: _buildServiceUnavailableScreen()),
           ],

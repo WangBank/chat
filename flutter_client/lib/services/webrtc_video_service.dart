@@ -27,6 +27,10 @@ class WebRTCVideoService extends ChangeNotifier {
   Future<List<Map<String, dynamic>>>? _iceServersFuture;
   final Map<String, List<String>> _pendingIceCandidates = {};
   final Set<String> _remoteDescriptionsSet = {};
+  final Set<String> _acceptedCallIds = {};
+  final Set<String> _callerOfferStarted = {};
+  final Set<String> _sfuOfferStarted = {};
+  final Set<String> _offersBeingHandled = {};
 
   // 🔧 防重复处理：记录正在处理的通话结束事件
   final Set<String> _processingCallEnded = {};
@@ -40,6 +44,7 @@ class WebRTCVideoService extends ChangeNotifier {
 
   // 回调函数
   Function(Call)? onIncomingCall;
+  Function(Call)? onCallInitiated;
   Function(Call)? onCallAccepted;
   Function(Call)? onCallRejected;
   Function(Call)? onCallEnded;
@@ -204,22 +209,45 @@ class WebRTCVideoService extends ChangeNotifier {
       });
     };
 
+    _signalRService.onCallInitiated = (Call call) {
+      // 服务端生成的 call_id 是后续取消、接听和 WebRTC 信令的唯一标识。
+      // 不能继续使用发起阶段的临时 ID。
+      _currentCall = call;
+      _isInCall = false;
+      onCallInitiated?.call(call);
+      notifyListeners();
+
+      _signalRService.joinCall(call.callId).then((_) {
+        print('🔗 已加入通话组(主叫发起): ${call.callId}, user=${_currentUser?.id}');
+      }).catchError((e) {
+        print('❌ 加入通话组失败(主叫发起): $e');
+      });
+    };
+
     _signalRService.onCallAccepted = (callId) {
       print('📞 WebRTCService收到通话接受事件: $callId');
       print(
         '📞 WebRTCService当前状态: _currentCall=${_currentCall?.callId}, _isInCall=$_isInCall',
       );
 
-      if (_currentCall != null) {
+      final currentCall = _currentCall;
+      if (currentCall != null && currentCall.callId == callId) {
+        // 同一接听事件可能由重连中的旧 Hub 连接重复投递。状态与界面只需
+        // 切换一次，更重要的是只能由主叫创建 Offer。
+        if (!_acceptedCallIds.add(callId)) {
+          print('⚠️ 忽略重复的通话接听事件: $callId');
+          return;
+        }
+
         _isInCall = true;
 
         _currentCall = Call(
           callId: callId,
-          caller: _currentCall!.caller,
-          receiver: _currentCall!.receiver,
-          callType: _currentCall!.callType,
+          caller: currentCall.caller,
+          receiver: currentCall.receiver,
+          callType: currentCall.callType,
           status: CallStatus.inProgress,
-          startTime: _currentCall!.startTime,
+          startTime: currentCall.startTime,
         );
 
         print(
@@ -232,28 +260,15 @@ class WebRTCVideoService extends ChangeNotifier {
 
         print('📞 WebRTCService已调用onCallAccepted和notifyListeners');
 
-        // 双方：确认加入通话组
-        _signalRService.joinCall(callId).then((_) {
-          print('🔗 已加入通话组(接受侧): $callId, user=${_currentUser?.id}');
-        }).catchError((e) {
-          print('❌ 加入通话组失败(接受侧): $e');
-        });
-
-        _startVideoCall().then((_) {
-          if (_peerConnection != null) {
-            _peerConnection!.createOffer().then((offer) {
-              _peerConnection!.setLocalDescription(offer).then((_) {
-                _signalRService.sendOffer(
-                  WebRTCOffer(callId: callId, offer: jsonEncode(offer.toMap())),
-                  _peerUserIdFor(_currentCall!) ?? _currentCall!.receiver.id,
-                );
-                print('📤 主叫方已发送Offer');
-              });
-            });
-          }
-        });
+        if (_currentUser?.id == currentCall.caller.id) {
+          _startCallerOffer(callId);
+        } else {
+          print('📞 被叫方已接听，等待主叫方发送Offer');
+        }
       } else {
-        print('⚠️ WebRTCService: _currentCall为null，无法处理通话接受事件');
+        print(
+          '⚠️ WebRTCService: 当前通话与接听事件不匹配，忽略: current=${currentCall?.callId}, received=$callId',
+        );
       }
     };
 
@@ -441,6 +456,10 @@ class WebRTCVideoService extends ChangeNotifier {
       print('📥 收到ICE候选: $callId');
       _handleIceCandidate(callId, candidate, senderId);
     };
+    _signalRService.onSfuAnswerReceived = (callId, answer) {
+      print('📥 收到 SFU Answer: $callId');
+      _handleSfuAnswer(callId, answer);
+    };
   }
 
   // 创建PeerConnection
@@ -470,35 +489,40 @@ class WebRTCVideoService extends ChangeNotifier {
       print('⚠️ 没有本地流，跳过添加本地轨道（模拟器环境）');
     }
 
-    // 监听远程流
-    pc.onTrack = (RTCTrackEvent event) {
-      if (event.streams.isEmpty) {
-        print('⚠️ 收到远程轨道但未携带媒体流: ${event.track.kind}');
-        return;
+    // 监听远程流。不同 Android WebRTC 原生版本可能走 Unified Plan 的
+    // onTrack，也可能仍触发 Plan-B 的 onAddStream；两条路径都必须绑定到
+    // 同一个 renderer，否则服务端已经转发 RTP 时客户端仍只看到自己。
+    pc.onTrack = (RTCTrackEvent event) async {
+      MediaStream? stream =
+          event.streams.isNotEmpty ? event.streams.first : _remoteStream;
+      if (stream == null) {
+        stream = await createLocalMediaStream(
+          'remote-${_currentCall?.callId ?? 'call'}',
+        );
       }
-
-      print('📹 收到远程媒体流: ${event.track.kind}');
-      _remoteStream = event.streams.first;
-      _safeSetRendererSrcObject(_remoteRenderer, _remoteStream);
-      notifyListeners();
+      if (event.streams.isEmpty &&
+          !stream.getTracks().any((track) => track.id == event.track.id)) {
+        await stream.addTrack(event.track);
+        print('📹 收到未携带媒体流的远程轨道，已附加: ${event.track.kind}');
+      }
+      _attachRemoteStream(stream, event.track.kind ?? 'track');
+    };
+    pc.onAddStream = (MediaStream stream) {
+      _attachRemoteStream(stream, 'stream');
     };
 
     // 监听ICE候选
     pc.onIceCandidate = (RTCIceCandidate candidate) {
       print('📤 发送ICE候选');
       if (_currentCall != null) {
-        final peerUserId = _peerUserIdFor(_currentCall!);
-        if (peerUserId == null) {
+        if (_currentUser == null) {
           print('⚠️ 当前用户为空，无法发送ICE候选');
           return;
         }
 
-        _signalRService.sendIceCandidate(
-          WebRTCCandidate(
-            callId: _currentCall!.callId,
-            candidate: jsonEncode(candidate.toMap()),
-          ),
-          peerUserId,
+        _signalRService.sendSfuIceCandidate(
+          _currentCall!.callId,
+          jsonEncode(candidate.toMap()),
         );
       }
     };
@@ -517,6 +541,44 @@ class WebRTCVideoService extends ChangeNotifier {
     };
 
     return pc;
+  }
+
+  void _attachRemoteStream(MediaStream stream, String kind) {
+    _remoteStream = stream;
+    _safeSetRendererSrcObject(_remoteRenderer, stream);
+    print('📹 收到远程媒体流: kind=$kind, tracks=${stream.getTracks().length}');
+    notifyListeners();
+  }
+
+  void _startCallerOffer(String callId) {
+    if (!_callerOfferStarted.add(callId)) {
+      print('⚠️ 主叫Offer已在处理中，忽略重复接听事件: $callId');
+      return;
+    }
+
+    () async {
+      try {
+        // PeerConnection 必须在 createOffer 前已挂载完整的本地音视频轨道；
+        // 所有步骤顺序等待，避免首个 Offer 或其 ICE 候选落在未就绪窗口中。
+        await _startVideoCall();
+        await _signalRService.joinCall(callId);
+
+        final call = _currentCall;
+        final peerConnection = _peerConnection;
+        if (call == null || call.callId != callId || peerConnection == null) {
+          throw StateError('通话状态已变更，无法创建 Offer');
+        }
+
+        final offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        await _signalRService.sendSfuOffer(callId, jsonEncode(offer.toMap()));
+        print('📤 主叫方已向 SFU 发送Offer');
+      } catch (e) {
+        _callerOfferStarted.remove(callId);
+        print('❌ 主叫方创建/发送Offer失败: $e');
+        onError?.call('建立通话连接失败: $e');
+      }
+    }();
   }
 
   Future<List<Map<String, dynamic>>> _loadIceServers() {
@@ -548,7 +610,8 @@ class WebRTCVideoService extends ChangeNotifier {
         final urls = item['urls'];
         final hasValidUrl = urls is String
             ? urls.isNotEmpty
-            : urls is List && urls.any((value) => value is String && value.isNotEmpty);
+            : urls is List &&
+                urls.any((value) => value is String && value.isNotEmpty);
         if (!hasValidUrl) continue;
 
         iceServers.add(Map<String, dynamic>.from(item));
@@ -772,6 +835,18 @@ class WebRTCVideoService extends ChangeNotifier {
         print('🔍 [_startVideoCall] 现有轨道数: ${tracks.length}');
       }
 
+      // Put the native audio session in communication/speaker mode before the
+      // remote track arrives.  Without this Android may keep the call audio on
+      // the earpiece (or leave the media route muted) even though RTP is
+      // connected successfully.
+      try {
+        await Helper.setSpeakerphoneOn(true);
+      } catch (e) {
+        // Web and desktop implementations may not expose native audio routing;
+        // media negotiation must continue in those environments.
+        print('⚠️ 设置扬声器输出失败，继续使用系统默认音频路由: $e');
+      }
+
       // 创建PeerConnection
       print('🔍 [_startVideoCall] 开始创建 PeerConnection...');
       if (_peerConnection == null) {
@@ -806,6 +881,33 @@ class WebRTCVideoService extends ChangeNotifier {
       onError?.call('视频通话初始化失败: $e');
       rethrow;
     }
+  }
+
+  Future<void> setMuted(bool muted) async {
+    final stream = _localStream;
+    if (stream == null) return;
+    for (final track in stream.getAudioTracks()) {
+      track.enabled = !muted;
+    }
+    notifyListeners();
+  }
+
+  Future<void> setCameraEnabled(bool enabled) async {
+    final stream = _localStream;
+    if (stream == null) return;
+    for (final track in stream.getVideoTracks()) {
+      track.enabled = enabled;
+    }
+    notifyListeners();
+  }
+
+  Future<void> setSpeakerphoneEnabled(bool enabled) async {
+    try {
+      await Helper.setSpeakerphoneOn(enabled);
+    } catch (e) {
+      print('⚠️ 切换扬声器输出失败: $e');
+    }
+    notifyListeners();
   }
 
   // 结束视频通话
@@ -1082,6 +1184,15 @@ class WebRTCVideoService extends ChangeNotifier {
 
   // 处理Offer
   Future<void> _handleOffer(String callId, String offer, int senderId) async {
+    if (_remoteDescriptionsSet.contains(callId)) {
+      print('⚠️ 已处理过Offer，忽略重复信令: $callId');
+      return;
+    }
+    if (!_offersBeingHandled.add(callId)) {
+      print('⚠️ Offer正在处理，忽略重复信令: $callId');
+      return;
+    }
+
     try {
       if (_peerConnection == null) {
         await _startVideoCall();
@@ -1106,7 +1217,7 @@ class WebRTCVideoService extends ChangeNotifier {
       final answer = await _peerConnection!.createAnswer();
       await _peerConnection!.setLocalDescription(answer);
 
-      _signalRService.sendAnswer(
+      await _signalRService.sendAnswer(
         WebRTCAnswer(callId: callId, answer: jsonEncode(answer.toMap())),
         senderId,
       );
@@ -1115,11 +1226,18 @@ class WebRTCVideoService extends ChangeNotifier {
     } catch (e) {
       print('❌ Offer处理失败: $e');
       onError?.call('Offer处理失败: $e');
+    } finally {
+      _offersBeingHandled.remove(callId);
     }
   }
 
   // 处理Answer
   Future<void> _handleAnswer(String callId, String answer, int senderId) async {
+    if (_remoteDescriptionsSet.contains(callId)) {
+      print('⚠️ 已处理过Answer，忽略重复信令: $callId');
+      return;
+    }
+
     try {
       // 兼容两种格式：JSON 包含 {"sdp": "..."} 或者纯 SDP 字符串
       String sdp;
@@ -1140,6 +1258,59 @@ class WebRTCVideoService extends ChangeNotifier {
     } catch (e) {
       print('❌ Answer处理失败: $e');
       onError?.call('Answer处理失败: $e');
+    }
+  }
+
+  Future<void> _handleSfuAnswer(String callId, String answer) async {
+    if (_currentCall?.callId != callId || _peerConnection == null) {
+      print('⚠️ 收到 SFU Answer 时本地通话或 PeerConnection 不存在: $callId');
+      return;
+    }
+
+    try {
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(answer);
+      } catch (_) {
+        decoded = null;
+      }
+      final sdp = decoded is Map && decoded['sdp'] is String
+          ? decoded['sdp'] as String
+          : answer;
+      await _peerConnection!.setRemoteDescription(
+        RTCSessionDescription(sdp, 'answer'),
+      );
+      _remoteDescriptionsSet.add(callId);
+      await _flushPendingIceCandidates(callId);
+      print('✅ SFU Answer处理成功: $callId');
+    } catch (e) {
+      print('❌ SFU Answer处理失败: $e');
+      onError?.call('SFU媒体协商失败: $e');
+    }
+  }
+
+  Future<void> _startSfuOffer(String callId) async {
+    if (!_sfuOfferStarted.add(callId)) {
+      print('⚠️ SFU Offer已在处理中，忽略重复请求: $callId');
+      return;
+    }
+
+    try {
+      await _startVideoCall();
+      await _signalRService.joinCall(callId);
+      final peerConnection = _peerConnection;
+      if (peerConnection == null || _currentCall?.callId != callId) {
+        throw StateError('通话状态已变更，无法创建 SFU Offer');
+      }
+      final offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      await _signalRService.sendSfuOffer(callId, jsonEncode(offer.toMap()));
+      print('📤 已向 SFU 发送本地 Offer: $callId');
+    } catch (e) {
+      _sfuOfferStarted.remove(callId);
+      print('❌ SFU Offer创建/发送失败: $e');
+      onError?.call('建立SFU通话连接失败: $e');
+      rethrow;
     }
   }
 
@@ -1261,7 +1432,7 @@ class WebRTCVideoService extends ChangeNotifier {
       );
 
       print('📞 发起通话: ${receiver.username}');
-      print('📞 WebRTCService: 设置临时通话ID: ${_currentCall!.callId}');
+      print('📞 WebRTCService: 当前通话ID: ${_currentCall!.callId}');
     } catch (e) {
       print('❌ 发起通话失败: $e');
       // 清理已获取的媒体流
@@ -1306,13 +1477,15 @@ class WebRTCVideoService extends ChangeNotifier {
         );
         acceptedBySignalR = true;
 
+        // 被叫也向 SFU 建立独立的媒体连接；不再等待主叫的 P2P Offer。
+        await _startSfuOffer(callId);
+
         // 被叫方接听后，通知CallManager状态变化
         if (_currentCall != null) {
           onCallAccepted?.call(_currentCall!);
         }
 
-        // 被叫方不需要创建Offer，等待主叫方的Offer
-        print('📞 已接听通话，等待主叫方发送Offer');
+        print('📞 已接听通话，已向 SFU 发送Offer');
       } else {
         await _signalRService.answerCall(
           AnswerCallRequest(callId: callId, accept: false),

@@ -43,6 +43,8 @@ namespace VideoCallAPI.Services
                 throw new InvalidOperationException("用户不在线");
             }
 
+            var startedAt = DateTime.UtcNow;
+
             // 创建通话记录
             var callHistory = new CallHistory
             {
@@ -50,10 +52,23 @@ namespace VideoCallAPI.Services
                 receiver_id = receiverId,
                 call_type = callType,
                 status = CallStatus.Initiated,
-                start_time = DateTime.UtcNow
+                start_time = startedAt
             };
 
             _context.CallHistories.Add(callHistory);
+
+            // 通话也属于双方的聊天历史。此前只写 CallHistories，聊天页查询
+            // ChatMessages/Contacts 时完全看不到语音或视频通话。
+            _context.ChatMessages.Add(new ChatMessage
+            {
+                sender_id = callerId,
+                receiver_id = receiverId,
+                content = callType == CallType.Video ? "发起了视频通话" : "发起了语音通话",
+                type = MessageType.Text,
+                timestamp = startedAt,
+                created_at = startedAt
+            });
+            await UpdateConversationActivityAsync(callerId, receiverId, startedAt);
             await _context.SaveChangesAsync();
 
             var callId = Guid.NewGuid().ToString();
@@ -66,7 +81,7 @@ namespace VideoCallAPI.Services
                 receiver_id = receiverId,
                 CallType = callType,
                 Status = CallStatus.Initiated,
-                start_time = DateTime.UtcNow,
+                start_time = startedAt,
                 CallHistoryId = callHistory.id
             };
 
@@ -82,7 +97,7 @@ namespace VideoCallAPI.Services
                 receiver = MapToUserResponse(receiver),
                 call_type = callType,
                 status = CallStatus.Initiated,
-                start_time = DateTime.UtcNow
+                start_time = startedAt
             };
         }
 
@@ -108,8 +123,13 @@ namespace VideoCallAPI.Services
                 callHistory.status = status;
                 if (!accept)
                 {
-                    callHistory.end_time = DateTime.UtcNow;
+                    var endedAt = DateTime.UtcNow;
+                    callHistory.end_time = endedAt;
                     callHistory.end_reason = "被拒绝";
+                    await UpdateConversationActivityAsync(
+                        callSession.caller_id,
+                        callSession.receiver_id,
+                        endedAt);
                 }
                 await _context.SaveChangesAsync();
             }
@@ -149,6 +169,10 @@ namespace VideoCallAPI.Services
                 var previousStatus = callHistory.status;
                 var endedAt = DateTime.UtcNow;
                 callHistory.end_time = endedAt;
+                await UpdateConversationActivityAsync(
+                    callSession.caller_id,
+                    callSession.receiver_id,
+                    endedAt);
 
                 if (previousStatus == CallStatus.Answered)
                 {
@@ -327,6 +351,23 @@ namespace VideoCallAPI.Services
                 end_time = history.end_time,
                 duration = history.duration
             }).ToList();
+        }
+
+        private async Task UpdateConversationActivityAsync(
+            int firstUserId,
+            int secondUserId,
+            DateTime occurredAt)
+        {
+            var contacts = await _context.Contacts
+                .Where(contact =>
+                    (contact.user_id == firstUserId && contact.contact_user_id == secondUserId) ||
+                    (contact.user_id == secondUserId && contact.contact_user_id == firstUserId))
+                .ToListAsync();
+
+            foreach (var contact in contacts)
+            {
+                contact.last_message_at = occurredAt;
+            }
         }
 
         private static UserResponseDto MapToUserResponse(User user)

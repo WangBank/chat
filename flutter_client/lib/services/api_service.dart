@@ -517,10 +517,17 @@ class ApiService {
       }
 
       errorMessage = responseData['message'] ?? errorMessage;
+      if (responseData['errors'] is List &&
+          (responseData['errors'] as List).isNotEmpty) {
+        errorMessage = (responseData['errors'] as List)
+            .map((item) => item.toString())
+            .join('\n');
+      }
       throw Exception(errorMessage);
     } catch (e) {
       print('❌ 获取QQ授权地址错误: $e');
-      throw Exception(errorMessage);
+      final message = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      throw Exception(message.isEmpty ? errorMessage : message);
     }
   }
 
@@ -551,6 +558,41 @@ class ApiService {
     } catch (e) {
       print('❌ QQ登录错误: $e');
       throw Exception(errorMessage);
+    }
+  }
+
+  Future<User> qqBind({
+    required String code,
+    required String state,
+  }) async {
+    const fallback = 'QQ绑定失败';
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/qq/bind'),
+        headers: _headers,
+        body: jsonEncode({'code': code, 'state': state}),
+      );
+      final responseData = jsonDecode(response.body);
+      if (response.statusCode == 200 &&
+          responseData is Map &&
+          responseData['success'] == true &&
+          responseData['data'] is Map) {
+        final user = User.fromJson(
+          Map<String, dynamic>.from(responseData['data'] as Map),
+        );
+        _currentUser = user;
+        return user;
+      }
+
+      final message =
+          responseData is Map ? responseData['message']?.toString() : null;
+      final errors = responseData is Map ? responseData['errors'] : null;
+      final details = errors is List && errors.isNotEmpty
+          ? errors.map((item) => item.toString()).join('\n')
+          : message;
+      throw Exception(details?.isNotEmpty == true ? details : fallback);
+    } catch (e) {
+      throw Exception(userFacingServiceError(e, fallback: fallback));
     }
   }
 
