@@ -29,6 +29,7 @@ class AppUpdateManifest {
   final int? size;
   final String? releaseTag;
   final String? notes;
+  final List<Uri> fallbackApkUrls;
 
   const AppUpdateManifest({
     required this.versionName,
@@ -40,7 +41,20 @@ class AppUpdateManifest {
     this.size,
     this.releaseTag,
     this.notes,
+    this.fallbackApkUrls = const <Uri>[],
   });
+
+  /// 下载地址候选列表：国内镜像优先，GitHub 兜底。
+  List<Uri> get downloadUrls {
+    final urls = <Uri>[apkUrl];
+    final seen = <String>{apkUrl.toString()};
+    for (final candidate in fallbackApkUrls) {
+      if (seen.add(candidate.toString())) {
+        urls.add(candidate);
+      }
+    }
+    return urls;
+  }
 
   factory AppUpdateManifest.fromJson(Map<String, dynamic> json) {
     final versionName = json['versionName']?.toString().trim();
@@ -49,6 +63,7 @@ class AppUpdateManifest {
         _parseInt(json['minSupportedVersionCode']) ?? 1;
     final apkUrlValue = json['apkUrl']?.toString().trim();
     final sha256Value = json['sha256']?.toString().trim().toLowerCase();
+    final fallbackApkUrls = _parseFallbackApkUrls(json);
 
     if (versionName == null || versionName.isEmpty) {
       throw const AppUpdateException('版本清单缺少 versionName');
@@ -74,7 +89,37 @@ class AppUpdateManifest {
       size: _parseInt(json['size']),
       releaseTag: json['releaseTag']?.toString(),
       notes: json['notes']?.toString(),
+      fallbackApkUrls: fallbackApkUrls,
     );
+  }
+
+  static List<Uri> _parseFallbackApkUrls(Map<String, dynamic> json) {
+    final values = <String>[];
+    final singleFallback = json['apkFallbackUrl']?.toString().trim();
+    if (singleFallback != null && singleFallback.isNotEmpty) {
+      values.add(singleFallback);
+    }
+
+    final mirrors = json['mirrors'];
+    if (mirrors is List) {
+      for (final entry in mirrors) {
+        final value = entry?.toString().trim();
+        if (value != null && value.isNotEmpty) {
+          values.add(value);
+        }
+      }
+    }
+
+    final urls = <Uri>[];
+    final seen = <String>{};
+    for (final value in values) {
+      final uri = Uri.tryParse(value);
+      if (uri == null || !uri.hasScheme) continue;
+      if (seen.add(uri.toString())) {
+        urls.add(uri);
+      }
+    }
+    return urls;
   }
 
   bool isNewerThan(CurrentAppInfo current) {
@@ -170,7 +215,28 @@ class AppUpdateService {
   }
 
   Future<AppUpdateManifest> fetchManifest() async {
-    final uri = Uri.parse(AppConfig.updateManifestUrl);
+    final candidates = <String>[AppConfig.updateManifestUrl];
+    final fallbackUrl = AppConfig.updateManifestFallbackUrl.trim();
+    if (fallbackUrl.isNotEmpty && !candidates.contains(fallbackUrl)) {
+      candidates.add(fallbackUrl);
+    }
+
+    AppUpdateException? lastError;
+    for (final candidate in candidates) {
+      try {
+        return await _fetchManifestFrom(candidate);
+      } on AppUpdateException catch (error) {
+        lastError = error;
+      } catch (_) {
+        lastError = AppUpdateException('检查更新失败：无法访问 $candidate');
+      }
+    }
+
+    throw lastError ?? const AppUpdateException('检查更新失败，请稍后重试');
+  }
+
+  Future<AppUpdateManifest> _fetchManifestFrom(String manifestUrl) async {
+    final uri = Uri.parse(manifestUrl);
     final response = await _client
         .get(uri, headers: const {'Accept': 'application/json'}).timeout(
       _manifestTimeout,
@@ -199,7 +265,28 @@ class AppUpdateService {
     final updateDir = Directory('${appDir.path}/updates');
     await updateDir.create(recursive: true);
     final file = File('${updateDir.path}/LoveChat-${manifest.versionCode}.apk');
-    final request = http.Request('GET', manifest.apkUrl);
+
+    AppUpdateException? lastError;
+    for (final url in manifest.downloadUrls) {
+      try {
+        return await _downloadApkFrom(url, manifest, file, onProgress);
+      } on AppUpdateException catch (error) {
+        lastError = error;
+      } catch (error) {
+        lastError = AppUpdateException('下载更新失败：$error');
+      }
+    }
+
+    throw lastError ?? const AppUpdateException('下载更新失败，请稍后重试');
+  }
+
+  Future<File> _downloadApkFrom(
+    Uri url,
+    AppUpdateManifest manifest,
+    File file,
+    void Function(AppUpdateDownloadProgress progress)? onProgress,
+  ) async {
+    final request = http.Request('GET', url);
     request.headers.addAll(const {
       'Accept': 'application/vnd.android.package-archive,*/*',
       'User-Agent': 'LoveChat-Android-Updater',

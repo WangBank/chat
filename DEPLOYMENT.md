@@ -213,6 +213,80 @@ any existing runner directories untouched. Keep the runner running for automatic
 deployments, or install it as a service from the runner directory using the
 current GitHub runner instructions shown on the GitHub setup page.
 
+## Android APK downloads from mainland China
+
+GitHub Releases stays the source of truth for the signed APK, but
+`github.com/.../releases/download/...` is unreliable from mainland China. The
+deployment therefore republishes the exact same APK on the product domain:
+
+| URL | Served by | Behaviour |
+| --- | --- | --- |
+| `/download/android` | website container | Synced APK with `Content-Disposition: attachment`, ETag and byte-range (resume) support |
+| `/download/android-version.json` | website container | Update manifest whose `apkUrl` points at the product domain |
+
+Both routes answer with a `302` redirect to the GitHub Release when the synced
+file is missing, so existing links keep working before the first sync.
+
+### How the files get there
+
+`scripts/sync-android-release.ps1` downloads the latest release assets, verifies
+the APK size and SHA256 against the published manifest, and writes
+`LoveChat-Android.apk` plus `android-version.json` into the downloads directory
+(`WEB_DOWNLOADS_DIR`, default `%USERPROFILE%\.foreverlove-chat\storage\downloads`).
+`docker-compose.yml` bind-mounts that directory into the website container at
+`/app/downloads`, so no image rebuild is needed for a new APK.
+
+`.github/workflows/sync-android-apk.yml` runs the script on the self-hosted
+deployment runner after every `Android Release APK` run, once a day, and on
+demand. Manual run:
+
+```powershell
+.\scripts\sync-android-release.ps1
+```
+
+Optional repository variables: `WEB_DOWNLOADS_DIR` (override the directory),
+`APK_PUBLIC_BASE_URL` (default `https://chat.wangbank.top`) and
+`APK_ASSET_MIRROR_PREFIX` (prefix a download accelerator such as
+`https://gh-proxy.com` when this host cannot reach GitHub reliably).
+
+Existing installs keep the manifest URL that was compiled into them, so APKs
+released before this change still check GitHub until the user installs a build
+made after it. Point those users at the website download button, which already
+uses the product domain.
+
+The web client uses the same-origin `/download/android` link in production
+(`VITE_APK_DOWNLOAD_URL` overrides it) and the Flutter updater reads
+`https://chat.wangbank.top/download/android-version.json`, falling back to the
+GitHub manifest and then to every `mirrors` entry in the manifest.
+
+### Other free options
+
+1. **Own domain (implemented, recommended)** - no extra cost: server, domain and
+   tunnel already exist and the traffic stays inside the deployment.
+2. **Public GitHub accelerators** - nothing to deploy; set
+   `APK_ASSET_MIRROR_PREFIX` (or `VITE_APK_DOWNLOAD_URL` /
+   `--dart-define=ANDROID_UPDATE_MANIFEST_URL=...`) to a mirror such as
+   `https://gh-proxy.com/https://github.com/...`. Third-party mirrors come and
+   go, so keep them as a fallback instead of the only path.
+3. **Cloudflare R2** - the free tier includes 10 GB of storage and no egress
+   fees and can be published on the domain that already uses Cloudflare; needs a
+   bucket plus upload credentials in CI.
+4. **Domestic code hosting releases** (GitCode/AtomGit; Gitee for open source,
+   100 MB attachment limit) - fast in China, but needs another account, an API
+   token and an extra upload step per release.
+5. **Domestic object storage free tiers** (Qiniu/Upyun/Tencent COS trials) -
+   require an ICP-registered custom domain and expire when the trial ends.
+
+### Verifying
+
+```powershell
+curl.exe -I https://chat.wangbank.top/download/android
+curl.exe -s https://chat.wangbank.top/download/android-version.json
+```
+
+The served APK must keep the SHA256 published in the manifest; the sync script
+refuses to publish a file whose size or checksum differs.
+
 ## C# SFU media plane
 
 The API now contains an SFU media plane backed by SIPSorcery. After a call is

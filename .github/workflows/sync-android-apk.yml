@@ -1,0 +1,57 @@
+name: Sync Android APK
+
+# Keeps the APK published on the website domain in sync with the latest GitHub
+# Release so mainland China users can download it without touching GitHub.
+# The job runs on the self-hosted runner that also hosts the Docker deployment,
+# so it writes straight into the directory mounted at /app/downloads.
+
+on:
+  workflow_run:
+    workflows: ["Android Release APK"]
+    types: [completed]
+  schedule:
+    - cron: "0 20 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-android-apk
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Sync latest APK into the website downloads directory
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: [self-hosted, Windows, X64, local-docker]
+    timeout-minutes: 30
+
+    env:
+      WEB_DOWNLOADS_DIR: ${{ vars.WEB_DOWNLOADS_DIR }}
+      APK_PUBLIC_BASE_URL: ${{ vars.APK_PUBLIC_BASE_URL || 'https://chat.wangbank.top' }}
+      APK_ASSET_MIRROR_PREFIX: ${{ vars.APK_ASSET_MIRROR_PREFIX }}
+      GITHUB_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Sync Android release assets
+        shell: powershell
+        run: |
+          ./scripts/sync-android-release.ps1
+
+      - name: Verify published manifest (best effort)
+        shell: powershell
+        continue-on-error: true
+        run: |
+          $base = if ($env:APK_PUBLIC_BASE_URL) { $env:APK_PUBLIC_BASE_URL.TrimEnd('/') } else { 'https://chat.wangbank.top' }
+          $manifest = Invoke-RestMethod -Uri "$base/download/android-version.json" -MaximumRedirection 5
+          Write-Host "Published manifest: $($manifest.versionName) ($($manifest.versionCode)) apkUrl=$($manifest.apkUrl)"
+          if ($manifest.apkUrl -notlike "$base/*") {
+              throw "Manifest apkUrl does not point at $base: $($manifest.apkUrl)"
+          }
+          Write-Host "Manifest apkUrl points at the product domain."

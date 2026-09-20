@@ -32,7 +32,7 @@ jobs:
     timeout-minutes: 45
 
     env:
-      FLUTTER_VERSION: "3.44.8"
+      FLUTTER_VERSION: "3.47.5"
       APK_ASSET_NAME: LoveChat-Android.apk
       MANIFEST_ASSET_NAME: android-version.json
       API_BASE_URL: ${{ vars.ANDROID_API_BASE_URL || 'https://chat.wangbank.top/api' }}
@@ -64,7 +64,9 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platform-tools" \
             "platforms;android-36" \
-            "build-tools;36.0.0"
+            "build-tools;36.0.0" \
+            "platforms;android-37.0" \
+            "build-tools;37.0.0"
 
       - name: Restore Android release keystore
         shell: bash

@@ -22,6 +22,7 @@ $DefaultStorageDir = Join-Path $DefaultEnvDir "storage"
 $DefaultLogsDir = Join-Path $DefaultStorageDir "logs"
 $DefaultAvatarDir = Join-Path $DefaultStorageDir "avatar"
 $DefaultChatFilesDir = Join-Path $DefaultStorageDir "chat-files"
+$DefaultDownloadsDir = Join-Path $DefaultStorageDir "downloads"
 $DefaultBackupDir = Join-Path $DefaultEnvDir "backups"
 $EnvFile = if (-not [string]::IsNullOrWhiteSpace($env:FOREVERLOVE_CHAT_ENV_FILE)) {
     $env:FOREVERLOVE_CHAT_ENV_FILE
@@ -154,6 +155,7 @@ function Ensure-EnvFile {
             "API_LOGS_DIR=$DefaultLogsDir",
             "API_AVATAR_DIR=$DefaultAvatarDir",
             "API_CHAT_FILES_DIR=$DefaultChatFilesDir",
+            "WEB_DOWNLOADS_DIR=$DefaultDownloadsDir",
             "WEB_PORT=17102",
             "WEB_BIND_HOST=0.0.0.0",
             "JWT_SECRET=$initialSecret",
@@ -227,6 +229,7 @@ function Ensure-EnvFile {
         "API_LOGS_DIR" = $DefaultLogsDir
         "API_AVATAR_DIR" = $DefaultAvatarDir
         "API_CHAT_FILES_DIR" = $DefaultChatFilesDir
+        "WEB_DOWNLOADS_DIR" = $DefaultDownloadsDir
     }
 
     foreach ($storageDefault in $storageDefaults.GetEnumerator()) {
@@ -729,8 +732,9 @@ $WebPort = Resolve-Setting -ExplicitValue $WebPort -EnvName "WEB_PORT" -DotEnv $
 $ApiLogsDir = Resolve-Setting -ExplicitValue "" -EnvName "API_LOGS_DIR" -DotEnv $DotEnv -DefaultValue $DefaultLogsDir
 $ApiAvatarDir = Resolve-Setting -ExplicitValue "" -EnvName "API_AVATAR_DIR" -DotEnv $DotEnv -DefaultValue $DefaultAvatarDir
 $ApiChatFilesDir = Resolve-Setting -ExplicitValue "" -EnvName "API_CHAT_FILES_DIR" -DotEnv $DotEnv -DefaultValue $DefaultChatFilesDir
+$WebDownloadsDir = Resolve-Setting -ExplicitValue "" -EnvName "WEB_DOWNLOADS_DIR" -DotEnv $DotEnv -DefaultValue $DefaultDownloadsDir
 
-foreach ($storageDir in @($ApiLogsDir, $ApiAvatarDir, $ApiChatFilesDir)) {
+foreach ($storageDir in @($ApiLogsDir, $ApiAvatarDir, $ApiChatFilesDir, $WebDownloadsDir)) {
     New-Item -ItemType Directory -Force -Path $storageDir | Out-Null
 }
 
@@ -768,6 +772,7 @@ Set-Env -Name "WEB_PORT" -Value $WebPort
 Set-Env -Name "API_LOGS_DIR" -Value $ApiLogsDir
 Set-Env -Name "API_AVATAR_DIR" -Value $ApiAvatarDir
 Set-Env -Name "API_CHAT_FILES_DIR" -Value $ApiChatFilesDir
+Set-Env -Name "WEB_DOWNLOADS_DIR" -Value $WebDownloadsDir
 Set-Env -Name "API_PUBLIC_URL" -Value $ApiPublicUrl
 Set-Env -Name "WEB_PUBLIC_URL" -Value $WebPublicUrl
 Set-Env -Name "SIGNALR_PUBLIC_URL" -Value $SignalRPublicUrl

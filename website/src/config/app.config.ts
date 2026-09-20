@@ -49,6 +49,25 @@ const resolveSignalRHubUrl = () => {
   }
 };
 
+// Android APK download. In production the website container serves the APK that
+// CI synced from the GitHub Release (`/download/android`), so the download stays
+// on a domain that is reachable from mainland China; when the synced file is
+// missing the server redirects to the GitHub Release. Override with
+// VITE_APK_DOWNLOAD_URL when hosting the APK somewhere else.
+const GITHUB_APK_DOWNLOAD_URL =
+  'https://github.com/WangBank/chat/releases/latest/download/LoveChat-Android.apk';
+
+const resolveApkDownloadUrl = () => {
+  const configuredValue = import.meta.env.VITE_APK_DOWNLOAD_URL?.trim();
+  if (configuredValue) {
+    return trimTrailingSlash(configuredValue);
+  }
+  if (import.meta.env.DEV) {
+    return GITHUB_APK_DOWNLOAD_URL;
+  }
+  return '/download/android';
+};
+
 const parseAdminEmails = (): string[] => {
   const configuredValue = (import.meta.env.VITE_ADMIN_EMAILS as string | undefined)?.trim();
   if (!configuredValue) return [];
@@ -73,8 +92,8 @@ export const APP_CONFIG = {
   // Version
   VERSION: import.meta.env.VITE_APP_VERSION || '1.0.0',
   
-  // APK download URL
-  APK_DOWNLOAD_URL: 'https://github.com/WangBank/chat/releases/latest/download/LoveChat-Android.apk',
+  // APK download URL (same-origin synced copy, GitHub Release as server-side fallback)
+  APK_DOWNLOAD_URL: resolveApkDownloadUrl(),
 
   ADMIN_EMAILS: parseAdminEmails()
 };

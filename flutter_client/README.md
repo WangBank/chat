@@ -4,11 +4,12 @@ Flutter 客户端提供移动端即时通讯体验，包含登录注册、联系
 
 ## 技术栈
 
-- Flutter 3.44
-- Dart 3.12
-- Android Gradle Plugin 9
-- Gradle 9
-- Kotlin 2.3
+- Flutter 3.47
+- Dart 3.13
+- Android Gradle Plugin 9.0.1
+- Gradle 9.1
+- Kotlin 2.3.20
+- compileSdk 37
 - Java 17
 - flutter_webrtc
 - signalr_netcore
@@ -96,13 +97,14 @@ flutter run \
 
 ## Android
 
-当前 Android 工程按 Flutter 3.44 模板升级：
+当前 Android 工程按 Flutter 3.47 模板升级：
 
 - Gradle `9.1.0`
 - Android Gradle Plugin `9.0.1`
 - Kotlin `2.3.20`
 - Java 17
 - Built-in Kotlin app 模块配置
+- compileSdk 固定在 37：Flutter 3.47 默认 36，而 `permission_handler` 13.x 依赖的 `permission_handler_android` 14.x 要求 API 37；CI 同步安装 `platforms;android-37.0` 与 `build-tools;37.0.0`
 
 `flutter_webrtc` 当前仍会触发 Flutter 的 KGP future warning，这是上游插件行为，当前版本仍可构建。
 

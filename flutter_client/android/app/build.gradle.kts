@@ -27,7 +27,9 @@ if (hasPartialReleaseSigning || (requireReleaseSigning && !hasReleaseSigning)) {
 
 android {
     namespace = "top.wangbank.chat"
-    compileSdk = flutter.compileSdkVersion
+    // Flutter 3.47 defaults to compileSdk 36, but permission_handler_android 14.x
+    // (permission_handler 13.x) compiles against API 37.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

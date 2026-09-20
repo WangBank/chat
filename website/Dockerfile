@@ -34,6 +34,9 @@ ENV PORT=8080
 COPY server.mjs ./
 COPY --from=build /app/dist ./dist
 
+# Filled at runtime by the docker-compose bind mount; see server.mjs /download routes.
+RUN mkdir -p /app/downloads
+
 EXPOSE 8080
 
 CMD ["node", "server.mjs"]

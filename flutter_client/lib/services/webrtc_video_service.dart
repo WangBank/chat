@@ -11,6 +11,16 @@ import '../utils/webrtc_debug.dart';
 import 'signalr_service.dart';
 
 class WebRTCVideoService extends ChangeNotifier {
+  static const int _sfuOfferMaxAttempts = 3;
+  static const Duration _sfuAnswerTimeout = Duration(seconds: 8);
+  // SignalR's normal reconnect policy can take roughly 10 seconds before its
+  // next attempt. Keep the SFU signalling retries alive across that window;
+  // a 1s/2s retry sequence would finish before the Hub comes back.
+  static const List<Duration> _sfuRetryBackoff = <Duration>[
+    Duration(seconds: 3),
+    Duration(seconds: 10),
+  ];
+
   final SignalRService _signalRService;
 
   // WebRTC 状态
@@ -31,6 +41,8 @@ class WebRTCVideoService extends ChangeNotifier {
   final Set<String> _callerOfferStarted = {};
   final Set<String> _sfuOfferStarted = {};
   final Set<String> _offersBeingHandled = {};
+  final Set<String> _sfuAnswersApplied = {};
+  final Map<String, Completer<void>> _sfuAnswerWaiters = {};
 
   // 🔧 防重复处理：记录正在处理的通话结束事件
   final Set<String> _processingCallEnded = {};
@@ -514,15 +526,22 @@ class WebRTCVideoService extends ChangeNotifier {
     // 监听ICE候选
     pc.onIceCandidate = (RTCIceCandidate candidate) {
       print('📤 发送ICE候选');
-      if (_currentCall != null) {
+      final call = _currentCall;
+      if (call != null) {
         if (_currentUser == null) {
           print('⚠️ 当前用户为空，无法发送ICE候选');
           return;
         }
 
-        _signalRService.sendSfuIceCandidate(
-          _currentCall!.callId,
-          jsonEncode(candidate.toMap()),
+        // Candidate gathering continues after the initial Offer. A brief hub
+        // reconnect used to discard those candidates because this callback is
+        // not awaitable; retain a bounded retry instead. The server also
+        // queues candidates received before its SFU peer is created.
+        unawaited(
+          _sendSfuIceCandidateWithRetry(
+            call.callId,
+            jsonEncode(candidate.toMap()),
+          ),
         );
       }
     };
@@ -571,7 +590,7 @@ class WebRTCVideoService extends ChangeNotifier {
 
         final offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
-        await _signalRService.sendSfuOffer(callId, jsonEncode(offer.toMap()));
+        await _sendSfuOfferWithRetry(callId, jsonEncode(offer.toMap()));
         print('📤 主叫方已向 SFU 发送Offer');
       } catch (e) {
         _callerOfferStarted.remove(callId);
@@ -912,6 +931,7 @@ class WebRTCVideoService extends ChangeNotifier {
 
   // 结束视频通话
   Future<void> _endVideoCall() async {
+    final endingCallId = _currentCall?.callId;
     print('🔍 [_endVideoCall] ========== 开始结束视频通话 ==========');
     print('🔍 [_endVideoCall] call: ${_currentCall?.callId}');
     print(
@@ -928,6 +948,7 @@ class WebRTCVideoService extends ChangeNotifier {
 
     // 标记为正在释放
     _isReleasingCamera = true;
+    _clearSfuNegotiationState(endingCallId);
     print('🔍 [_endVideoCall] 已标记为正在释放摄像头');
 
     try {
@@ -1267,6 +1288,14 @@ class WebRTCVideoService extends ChangeNotifier {
       return;
     }
 
+    if (_sfuAnswersApplied.contains(callId)) {
+      // SignalR can replay a response when the transport reconnects. The
+      // remote answer may only be applied once, but it still satisfies an
+      // in-flight retransmission waiting for that answer.
+      _completeSfuAnswerWaiter(callId);
+      return;
+    }
+
     try {
       dynamic decoded;
       try {
@@ -1281,7 +1310,9 @@ class WebRTCVideoService extends ChangeNotifier {
         RTCSessionDescription(sdp, 'answer'),
       );
       _remoteDescriptionsSet.add(callId);
+      _sfuAnswersApplied.add(callId);
       await _flushPendingIceCandidates(callId);
+      _completeSfuAnswerWaiter(callId);
       print('✅ SFU Answer处理成功: $callId');
     } catch (e) {
       print('❌ SFU Answer处理失败: $e');
@@ -1304,7 +1335,7 @@ class WebRTCVideoService extends ChangeNotifier {
       }
       final offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
-      await _signalRService.sendSfuOffer(callId, jsonEncode(offer.toMap()));
+      await _sendSfuOfferWithRetry(callId, jsonEncode(offer.toMap()));
       print('📤 已向 SFU 发送本地 Offer: $callId');
     } catch (e) {
       _sfuOfferStarted.remove(callId);
@@ -1312,6 +1343,90 @@ class WebRTCVideoService extends ChangeNotifier {
       onError?.call('建立SFU通话连接失败: $e');
       rethrow;
     }
+  }
+
+  /// The SignalR invocation can succeed while its corresponding `SfuAnswer`
+  /// event is lost during a mobile network transition. Re-send the same Offer
+  /// a small, bounded number of times: the SFU accepts repeated Offers and
+  /// returns a fresh Answer, while the client applies that Answer only once.
+  Future<void> _sendSfuOfferWithRetry(
+      String callId, String offerPayload) async {
+    Object? lastError;
+
+    for (var attempt = 1; attempt <= _sfuOfferMaxAttempts; attempt++) {
+      if (_currentCall?.callId != callId) {
+        throw StateError('通话已结束，停止等待 SFU Answer');
+      }
+      if (_sfuAnswersApplied.contains(callId)) {
+        return;
+      }
+
+      final answerWaiter = Completer<void>();
+      _sfuAnswerWaiters[callId] = answerWaiter;
+      try {
+        print('📤 发送 SFU Offer：第 $attempt/$_sfuOfferMaxAttempts 次');
+        await _signalRService.sendSfuOffer(callId, offerPayload);
+        await answerWaiter.future.timeout(_sfuAnswerTimeout);
+        return;
+      } catch (e) {
+        lastError = e;
+        print('⚠️ 等待 SFU Answer 失败：第 $attempt/$_sfuOfferMaxAttempts 次，$e');
+      } finally {
+        if (identical(_sfuAnswerWaiters[callId], answerWaiter)) {
+          _sfuAnswerWaiters.remove(callId);
+        }
+      }
+
+      if (attempt < _sfuOfferMaxAttempts) {
+        await Future<void>.delayed(_sfuRetryBackoff[attempt - 1]);
+      }
+    }
+
+    throw StateError(
+        'SFU 媒体协商在 $_sfuOfferMaxAttempts 次尝试后仍未收到 Answer：$lastError');
+  }
+
+  Future<void> _sendSfuIceCandidateWithRetry(
+    String callId,
+    String candidatePayload,
+  ) async {
+    for (var attempt = 1; attempt <= _sfuOfferMaxAttempts; attempt++) {
+      if (_currentCall?.callId != callId) return;
+
+      try {
+        await _signalRService.sendSfuIceCandidate(callId, candidatePayload);
+        return;
+      } catch (e) {
+        print('⚠️ 发送 SFU ICE 候选失败：第 $attempt/$_sfuOfferMaxAttempts 次，$e');
+        if (attempt < _sfuOfferMaxAttempts) {
+          await Future<void>.delayed(_sfuRetryBackoff[attempt - 1]);
+        }
+      }
+    }
+    print('⚠️ SFU ICE 候选发送已放弃：$callId');
+  }
+
+  void _completeSfuAnswerWaiter(String callId) {
+    final answerWaiter = _sfuAnswerWaiters[callId];
+    if (answerWaiter != null && !answerWaiter.isCompleted) {
+      answerWaiter.complete();
+    }
+  }
+
+  void _clearSfuNegotiationState(String? callId) {
+    if (callId == null || callId.isEmpty) return;
+
+    final answerWaiter = _sfuAnswerWaiters.remove(callId);
+    if (answerWaiter != null && !answerWaiter.isCompleted) {
+      answerWaiter.completeError(StateError('通话已结束'));
+    }
+    _sfuAnswersApplied.remove(callId);
+    _sfuOfferStarted.remove(callId);
+    _callerOfferStarted.remove(callId);
+    _offersBeingHandled.remove(callId);
+    _acceptedCallIds.remove(callId);
+    _remoteDescriptionsSet.remove(callId);
+    _pendingIceCandidates.remove(callId);
   }
 
   // 处理ICE候选

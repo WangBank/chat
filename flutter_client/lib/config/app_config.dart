@@ -7,8 +7,15 @@ class AppConfig {
   static const String _configuredSignalRUrl = String.fromEnvironment(
     'SIGNALR_HUB_URL',
   );
+  // 更新清单默认走产品域名：CI 会把 GitHub Release 的 APK 与清单同步到网站容器，
+  // 国内网络可以直接下载；GitHub 仅作为兜底来源保留。
   static const String updateManifestUrl = String.fromEnvironment(
     'ANDROID_UPDATE_MANIFEST_URL',
+    defaultValue:
+        'https://chat.wangbank.top/download/android-version.json',
+  );
+  static const String updateManifestFallbackUrl = String.fromEnvironment(
+    'ANDROID_UPDATE_MANIFEST_FALLBACK_URL',
     defaultValue:
         'https://github.com/WangBank/chat/releases/latest/download/android-version.json',
   );

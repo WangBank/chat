@@ -20,8 +20,8 @@ chat/
 ### 后端
 
 - .NET 10 / C# latest
-- ASP.NET Core Web API
-- Entity Framework Core 10 + Npgsql
+- ASP.NET Core Web API（运行时包 10.0.12）
+- Entity Framework Core 10.0.12 + Npgsql 10
 - PostgreSQL
 - SignalR
 - JWT + BCrypt
@@ -30,23 +30,21 @@ chat/
 
 ### Web 客户端
 
-- React 19
+- React 19.3
 - TypeScript 6.0
-- Vite 8
-- Ant Design 6
-- MobX
-- Axios
-- SignalR Client
+- Vite 8.3
+- Ant Design 6.6
+- MUI 9.4
+- MobX 7
+- Axios 1.20
+- SignalR Client 10
 - WebRTC
 
 ### Flutter 客户端
 
-- Flutter 3.44
-- Dart 3.12
-- Android Gradle Plugin 9
-- Gradle 9
-- Kotlin 2.3
-- flutter_webrtc
+- Flutter 3.47（Dart 3.13）
+- Android Gradle Plugin 9.0.1 / Gradle 9.1 / Kotlin 2.3 / compileSdk 37
+- flutter_webrtc 1.6
 - signalr_netcore
 - shared_preferences
 - sqflite
@@ -181,6 +179,15 @@ Android GitHub Release 一键发布：
 ```bash
 ./scripts/release-android-apk.sh --dry-run
 ```
+
+发布完成后，`Sync Android APK` workflow 会在部署服务器上把同一个签名 APK 同步到产品域名，国内网络可直接下载：
+
+```text
+https://chat.wangbank.top/download/android
+https://chat.wangbank.top/download/android-version.json
+```
+
+GitHub Release 仍是唯一构建产物来源；网站 `/download/android` 在同步文件缺失时会 302 回退到 GitHub Release，App 内更新也会在清单里按 `apkUrl → mirrors` 顺序回退。
 
 ## 主要 API
 

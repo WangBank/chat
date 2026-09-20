@@ -16,6 +16,13 @@ const chatPage = read('website/src/pages/ChatPage.tsx');
 const program = read('backend/Program.cs');
 const userModel = read('backend/Models/DatabaseModels.cs');
 const migration = read('backend/Migrations/20260826082007_AddEmailVerificationStatus.cs');
+const webServer = read('website/server.mjs');
+const webAppConfig = read('website/src/config/app.config.ts');
+const flutterAppConfig = read('flutter_client/lib/config/app_config.dart');
+const flutterUpdateService = read('flutter_client/lib/services/app_update_service.dart');
+const apkSyncScript = read('scripts/sync-android-release.ps1');
+const apkSyncWorkflow = read('.github/workflows/sync-android-apk.yml');
+const composeFile = read('docker-compose.yml');
 
 assert.match(
   backendWebRtc,
@@ -54,5 +61,64 @@ assert.match(program, /\["\.m4a"\]\s*=\s*"audio\/mp4"/);
 
 assert.match(userModel, /DateTime\?\s+email_verified_at/);
 assert.match(migration, /name:\s*"email_verified_at"/);
+
+// Android APK download contract: GitHub Releases stays the source of truth, the
+// website container republishes the same file on the product domain, and every
+// client points at that domain with the GitHub Release as fallback.
+assert.match(
+  webServer,
+  /'\/download\/android'/,
+  'Website server must serve /download/android from the synced downloads directory.',
+);
+assert.match(
+  webServer,
+  /'\/download\/android-version\.json'/,
+  'Website server must serve /download/android-version.json from the synced downloads directory.',
+);
+assert.match(
+  webServer,
+  /process\.env\.APK_FALLBACK_BASE_URL/,
+  'Website server must keep a configurable GitHub fallback for missing APK files.',
+);
+assert.match(
+  webAppConfig,
+  /return '\/download\/android';/,
+  'Web production build must download the APK from the same origin.',
+);
+assert.match(
+  flutterAppConfig,
+  /defaultValue:\s*\n?\s*'https:\/\/chat\.wangbank\.top\/download\/android-version\.json'/,
+  'Flutter default update manifest must point at the product domain.',
+);
+assert.match(
+  flutterAppConfig,
+  /updateManifestFallbackUrl/,
+  'Flutter must keep the GitHub manifest as fallback.',
+);
+assert.match(
+  flutterUpdateService,
+  /json\['mirrors'\]/,
+  'Flutter update service must read the manifest mirrors list.',
+);
+assert.match(
+  flutterUpdateService,
+  /for \(final url in manifest\.downloadUrls\)/,
+  'Flutter update service must retry the download through every mirror.',
+);
+assert.match(
+  apkSyncScript,
+  /\$manifest\.apkUrl = "\$publicBase\/download\/android"/,
+  'Sync script must rewrite apkUrl to the product domain.',
+);
+assert.match(
+  apkSyncWorkflow,
+  /self-hosted, Windows, X64, local-docker/,
+  'APK sync workflow must run on the deployment host runner.',
+);
+assert.match(
+  composeFile,
+  /target: \/app\/downloads/,
+  'Website container must mount the synced downloads directory.',
+);
 
 console.log('Cross-platform protocol and media contracts passed.');

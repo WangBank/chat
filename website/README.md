@@ -13,7 +13,7 @@ Web 客户端是基于 React、Vite、TypeScript、MobX 和 Ant Design 的即时
 - Microsoft SignalR Client
 - WebRTC
 
-`typescript@7` 当前不满足 `typescript-eslint@8.65.0` 的 peer dependency，因此本项目使用 `typescript@6.0.3` 作为当前可解析的最高版本。
+`typescript@7` 当前不满足 `typescript-eslint@8.70.0` 的 peer dependency（要求 `<6.1.0`），因此本项目使用 `typescript@6.0.3` 作为当前可解析的最高版本。
 
 ## 开发命令
 

@@ -128,6 +128,14 @@ services:
     restart: unless-stopped
     environment:
       API_PROXY_TARGET: ${API_PROXY_TARGET:-http://api:17101}
+      # Android artifacts synced from GitHub Releases are served by /download/*.
+      DOWNLOADS_DIR: /app/downloads
+      APK_FALLBACK_BASE_URL: ${APK_FALLBACK_BASE_URL:-https://github.com/WangBank/chat/releases/latest/download}
+    volumes:
+      - type: bind
+        source: ${WEB_DOWNLOADS_DIR:-./.docker/web/downloads}
+        target: /app/downloads
+        read_only: true
     depends_on:
       - api
     ports:
