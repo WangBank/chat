@@ -1,190 +1,73 @@
-# Forever Love Chat local Docker deployment
+# Forever Love Chat 发布流程
 
-This repository deploys the ASP.NET Core API, React website, and PostgreSQL to
-local Docker. The API and website ports are published on `0.0.0.0` by default so
-LAN devices and externally routed traffic can reach them.
+本文档覆盖 Docker 服务发布、GitHub Actions 自托管部署、Android APK 发布与同步，以及音视频 SFU/TURN 的生产配置。产品能力说明见[功能说明](README.md)。
 
-## Local deploy
+## 发布前检查
+
+1. 在 `main` 分支确认改动已提交并已推送。
+2. 按改动范围运行构建和测试：后端使用 `dotnet build`，Web 使用 `npm run build` 与 `npm run test:contracts`，Flutter 使用 `flutter test` 和 `flutter build apk --debug`。
+3. 确认发布主机安装 Docker Desktop/Compose，并已注册带有 `local-docker` 标签的 Windows self-hosted runner。
+4. 不要把数据库密码、JWT、QQ App Key、邮箱授权码、签名密钥或 TURN 凭据提交到仓库。
+
+## Docker 服务发布
+
+### 首次发布
+
+在 Windows 发布主机的仓库根目录执行：
 
 ```powershell
 .\scripts\deploy-local.ps1
 ```
 
-The first run creates a shared local env file at
-`%USERPROFILE%\.foreverlove-chat\foreverlove-chat.env` with generated secrets.
-All checkouts and the self-hosted runner reuse that file, so the Docker database
-password stays stable across deployments. Override the location with
-`FOREVERLOVE_CHAT_ENV_FILE` when needed.
+脚本会：
 
-Uploaded avatars, chat images, and chat files should be kept outside the GitHub
-Actions checkout directory. The default local env file points them at
-`%USERPROFILE%\.foreverlove-chat\storage`, so `actions/checkout` cannot delete
-user uploads during CI deploys. The website container also proxies `/avatar/*`
-and `/chat-files/*` to the API container, so media files still load when those
-paths are routed to the website service by a tunnel or reverse proxy.
+1. 创建或复用 `%USERPROFILE%\.foreverlove-chat\foreverlove-chat.env`。
+2. 创建/复用 PostgreSQL，构建 API 和 Web 镜像，并启动 Docker Compose。
+3. 在替换已有 PostgreSQL 容器前执行 `pg_dump -Fc` 备份。
+4. 等待健康检查完成并输出网站、API 和 Flutter 使用的地址。
 
-The script builds both images, starts Docker Compose, waits for health checks,
-and prints the URLs to use from the website and Flutter.
+默认地址如下：
 
-Before starting the new Docker Compose deployment, the script backs up the
-current PostgreSQL database when an existing PostgreSQL container is present.
-Backups are stored in
-`%USERPROFILE%\.foreverlove-chat\backups` by default. The retention policy keeps
-at most two backups per day and only the latest two calendar days.
+| 服务 | 默认地址 |
+| --- | --- |
+| 网站 | `http://<LAN-IP>:17102` |
+| API | `http://<LAN-IP>:17101` |
+| API 健康检查 | `http://localhost:17101/health` |
+| Swagger | `http://localhost:17101/swagger` |
+| 版本信息 | `http://localhost:17101/api/system/version` |
 
-Default endpoints:
+文件上传、日志、下载文件和备份默认保存在 `%USERPROFILE%\.foreverlove-chat\storage` 与 `%USERPROFILE%\.foreverlove-chat\backups`，不放在 Actions checkout 中，避免部署检出时被删除。
 
-- Website: `http://<LAN-IP>:17102`
-- API: `http://<LAN-IP>:17101`
-- API health: `http://localhost:17101/health`
-- Version: `http://localhost:17101/api/system/version`
+### 公网地址
 
-For a public domain or router-forwarded address, set these before deploying:
-
-```powershell
-$env:WEB_PUBLIC_URL = "http://your-domain-or-public-ip:17102"
-$env:API_PUBLIC_URL = "http://your-domain-or-public-ip:17101"
-$env:SIGNALR_PUBLIC_URL = "http://your-domain-or-public-ip:17101/videocallhub"
-.\scripts\deploy-local.ps1
-```
-
-For Flutter builds, use:
-
-```powershell
-flutter run `
-  --dart-define=API_BASE_URL=http://your-domain-or-public-ip:17101/api `
-  --dart-define=SIGNALR_HUB_URL=http://your-domain-or-public-ip:17101/videocallhub
-```
-
-Opening the ports to the public internet still requires Windows Firewall,
-router/NAT forwarding, or a reverse proxy/tunnel outside this repository.
-
-## Reliable mobile calls (TURN)
-
-Direct WebRTC works only while the two devices can find a peer-to-peer route.
-For calls between mobile networks, different Wi-Fi networks, or restrictive
-NATs, configure a TURN relay. The API returns the relay only when all three
-`WEBRTC_TURN_*` values are present; it never stores them in the mobile app.
-
-The Compose stack includes the maintained open-source `coturn/coturn` image as
-an optional `turn` profile. On the public relay host, add the following to the
-protected shared environment file (or supply the same values as GitHub Actions
-variables and secrets):
+使用域名、反向代理或路由器端口映射时，在受保护环境文件中配置：
 
 ```dotenv
-COMPOSE_PROFILES=turn
-TURN_EXTERNAL_IP=PUBLIC_IPV4_OF_THIS_HOST
-TURN_REALM=turn.wangbank.top
-TURN_PORT=3478
-TURN_RELAY_MIN_PORT=49160
-TURN_RELAY_MAX_PORT=49200
-WEBRTC_TURN_URL=turn:turn.wangbank.top:3478?transport=udp
-WEBRTC_TURN_USERNAME=TURN_USERNAME
-WEBRTC_TURN_CREDENTIAL=TURN_PASSWORD
+WEB_PUBLIC_URL=https://chat.example.com
+API_PUBLIC_URL=https://chat.example.com
+SIGNALR_PUBLIC_URL=https://chat.example.com/videocallhub
 ```
 
-Treat the username and credential as secrets. In GitHub Actions, set
-`WEBRTC_TURN_URL`, `COMPOSE_PROFILES`, `TURN_EXTERNAL_IP`, `TURN_REALM`, and
-the port settings as repository variables; set `WEBRTC_TURN_USERNAME` and
-`WEBRTC_TURN_CREDENTIAL` as repository secrets. The deployment workflow passes
-them to both the API and the optional TURN container without writing them to the
-repository.
+外网访问还需要由 Windows 防火墙、云安全组、路由器或反向代理放行 HTTP/HTTPS。Web 端会代理 `/avatar/*` 和 `/chat-files/*` 到 API，保证这些媒体路径经过网站域名时仍能正常访问。
 
-Use a dedicated hostname such as `turn.wangbank.top` with a DNS-only record
-pointing to the relay's public IPv4. Do not put that hostname behind an HTTP
-proxy or Cloudflare proxy: TURN relays require direct UDP/TCP forwarding and
-the `chat.wangbank.top` web hostname can remain independently proxied.
+### 关键变量
 
-Open or forward TCP and UDP port `3478`, plus UDP ports `49160-49200`, to the
-Docker host. `TURN_EXTERNAL_IP` must be the public address seen by mobile
-clients rather than a LAN or Docker bridge address. After deployment, verify
-that the response includes a `turn:` URL without printing credentials:
+在共享环境文件或 GitHub Actions 的变量/密钥中配置。密钥应使用 GitHub Secrets 或发布主机的受保护环境文件：
 
-```bash
-curl -fsS https://chat.wangbank.top/api/system/webrtc-config \
-  | jq '[.ice_servers[] | .urls] | flatten | map(select(startswith("turn:"))) | length'
-```
+| 分类 | 变量 |
+| --- | --- |
+| 必需密钥 | `JWT_SECRET`、`POSTGRES_PASSWORD` |
+| QQ 登录 | `QQ__ClientId`、`QQ__ClientSecret`、`QQ__RedirectUri`、`QQ__AllowMockLogin` |
+| 邮件 | `Email__SmtpHost`、`Email__SmtpPort`、`Email__EnableSsl`、`Email__Username`、`Email__Password`、`Email__FromEmail`、`Email__FromName`、`Email__PasswordResetBaseUrl` |
+| 管理员与 CORS | `ADMIN_EMAILS`、`VITE_ADMIN_EMAILS`、`EXTRA_CORS_ORIGIN` |
+| 存储与备份 | `API_LOGS_DIR`、`API_AVATAR_DIR`、`API_CHAT_FILES_DIR`、`POSTGRES_BACKUP_*` |
+| 地址与端口 | `API_PORT`、`WEB_PORT`、`API_PUBLIC_URL`、`WEB_PUBLIC_URL`、`SIGNALR_PUBLIC_URL` |
 
-The expected result is at least `1`. Then place two physical phones on
-different networks (for example Wi-Fi and mobile data), complete a video and a
-voice call in both directions, and confirm each side receives remote audio and
-video.
+QQ 邮箱 `Email__Password` 使用邮箱授权码，不是 QQ 登录密码。
 
-## Version control
+### 数据库恢复
 
-`VERSION` is the base SemVer version. Local deploys append a local build suffix.
-GitHub Actions deploys append the run number and short commit SHA:
-
-```text
-1.0.0+<github-run-number>.<short-sha>
-```
-
-The resolved version is passed to:
-
-- API image labels and `/api/system/version`
-- Website image labels and `APP_CONFIG.VERSION`
-- Docker image tags, sanitized for Docker tag rules
-
-## GitHub Actions CI/CD
-
-The workflow `.github/workflows/deploy-local-docker.yml` runs on pushes to
-`main` and on manual `workflow_dispatch`. Because GitHub-hosted runners cannot
-access Docker Desktop on this computer, the workflow requires a self-hosted
-Windows runner registered to this repository with the label `local-docker`.
-
-Recommended GitHub repository settings:
-
-- Secrets: `JWT_SECRET`, `POSTGRES_PASSWORD`, `QQ_CLIENT_ID`, `QQ_CLIENT_SECRET`,
-  `EMAIL_PASSWORD`
-- Variables: `API_PUBLIC_URL`, `WEB_PUBLIC_URL`, `SIGNALR_PUBLIC_URL`, `QQ_REDIRECT_URI`,
-  `ADMIN_EMAILS`, `VITE_ADMIN_EMAILS`, `EMAIL_USERNAME`, `EMAIL_FROM_EMAIL`,
-  `EMAIL_PASSWORD_RESET_BASE_URL`
-- Optional variables: `POSTGRES_PORT`, `API_PORT`, `WEB_PORT`, `EXTRA_CORS_ORIGIN`,
-  `QQ_ALLOW_MOCK_LOGIN`, `EMAIL_SMTP_HOST`, `EMAIL_SMTP_PORT`, `EMAIL_ENABLE_SSL`,
-  `EMAIL_FROM_NAME`, `EMAIL_PASSWORD_RESET_TOKEN_MINUTES`, `SWAGGER_ENABLED`,
-  `USE_HTTPS_REDIRECTION`, `POSTGRES_CONTAINER`, `POSTGRES_BACKUP_ENABLED`,
-  `POSTGRES_BACKUP_DIR`, `POSTGRES_BACKUP_RETENTION_DAYS`,
-  `POSTGRES_BACKUP_MAX_PER_DAY`
-
-If secrets are not configured, `scripts/deploy-local.ps1` uses the shared local
-env file on the self-hosted runner machine.
-
-For the local self-hosted deployment, keep QQ OAuth values in the shared local
-env file instead of committed appsettings files:
-
-```text
-%USERPROFILE%\.foreverlove-chat\foreverlove-chat.env
-```
-
-Use ASP.NET Core environment variable names:
-
-```dotenv
-QQ__ClientId=QQ_APP_ID
-QQ__ClientSecret=QQ_APP_KEY
-QQ__RedirectUri=https://chat.wangbank.top/qq-callback
-QQ__AllowMockLogin=false
-API_LOGS_DIR=C:\Users\YOUR_USER\.foreverlove-chat\storage\logs
-API_AVATAR_DIR=C:\Users\YOUR_USER\.foreverlove-chat\storage\avatar
-API_CHAT_FILES_DIR=C:\Users\YOUR_USER\.foreverlove-chat\storage\chat-files
-ADMIN_EMAILS=1224327326@qq.com
-VITE_ADMIN_EMAILS=1224327326@qq.com
-Email__SmtpHost=smtp.qq.com
-Email__SmtpPort=587
-Email__EnableSsl=true
-Email__Username=1224327326@qq.com
-Email__Password=QQ_MAIL_AUTHORIZATION_CODE
-Email__FromEmail=1224327326@qq.com
-Email__FromName=Forever Love
-Email__PasswordResetBaseUrl=https://chat.wangbank.top/reset-password
-Email__PasswordResetTokenMinutes=30
-POSTGRES_BACKUP_ENABLED=true
-POSTGRES_BACKUP_DIR=C:\Users\YOUR_USER\.foreverlove-chat\backups
-POSTGRES_BACKUP_RETENTION_DAYS=2
-POSTGRES_BACKUP_MAX_PER_DAY=2
-```
-
-To restore a `.dump` backup manually, stop the API first, copy the dump into the
-PostgreSQL container, and run `pg_restore`:
+先停止 API，确认目标备份文件后再恢复：
 
 ```powershell
 docker compose --project-name foreverlove-chat stop api
@@ -194,117 +77,139 @@ docker exec foreverlove-chat-postgres rm -f /tmp/restore.dump
 docker compose --project-name foreverlove-chat up -d api website
 ```
 
-## Register the local runner
+## 自动部署
 
-In GitHub, open:
+`.github/workflows/deploy-local-docker.yml` 会在推送 `main` 或手工运行时，使用标签为 `self-hosted, Windows, X64, local-docker` 的 runner 执行 `scripts/deploy-local.ps1`。
+
+发布版本格式为：
 
 ```text
-Settings -> Actions -> Runners -> New self-hosted runner -> Windows x64
+<VERSION>+<GitHub Run Number>.<短提交 SHA>
 ```
 
-Copy the generated registration token from the configure command, then run:
+该版本会写入 API `/api/system/version`、网站运行时配置和镜像标签。部署完成后检查 Actions summary、健康检查、网站登录、消息收发和关键媒体路径。
+
+### 注册自托管 runner
+
+在 GitHub 仓库的 `Settings -> Actions -> Runners -> New self-hosted runner -> Windows x64` 获取注册 token，然后在发布主机执行：
 
 ```powershell
 .\scripts\register-github-runner.ps1 -Token "TOKEN_FROM_GITHUB" -Start
 ```
 
-This creates a separate runner in `%USERPROFILE%\actions-runner-chat`, leaving
-any existing runner directories untouched. Keep the runner running for automatic
-deployments, or install it as a service from the runner directory using the
-current GitHub runner instructions shown on the GitHub setup page.
+该脚本使用 `%USERPROFILE%\actions-runner-chat`，不会覆盖其他 runner 目录。
 
-## Android APK downloads from mainland China
+## Android APK 发布
 
-GitHub Releases stays the source of truth for the signed APK, but
-`github.com/.../releases/download/...` is unreliable from mainland China. The
-deployment therefore republishes the exact same APK on the product domain:
+### 前置配置
 
-| URL | Served by | Behaviour |
-| --- | --- | --- |
-| `/download/android` | website container | Synced APK with `Content-Disposition: attachment`, ETag and byte-range (resume) support |
-| `/download/android-version.json` | website container | Update manifest whose `apkUrl` points at the product domain |
+在 GitHub Secrets 配置以下签名变量：
 
-Both routes answer with a `302` redirect to the GitHub Release when the synced
-file is missing, so existing links keep working before the first sync.
-
-### How the files get there
-
-`scripts/sync-android-release.ps1` downloads the latest release assets, verifies
-the APK size and SHA256 against the published manifest, and writes
-`LoveChat-Android.apk` plus `android-version.json` into the downloads directory
-(`WEB_DOWNLOADS_DIR`, default `%USERPROFILE%\.foreverlove-chat\storage\downloads`).
-`docker-compose.yml` bind-mounts that directory into the website container at
-`/app/downloads`, so no image rebuild is needed for a new APK.
-
-`.github/workflows/sync-android-apk.yml` runs the script on the self-hosted
-deployment runner after every `Android Release APK` run, once a day, and on
-demand. Manual run:
-
-```powershell
-.\scripts\sync-android-release.ps1
+```text
+ANDROID_KEYSTORE_BASE64
+ANDROID_KEYSTORE_PASSWORD
+ANDROID_KEY_ALIAS
+ANDROID_KEY_PASSWORD
 ```
 
-Optional repository variables: `WEB_DOWNLOADS_DIR` (override the directory),
-`APK_PUBLIC_BASE_URL` (default `https://chat.wangbank.top`) and
-`APK_ASSET_MIRROR_PREFIX` (prefix a download accelerator such as
-`https://gh-proxy.com` when this host cannot reach GitHub reliably).
+可选 GitHub Variables：
 
-Existing installs keep the manifest URL that was compiled into them, so APKs
-released before this change still check GitHub until the user installs a build
-made after it. Point those users at the website download button, which already
-uses the product domain.
+```text
+ANDROID_API_BASE_URL
+ANDROID_SIGNALR_HUB_URL
+ANDROID_MIN_SUPPORTED_VERSION_CODE
+ANDROID_UPDATE_MANDATORY
+```
 
-The web client uses the same-origin `/download/android` link in production
-(`VITE_APK_DOWNLOAD_URL` overrides it) and the Flutter updater reads
-`https://chat.wangbank.top/download/android-version.json`, falling back to the
-GitHub manifest and then to every `mirrors` entry in the manifest.
+### 一键发布
 
-### Other free options
+在干净的 `main` 分支执行：
 
-1. **Own domain (implemented, recommended)** - no extra cost: server, domain and
-   tunnel already exist and the traffic stays inside the deployment.
-2. **Public GitHub accelerators** - nothing to deploy; set
-   `APK_ASSET_MIRROR_PREFIX` (or `VITE_APK_DOWNLOAD_URL` /
-   `--dart-define=ANDROID_UPDATE_MANIFEST_URL=...`) to a mirror such as
-   `https://gh-proxy.com/https://github.com/...`. Third-party mirrors come and
-   go, so keep them as a fallback instead of the only path.
-3. **Cloudflare R2** - the free tier includes 10 GB of storage and no egress
-   fees and can be published on the domain that already uses Cloudflare; needs a
-   bucket plus upload credentials in CI.
-4. **Domestic code hosting releases** (GitCode/AtomGit; Gitee for open source,
-   100 MB attachment limit) - fast in China, but needs another account, an API
-   token and an extra upload step per release.
-5. **Domestic object storage free tiers** (Qiniu/Upyun/Tencent COS trials) -
-   require an ICP-registered custom domain and expire when the trial ends.
+```bash
+./scripts/release-android-apk.sh --yes
+```
 
-### Verifying
+脚本会递增 `flutter_client/pubspec.yaml` 的版本和 build number，提交并推送版本变更，运行本地 Debug APK 预检查，然后手动触发 `Android Release APK` 工作流。工作流构建签名 APK、校验非 debug 签名、生成 SHA256 和 `android-version.json`，最后创建 GitHub Release。
+
+常用命令：
+
+```bash
+./scripts/release-android-apk.sh --dry-run
+./scripts/release-android-apk.sh --bump minor --yes
+./scripts/release-android-apk.sh --version 1.2.0 --version-code 12 --yes
+```
+
+注意：推送到 `main` 的 Android 工作流只构建 artifact；只有 `workflow_dispatch` 才会发布 GitHub Release。一键脚本会完成两步，因此不要只依赖推送构建作为正式发布。
+
+发布后确认：
+
+1. GitHub Release 中包含 `LoveChat-Android.apk` 与 `android-version.json`。
+2. `apksigner` 验证输出不是 Android Debug 证书。
+3. APK SHA256 与清单中的 `sha256` 一致。
+4. 清单中的版本号与 `pubspec.yaml` 的版本一致。
+
+## Android 国内下载同步
+
+GitHub Release 是签名 APK 的唯一构建来源。`Sync Android APK` 工作流在 Android 发布成功后、每天定时或手工触发时，在发布主机运行 `scripts/sync-android-release.ps1`：
+
+1. 下载最新 Release 的 APK 和清单。
+2. 校验文件大小和 SHA256。
+3. 写入 `WEB_DOWNLOADS_DIR`（默认 `%USERPROFILE%\.foreverlove-chat\storage\downloads`）。
+4. 改写清单的 `apkUrl`，使其指向产品域名。
+
+网站容器把该目录挂载为 `/app/downloads`，并提供：
+
+```text
+https://chat.wangbank.top/download/android
+https://chat.wangbank.top/download/android-version.json
+```
+
+下载路由支持附件下载、ETag、Range 续传；同步文件缺失时会 302 回退到 GitHub Release。Flutter 更新器按 `apkUrl`、`apkFallbackUrl` 和 `mirrors` 顺序重试下载。
+
+可选变量：`WEB_DOWNLOADS_DIR`、`APK_PUBLIC_BASE_URL`、`APK_ASSET_MIRROR_PREFIX`。同步后验证：
 
 ```powershell
 curl.exe -I https://chat.wangbank.top/download/android
 curl.exe -s https://chat.wangbank.top/download/android-version.json
 ```
 
-The served APK must keep the SHA256 published in the manifest; the sync script
-refuses to publish a file whose size or checksum differs.
+## 音视频 SFU 与 TURN
 
-## C# SFU media plane
+### SFU 公网配置
 
-The API now contains an SFU media plane backed by SIPSorcery. After a call is
-accepted, each mobile client negotiates its own DTLS-SRTP PeerConnection with
-the API. The API decrypts each inbound packet, fans it out to the other legs,
-and encrypts it again; it does not decode or mix the media (MCU).
-
-This is independent of the optional coturn relay. A public server must expose
-the SFU UDP range and advertise its public IPv4 address:
+API 内置 SFU；客户端媒体直接连接到 API 的 UDP 端口，不经过 HTTP 反向代理。发布主机的受保护环境文件或 GitHub Variables 必须包含：
 
 ```dotenv
 WEBRTC_SFU_PUBLIC_IP=PUBLIC_IPV4_OF_THIS_HOST
 WEBRTC_SFU_BIND_ADDRESS=0.0.0.0
 WEBRTC_SFU_PORT_MIN=40000
 WEBRTC_SFU_PORT_MAX=40100
+SFU_BIND_HOST=0.0.0.0
 ```
 
-Open/forward UDP `40000-40100` (or the configured range) to the API host. The
-HTTP reverse proxy is only used for REST and SignalR signalling; it cannot carry
-the SFU's UDP media sockets. The API logs active PeerConnection and forwarded
-RTP counts, but never logs SDP credentials or media contents.
+在 Windows 防火墙、云安全组和路由器/NAT 上，把 UDP `40000-40100`（或配置后的范围）转发到 API Docker 主机。修改变量后必须重新执行部署，让 Docker 容器重新创建并读取新环境。
+
+### 可选 TURN 中继
+
+公网 SFU 能覆盖普通网络；设备网络禁止 UDP 或 NAT 严格时，需要 TURN。Compose 提供可选的 `coturn/coturn` profile：
+
+```dotenv
+COMPOSE_PROFILES=turn
+TURN_EXTERNAL_IP=PUBLIC_IPV4_OF_THIS_HOST
+TURN_REALM=turn.example.com
+TURN_PORT=3478
+TURN_RELAY_MIN_PORT=49160
+TURN_RELAY_MAX_PORT=49200
+WEBRTC_TURN_URL=turn:turn.example.com:3478?transport=udp
+WEBRTC_TURN_USERNAME=TURN_USERNAME
+WEBRTC_TURN_CREDENTIAL=TURN_PASSWORD
+```
+
+`turn.example.com` 必须直接解析到 TURN 公网 IP，不能经过 HTTP/CDN 代理。放行 TCP/UDP `3478` 和 UDP `49160-49200`（或配置后的范围）。API 仅在 TURN URL、用户名和凭据均存在时才把 TURN 下发给客户端。
+
+### 发布后验证
+
+1. 登录后调用受鉴权的 `/api/system/webrtc-sfu-status`，确认端点可访问。
+2. 用一台 Wi-Fi 设备和一台移动数据设备，分别完成双向语音和视频通话。
+3. 服务端日志应显示两个 SFU PeerConnection 为 `connected`，且转发 RTP 计数递增。
+4. 配置 TURN 后确认 `/api/system/webrtc-config` 的 `ice_servers` 中含有 `turn:` URL；日志和命令输出不得暴露 TURN 密码。

@@ -1,231 +1,89 @@
-# Forever Love Chat
+# Forever Love Chat 功能说明
 
-Forever Love Chat 是一个即时通讯项目，包含 ASP.NET Core 后端、React Web 客户端和 Flutter 移动端客户端。核心功能包括账号注册登录、QQ 登录/绑定、联系人和好友申请、即时消息、消息引用、表情/GIF、图片文件发送、群聊、收藏、历史记录、语音通话、视频通话、通话记录、管理员后台和发布前数据库备份。
+Forever Love Chat 是一个跨平台即时通讯系统，包含 ASP.NET Core API、React Web
+客户端和 Flutter 移动端客户端。系统通过 REST API 处理业务数据，通过 SignalR
+保持在线状态与推送实时事件；语音和视频通话由 API 承担 SFU 媒体转发。
 
-## 项目结构
+发布、环境变量、Docker、Android APK 和 SFU/TURN 的操作步骤见
+[发布流程](DEPLOYMENT.md)。
 
-```text
-chat/
-├── backend/          # ASP.NET Core API、SignalR Hub、EF Core 数据访问
-├── website/          # React + Vite Web 客户端
-├── flutter_client/   # Flutter 移动端客户端
-├── README.md         # 项目介绍
-└── PROGRESS.md       # 项目进度
-```
+## 系统组成
 
-每个子项目只保留一个 `README.md` 和一个 `PROGRESS.md` 作为项目文档。
+| 组件 | 职责 |
+| --- | --- |
+| `backend/` | API、SignalR Hub、PostgreSQL 数据访问、文件存储、通话记录与 SFU 媒体转发 |
+| `website/` | Web 聊天、好友、群聊、收藏、音视频通话、管理员后台与 APK 下载页面 |
+| `flutter_client/` | Android/iOS 聊天、联系人、个人资料、实时状态、语音和视频通话、应用更新 |
 
-## 当前技术栈
+## 用户与资料
 
-### 后端
+- 用户名或邮箱注册、登录，注册后自动登录。
+- 邮箱验证码注册、忘记密码和重置密码。
+- QQ OAuth 登录和账号绑定；受控开发环境可启用 QQ dev-login/dev-bind。
+- 头像上传和展示；维护昵称、个性签名、性别、生日年份、国家、省份与城市。
+- 真实 QQ 授权会同步 QQ 接口实际返回的昵称、头像、性别和地区资料。
 
-- .NET 10 / C# latest
-- ASP.NET Core Web API（运行时包 10.0.12）
-- Entity Framework Core 10.0.12 + Npgsql 10
-- PostgreSQL
-- SignalR
-- JWT + BCrypt
-- Serilog
-- Swagger/OpenAPI
+## 好友与在线状态
 
-### Web 客户端
+- 搜索用户、发送附带验证消息的好友申请、接受或拒绝申请、清理已处理通知。
+- 联系人备注、删除和屏蔽；Web 端支持本地好友分组维护。
+- SignalR 推送在线状态，并通过心跳和应用回到前台后的重连维持移动端在线状态。
 
-- React 19.3
-- TypeScript 6.0
-- Vite 8.3
-- Ant Design 6.6
-- MUI 9.4
-- MobX 7
-- Axios 1.20
-- SignalR Client 10
-- WebRTC
+## 聊天与群聊
 
-### Flutter 客户端
+- 单聊和群聊支持文本、表情、GIF、图片、文件与语音类型消息。
+- 图片和文件上传、预览/下载链接、聊天列表、历史记录、消息已读/未读状态。
+- 消息引用会保存发送者、内容、类型和文件路径快照，原消息后续变化不影响引用摘要。
+- 群聊支持创建、成员、公告、备注、消息发送和历史记录。
+- 历史记录可按全部、图片、表情、文件和链接筛选。
 
-- Flutter 3.47（Dart 3.13）
-- Android Gradle Plugin 9.0.1 / Gradle 9.1 / Kotlin 2.3 / compileSdk 37
-- flutter_webrtc 1.6
-- signalr_netcore
-- shared_preferences
-- sqflite
+## 收藏与内容安全
 
-## 功能概览
+- 收藏聊天、媒体、文件、链接和笔记；支持备注、类型筛选、搜索、去重和删除。
+- 后端对用户名、资料、好友申请、聊天、群聊和收藏等用户输入执行敏感词检查。
+- 上传文件受类型限制，服务端校验外部 URL 与存储路径；接口使用 JWT 鉴权和基础安全响应头。
 
-- 账号体系：用户名/邮箱登录、注册后自动登录、忘记密码邮件、QQ OAuth 登录/绑定、受控 QQ dev-login、头像上传、自定义签名、性别、生日年份和地区资料。
-- 好友关系：搜索用户、发送好友申请、处理好友通知、清理已处理通知、联系人备注、屏蔽联系人、Web 端本地好友分组维护。
-- 聊天能力：单聊和群聊消息、消息引用快照、已读/未读状态、聊天列表、聊天历史、群聊历史、图片和文件上传、表情面板、Fluent UI Animated Emoji GIF 表情库。
-- 收藏能力：收藏聊天、媒体、文件、链接和笔记，支持按类型过滤和搜索。
-- 实时能力：SignalR 在线状态、心跳保活、语音/视频通话、WebRTC 信令和通话记录。
-- 安全能力：JWT + BCrypt、管理员邮箱配置、敏感词过滤、上传文件类型限制、存储路径校验、基础安全响应头。
-- 部署能力：Docker Compose 一键部署前后台和 PostgreSQL，GitHub Actions self-hosted runner 发布，发布前自动备份 PostgreSQL 并按保留策略清理旧备份。
+## 语音与视频通话
 
-## 快速启动
+- 一对一语音和视频通话，通话状态和历史记录写入后端。
+- SignalR 负责来电、接听、拒绝、结束与 WebRTC 信令；网络切换时自动重连并重新认证。
+- 双方各自与 API 建立 DTLS-SRTP PeerConnection。API 使用 SIPSorcery 解密收到的 RTP，转发给其他通话方后重新加密；不对音视频做解码或混音。
+- 客户端会缓存早到的 ICE 候选、重试短暂丢失的 SFU Offer 和 ICE 信令，并只应用一次 SFU Answer。
+- 公网 SFU 必须配置公网 IPv4 和 UDP 媒体端口；受限网络可使用可选 TURN 中继。具体配置见[发布流程](DEPLOYMENT.md#音视频-sfu-与-turn)。
 
-### 一键启动
+## 管理与可观测性
 
-根目录提供 `start.sh`，会自动确认 PostgreSQL 容器、启动后端，并按参数启动对应客户端：
+- 管理员可查看在线用户和分页用户列表，并创建、编辑用户或重置用户密码。
+- Swagger/OpenAPI 提供 API 浏览与调试入口。
+- Serilog 输出控制台和按日滚动的文件日志；SFU 记录 PeerConnection 状态和转发 RTP 计数，不记录 SDP 凭据或媒体内容。
 
-```bash
-./start.sh              # 默认启动后端 + Web
-./start.sh web          # 启动后端 + Web
-./start.sh android      # 启动后端 + Android
-./start.sh ios          # 启动后端 + iOS
-./start.sh mobile       # 启动后端 + Android + iOS
-./start.sh all          # 启动后端 + Web + Android + iOS
-./start.sh web android  # 可组合参数
-./start.sh prod android # Android 连接线上生产环境
-./start.sh prod ios     # iOS 连接线上生产环境
-```
+## 客户端差异
 
-Android 未检测到已连接设备时会自动启动第一台可用 Android AVD；iOS 未指定设备时会自动选择第一台受支持的 iOS 设备。常用参数可通过环境变量覆盖：
+| 能力 | Web | Flutter 移动端 |
+| --- | --- | --- |
+| 聊天、好友、群聊、收藏 | 支持 | 支持核心聊天、好友和群聊流程 |
+| 管理员后台 | 支持 | 不提供 |
+| APK 下载 | 产品域名下载页 | 应用内检查更新并按多个下载地址回退 |
+| 音视频通话 | 支持 | 支持 |
+| QQ 授权 | 浏览器回调登录 | 通过后端登录/绑定链路；真实移动端跳转取决于平台侧能力 |
 
-```bash
-ANDROID_DEVICE=emulator-5554 ./start.sh android
-ANDROID_EMULATOR=Pixel_9_Pro_XL_API_35 ./start.sh android
-AUTO_START_ANDROID_EMULATOR=0 ./start.sh android
-IOS_DEVICE="iPhone 16 Pro" ./start.sh ios
-FLUTTER_DEVICE_CONNECTION=attached ./start.sh mobile
-FRONTEND_PORT=5174 ./start.sh web
-SKIP_INSTALL=1 ./start.sh all
-APP_ENV=production ./start.sh android
-```
+## API 范围
 
-Android 模拟器默认使用 `http://10.0.2.2:17101/api` 访问本机后端，iOS 模拟器默认使用 `http://localhost:17101/api`。真机调试时请用电脑局域网 IP 覆盖：
+主要 API 按以下资源分组：
 
-```bash
-ANDROID_API_URL=http://192.168.1.10:17101/api \
-ANDROID_SIGNALR_URL=http://192.168.1.10:17101/videocallhub \
-./start.sh android
-```
+- `/api/auth`：认证、邮箱验证码、QQ 登录/绑定、密码和个人资料。
+- `/api/contacts`：联系人、好友申请、备注和屏蔽。
+- `/api/chat`：消息、上传、已读/未读、聊天列表和历史记录。
+- `/api/groups`：群聊、成员和群消息。
+- `/api/favorites`：收藏及笔记。
+- `/api/calls`：通话历史和群组通话房间。
+- `/api/admin`：管理员用户和在线状态管理。
+- `/api/system`：版本、WebRTC ICE 配置和受鉴权保护的 SFU 状态。
 
-线上生产环境地址为 `https://chat.wangbank.top`。手机端连接生产环境时使用：
+本地运行时可通过 `/swagger` 查看与当前代码一致的请求模型和完整接口清单。
 
-```bash
-./start.sh prod android
-./start.sh prod ios
-```
+## 第三方资源
 
-等价的显式配置：
-
-```bash
-ANDROID_API_URL=https://chat.wangbank.top/api \
-ANDROID_SIGNALR_URL=https://chat.wangbank.top/videocallhub \
-./start.sh android
-```
-
-### 1. PostgreSQL
-
-开发环境默认连接本机 `17132` 端口：
-
-```bash
-docker run --name foreverlove-chat-postgres \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=foreverlove_chat_dev \
-  -p 17132:5432 \
-  -d postgres:latest
-```
-
-如果容器已存在：
-
-```bash
-docker start foreverlove-chat-postgres
-```
-
-### 2. 后端
-
-```bash
-cd backend
-dotnet restore
-dotnet ef database update
-ASPNETCORE_ENVIRONMENT=Development dotnet run
-```
-
-后端默认监听 `http://localhost:17101`，Swagger 文档在 `http://localhost:17101/swagger`。
-
-### 3. Web 客户端
-
-```bash
-cd website
-npm install
-npm run dev
-```
-
-Vite 默认监听 `http://localhost:5173`。
-
-### 4. Flutter 客户端
-
-```bash
-cd flutter_client
-flutter pub get
-flutter run \
-  --dart-define=API_BASE_URL=https://chat.wangbank.top/api \
-  --dart-define=SIGNALR_HUB_URL=https://chat.wangbank.top/videocallhub
-```
-
-Android debug APK：
-
-```bash
-flutter build apk --debug
-```
-
-Android GitHub Release 一键发布：
-
-```bash
-./scripts/release-android-apk.sh --yes
-```
-
-脚本会自动把 `flutter_client/pubspec.yaml` 从 `X.Y.Z+N` 提升到 `X.Y.(Z+1)+(N+1)`，提交并推送版本号，然后触发 GitHub Actions 的 `Android Release APK` workflow 发布签名 APK。发布前预览可用：
-
-```bash
-./scripts/release-android-apk.sh --dry-run
-```
-
-发布完成后，`Sync Android APK` workflow 会在部署服务器上把同一个签名 APK 同步到产品域名，国内网络可直接下载：
-
-```text
-https://chat.wangbank.top/download/android
-https://chat.wangbank.top/download/android-version.json
-```
-
-GitHub Release 仍是唯一构建产物来源；网站 `/download/android` 在同步文件缺失时会 302 回退到 GitHub Release，App 内更新也会在清单里按 `apkUrl → mirrors` 顺序回退。
-
-## 主要 API
-
-- `POST /api/auth/register` - 用户注册
-- `POST /api/auth/login` - 用户登录
-- `GET /api/auth/qq/login-url` - 获取 QQ 授权地址
-- `POST /api/auth/qq/login` - QQ 登录
-- `POST /api/auth/qq/bind` - 绑定 QQ
-- `POST /api/auth/forgot-password` - 发送密码重置邮件
-- `POST /api/auth/reset-password` - 使用邮件 token 重置密码
-- `GET /api/auth/profile` - 获取用户信息
-- `PUT /api/auth/profile` - 更新头像、签名、性别、生日和地区等资料
-- `POST /api/auth/upload-avatar` - 上传头像
-- `GET /api/contacts` - 获取联系人
-- `POST /api/contacts` - 兼容旧客户端，发送好友申请，不直接添加联系人
-- `POST /api/contacts/friend-requests` - 发送好友申请
-- `PATCH /api/contacts/friend-requests/{requestId}` - 同意或拒绝好友申请
-- `PATCH /api/contacts/{contactId}/display-name` - 修改联系人备注
-- `POST /api/chat/send` - 发送消息
-- `POST /api/chat/upload` - 上传聊天图片或文件
-- `GET /api/chat/history/{contactId}` - 获取聊天记录
-- `GET /api/chat/chat-history` - 获取聊天列表和最近消息
-- `PATCH /api/chat/messages/{messageId}/read` - 标记消息已读
-- `GET /api/groups` - 获取群聊列表
-- `POST /api/groups` - 创建群聊
-- `GET /api/groups/{groupId}/messages` - 获取群聊消息
-- `POST /api/groups/{groupId}/messages` - 发送群聊消息
-- `GET /api/favorites` - 获取收藏
-- `POST /api/favorites` - 新增收藏
-- `GET /api/calls/history` - 获取通话记录
-- `POST /api/calls/rooms` - 创建群组通话房间
-
-## 子项目文档
-
-- [部署说明](DEPLOYMENT.md)
-- [后端说明](backend/README.md)
-- [后端进度](backend/PROGRESS.md)
-- [Web 客户端说明](website/README.md)
-- [Web 客户端进度](website/PROGRESS.md)
-- [Flutter 客户端说明](flutter_client/README.md)
-- [Flutter 客户端进度](flutter_client/PROGRESS.md)
+- 敏感词词库快照来自 [fwwdn/sensitive-stop-words](https://github.com/fwwdn/sensitive-stop-words)，采用 Apache-2.0；许可文本保留在 `backend/Data/sensitive-words/fwwdn-sensitive-stop-words/LICENSE.txt`。
+- Web 动态表情来自 Microsoft Fluent UI Animated Emoji，采用 MIT；许可文本保留在 `website/public/stickers/fluent-animated/LICENSE-MIT.txt`。
+- Flutter 默认头像由 DiceBear Adventurer API 生成。
