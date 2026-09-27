@@ -69,7 +69,7 @@ namespace VideoCallAPI.Models.DTOs
     public class EmailCodeCaptchaRequestDto
     {
         [Required(ErrorMessage = "图案校验用途不能为空")]
-        [RegularExpression("^(registration|change_email|change_password)$", ErrorMessage = "不支持的图案校验用途")]
+        [RegularExpression("^(registration|change_email|change_password|verify_email)$", ErrorMessage = "不支持的图案校验用途")]
         public string purpose { get; set; } = string.Empty;
 
         [EmailAddress(ErrorMessage = "邮箱格式不正确")]
@@ -99,6 +99,13 @@ namespace VideoCallAPI.Models.DTOs
         [EmailAddress(ErrorMessage = "邮箱格式不正确")]
         public string email { get; set; } = string.Empty;
 
+        [Required(ErrorMessage = "邮箱验证码是必填的")]
+        [RegularExpression(@"^\d{6}$", ErrorMessage = "邮箱验证码必须为6位数字")]
+        public string verification_code { get; set; } = string.Empty;
+    }
+
+    public class VerifyEmailDto
+    {
         [Required(ErrorMessage = "邮箱验证码是必填的")]
         [RegularExpression(@"^\d{6}$", ErrorMessage = "邮箱验证码必须为6位数字")]
         public string verification_code { get; set; } = string.Empty;

@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
+
 import '../config/app_config.dart';
 import '../models/call.dart';
 import '../models/user.dart';
@@ -68,6 +70,8 @@ class WebRTCVideoService extends ChangeNotifier {
     _setupSignalRHandlers();
     _initializeRenderers();
   }
+
+  int get signalRSessionGeneration => _signalRService.sessionGeneration;
 
   // Getters
   bool get isInitialized => _isInitialized;
@@ -142,11 +146,23 @@ class WebRTCVideoService extends ChangeNotifier {
   }
 
   // 初始化WebRTC服务
-  Future<void> initialize(String token, User user) async {
+  Future<void> initialize(
+    String token,
+    User user, {
+    int? expectedSignalRSessionGeneration,
+  }) async {
     try {
+      if (expectedSignalRSessionGeneration != null &&
+          expectedSignalRSessionGeneration !=
+              _signalRService.sessionGeneration) {
+        throw Exception('SignalR会话已变更');
+      }
       _currentUser = user;
-      await _signalRService.connect(token);
-      await _signalRService.authenticate(user.id);
+      await _signalRService.ensureConnectedAndAuthenticated(
+        token,
+        user.id,
+        expectedSessionGeneration: expectedSignalRSessionGeneration,
+      );
 
       // 预检查媒体权限
       try {
@@ -173,10 +189,25 @@ class WebRTCVideoService extends ChangeNotifier {
     }
   }
 
-  Future<void> ensureSignalRConnection(String token, User user) async {
+  Future<void> ensureSignalRConnection(
+    String token,
+    User user, {
+    bool forceReconnect = false,
+    int? expectedSignalRSessionGeneration,
+  }) async {
     try {
+      if (expectedSignalRSessionGeneration != null &&
+          expectedSignalRSessionGeneration !=
+              _signalRService.sessionGeneration) {
+        throw Exception('SignalR会话已变更');
+      }
       _currentUser = user;
-      await _signalRService.ensureConnectedAndAuthenticated(token, user.id);
+      await _signalRService.ensureConnectedAndAuthenticated(
+        token,
+        user.id,
+        forceReconnect: forceReconnect,
+        expectedSessionGeneration: expectedSignalRSessionGeneration,
+      );
 
       if (!_isInitialized) {
         _isInitialized = true;
@@ -214,11 +245,14 @@ class WebRTCVideoService extends ChangeNotifier {
       notifyListeners();
 
       // 来电侧：立即加入通话组，确保后续能收到 CallEnded 广播
-      _signalRService.joinCall(call.callId).then((_) {
-        print('🔗 已加入通话组(来电侧): ${call.callId}, user=${_currentUser?.id}');
-      }).catchError((e) {
-        print('❌ 加入通话组失败(来电侧): $e');
-      });
+      _signalRService
+          .joinCall(call.callId)
+          .then((_) {
+            print('🔗 已加入通话组(来电侧): ${call.callId}, user=${_currentUser?.id}');
+          })
+          .catchError((e) {
+            print('❌ 加入通话组失败(来电侧): $e');
+          });
     };
 
     _signalRService.onCallInitiated = (Call call) {
@@ -229,11 +263,14 @@ class WebRTCVideoService extends ChangeNotifier {
       onCallInitiated?.call(call);
       notifyListeners();
 
-      _signalRService.joinCall(call.callId).then((_) {
-        print('🔗 已加入通话组(主叫发起): ${call.callId}, user=${_currentUser?.id}');
-      }).catchError((e) {
-        print('❌ 加入通话组失败(主叫发起): $e');
-      });
+      _signalRService
+          .joinCall(call.callId)
+          .then((_) {
+            print('🔗 已加入通话组(主叫发起): ${call.callId}, user=${_currentUser?.id}');
+          })
+          .catchError((e) {
+            print('❌ 加入通话组失败(主叫发起): $e');
+          });
     };
 
     _signalRService.onCallAccepted = (callId) {
@@ -365,7 +402,8 @@ class WebRTCVideoService extends ChangeNotifier {
 
       // 🔧 关键修复：即使当前通话ID不匹配，如果 _localStream 存在，也要释放
       // 这可能是另一个浏览器/账号的结束事件，但摄像头仍被占用
-      final shouldRelease = _currentCall?.callId == callId ||
+      final shouldRelease =
+          _currentCall?.callId == callId ||
           _localStream != null ||
           _peerConnection != null;
 
@@ -476,9 +514,7 @@ class WebRTCVideoService extends ChangeNotifier {
 
   // 创建PeerConnection
   Future<RTCPeerConnection> _createPeerConnection() async {
-    final configuration = {
-      'iceServers': await _loadIceServers(),
-    };
+    final configuration = {'iceServers': await _loadIceServers()};
 
     final constraints = {
       'mandatory': {'OfferToReceiveAudio': true, 'OfferToReceiveVideo': true},
@@ -505,8 +541,9 @@ class WebRTCVideoService extends ChangeNotifier {
     // onTrack，也可能仍触发 Plan-B 的 onAddStream；两条路径都必须绑定到
     // 同一个 renderer，否则服务端已经转发 RTP 时客户端仍只看到自己。
     pc.onTrack = (RTCTrackEvent event) async {
-      MediaStream? stream =
-          event.streams.isNotEmpty ? event.streams.first : _remoteStream;
+      MediaStream? stream = event.streams.isNotEmpty
+          ? event.streams.first
+          : _remoteStream;
       if (stream == null) {
         stream = await createLocalMediaStream(
           'remote-${_currentCall?.callId ?? 'call'}',
@@ -630,7 +667,7 @@ class WebRTCVideoService extends ChangeNotifier {
         final hasValidUrl = urls is String
             ? urls.isNotEmpty
             : urls is List &&
-                urls.any((value) => value is String && value.isNotEmpty);
+                  urls.any((value) => value is String && value.isNotEmpty);
         if (!hasValidUrl) continue;
 
         iceServers.add(Map<String, dynamic>.from(item));
@@ -1350,7 +1387,9 @@ class WebRTCVideoService extends ChangeNotifier {
   /// a small, bounded number of times: the SFU accepts repeated Offers and
   /// returns a fresh Answer, while the client applies that Answer only once.
   Future<void> _sendSfuOfferWithRetry(
-      String callId, String offerPayload) async {
+    String callId,
+    String offerPayload,
+  ) async {
     Object? lastError;
 
     for (var attempt = 1; attempt <= _sfuOfferMaxAttempts; attempt++) {
@@ -1383,7 +1422,8 @@ class WebRTCVideoService extends ChangeNotifier {
     }
 
     throw StateError(
-        'SFU 媒体协商在 $_sfuOfferMaxAttempts 次尝试后仍未收到 Answer：$lastError');
+      'SFU 媒体协商在 $_sfuOfferMaxAttempts 次尝试后仍未收到 Answer：$lastError',
+    );
   }
 
   Future<void> _sendSfuIceCandidateWithRetry(
@@ -1733,8 +1773,11 @@ class WebRTCVideoService extends ChangeNotifier {
   // 断开连接
   Future<void> disconnect() async {
     try {
-      await _endVideoCall();
+      // Invalidate the SignalR session before media cleanup. Camera/peer
+      // cleanup can await platform APIs; logout must not leave the old user
+      // eligible for reconnects during that window.
       await _signalRService.disconnect();
+      await _endVideoCall();
       _isInitialized = false;
       _currentCall = null;
       _isInCall = false;

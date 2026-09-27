@@ -60,6 +60,7 @@ namespace VideoCallAPI.Services
                 EmailVerificationPurpose.Registration => ("Forever Love 注册验证码", "注册 Forever Love 账号"),
                 EmailVerificationPurpose.ChangeEmail => ("Forever Love 修改邮箱验证码", "修改 Forever Love 登录邮箱"),
                 EmailVerificationPurpose.ChangePassword => ("Forever Love 修改密码验证码", "修改 Forever Love 登录密码"),
+                EmailVerificationPurpose.VerifyEmail => ("Forever Love 邮箱认证验证码", "认证 Forever Love 登录邮箱"),
                 _ => throw new ArgumentOutOfRangeException(nameof(purpose), purpose, "不支持的邮箱验证码用途")
             };
 

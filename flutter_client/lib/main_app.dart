@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import 'models/user.dart';
 import 'models/call.dart';
 import 'services/api_service.dart';
@@ -58,6 +59,11 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   bool _showingUpdateDialog = false;
   bool _serviceUnavailable = false;
   bool _retryingServiceConnection = false;
+  int _onlinePresenceRecoveryAttempt = 0;
+  Future<void>? _serviceRecoveryFuture;
+  int? _serviceRecoverySessionGeneration;
+  int? _serviceRecoveryUserId;
+  int _appSessionGeneration = 0;
   File? _pendingInstallApkFile;
   AppUpdateInfo? _pendingInstallUpdate;
   String? _visibleCallRouteName;
@@ -93,8 +99,20 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     _callManager = CallManager(_webRTCService);
     _updateService = AppUpdateService();
 
+    // Keep the maintenance overlay in sync with the actual SignalR lifecycle.
+    // A transport can recover after the original request failed, so relying
+    // only on the initial exception would leave the overlay stuck onscreen.
+    _signalRService.onConnectionLost = _onSignalRConnectionLost;
+    _signalRService.onConnectionRestored = _onSignalRConnectionRestored;
+
     // 监听CallManager状态变化
     _callManager.addListener(_onCallManagerChanged);
+  }
+
+  bool _isCurrentAppSession(int sessionGeneration, int userId) {
+    return mounted &&
+        sessionGeneration == _appSessionGeneration &&
+        _currentUser?.id == userId;
   }
 
   // 检查存储的登录凭据
@@ -105,7 +123,10 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         final user = await StorageService.getUser();
         final token = await StorageService.getToken();
 
-        if (user != null && token != null) {
+        if (user != null && token != null && mounted && _currentUser == null) {
+          final sessionGeneration = ++_appSessionGeneration;
+          final expectedSignalRSessionGeneration =
+              _signalRService.sessionGeneration;
           print('🔍 发现存储的登录信息，尝试自动登录');
           // 设置API服务的token和用户
           _apiService.setToken(token);
@@ -118,13 +139,18 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
 
           // 初始化WebRTC服务。失败时保留本地登录态，允许用户稍后重试连接。
           try {
-            await _callManager.initialize(token, user);
-            if (mounted) {
+            await _callManager.initialize(
+              token,
+              user,
+              expectedSignalRSessionGeneration:
+                  expectedSignalRSessionGeneration,
+            );
+            if (_isCurrentAppSession(sessionGeneration, user.id)) {
               setState(() => _serviceUnavailable = false);
             }
           } catch (e) {
             print('❌ 自动恢复实时连接失败: $e');
-            if (mounted) {
+            if (_isCurrentAppSession(sessionGeneration, user.id)) {
               setState(() => _serviceUnavailable = true);
             }
           }
@@ -136,6 +162,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   }
 
   void _onLoginSuccess(User user) async {
+    final sessionGeneration = ++_appSessionGeneration;
+    final expectedSignalRSessionGeneration = _signalRService.sessionGeneration;
     setState(() {
       _currentUser = user;
     });
@@ -150,34 +178,42 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       print('❌ 保存登录信息失败: $e');
     }
 
+    if (!_isCurrentAppSession(sessionGeneration, user.id)) return;
+
     // 初始化WebRTC服务。连接失败不清除登录信息，用户可以直接重试。
     try {
-      await _callManager.initialize(_apiService.token ?? '', user);
-      if (mounted) {
+      await _callManager.initialize(
+        _apiService.token ?? '',
+        user,
+        expectedSignalRSessionGeneration: expectedSignalRSessionGeneration,
+      );
+      if (_isCurrentAppSession(sessionGeneration, user.id)) {
         setState(() => _serviceUnavailable = false);
       }
     } catch (e) {
       print('❌ 登录后初始化实时连接失败: $e');
-      if (mounted) {
+      if (_isCurrentAppSession(sessionGeneration, user.id)) {
         setState(() => _serviceUnavailable = true);
       }
     }
   }
 
   Future<void> _restoreOnlinePresence() async {
-    if (_restoringOnlinePresence || _currentUser == null) {
+    if (!mounted || _restoringOnlinePresence || _currentUser == null) {
       return;
     }
 
+    final sessionGeneration = _appSessionGeneration;
+    final userId = _currentUser!.id;
+    final recoveryAttempt = ++_onlinePresenceRecoveryAttempt;
     _restoringOnlinePresence = true;
     try {
-      final token = _apiService.token ?? await StorageService.getToken();
-      if (token == null || token.isEmpty) {
-        return;
-      }
-
-      await _callManager.ensureOnline(token);
-      if (mounted) {
+      await _ensureServiceConnection(
+        forceReconnect: false,
+        sessionGeneration: sessionGeneration,
+        userId: userId,
+      );
+      if (_isCurrentAppSession(sessionGeneration, userId)) {
         setState(() {
           _serviceUnavailable = false;
           _contactsRefreshToken++;
@@ -187,26 +223,153 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       print('✅ App回到前台，在线状态已恢复');
     } catch (e) {
       print('❌ App回到前台恢复在线状态失败: $e');
-      if (mounted) {
+      if (_isCurrentAppSession(sessionGeneration, userId)) {
         setState(() => _serviceUnavailable = true);
       }
     } finally {
-      _restoringOnlinePresence = false;
+      if (recoveryAttempt == _onlinePresenceRecoveryAttempt) {
+        _restoringOnlinePresence = false;
+      }
+    }
+  }
+
+  void _onSignalRConnectionLost() {
+    if (!mounted || _currentUser == null) return;
+    if (!_serviceUnavailable) {
+      setState(() => _serviceUnavailable = true);
+    }
+  }
+
+  void _onSignalRConnectionRestored() {
+    if (!mounted || _currentUser == null) return;
+    setState(() {
+      _serviceUnavailable = false;
+      _contactsRefreshToken++;
+      _chatRefreshToken++;
+    });
+  }
+
+  Future<void> _ensureServiceConnection({
+    required bool forceReconnect,
+    required int sessionGeneration,
+    required int userId,
+  }) {
+    if (!_isCurrentAppSession(sessionGeneration, userId)) {
+      return Future<void>.error(Exception('登录会话已变更'));
+    }
+
+    final pending = _serviceRecoveryFuture;
+    if (pending != null) {
+      if (_serviceRecoverySessionGeneration != sessionGeneration ||
+          _serviceRecoveryUserId != userId) {
+        return Future<void>.error(Exception('正在恢复其他登录会话'));
+      }
+      if (forceReconnect) {
+        return _forceServiceRecoveryAfterPending(
+          pending,
+          sessionGeneration,
+          userId,
+        );
+      }
+      return pending;
+    }
+
+    final tokenFuture = _recoverServiceConnection(
+      forceReconnect,
+      sessionGeneration,
+      userId,
+    );
+    _serviceRecoveryFuture = tokenFuture;
+    _serviceRecoverySessionGeneration = sessionGeneration;
+    _serviceRecoveryUserId = userId;
+    return tokenFuture.whenComplete(() {
+      if (identical(_serviceRecoveryFuture, tokenFuture)) {
+        _serviceRecoveryFuture = null;
+        _serviceRecoverySessionGeneration = null;
+        _serviceRecoveryUserId = null;
+      }
+    });
+  }
+
+  Future<void> _forceServiceRecoveryAfterPending(
+    Future<void> pending,
+    int sessionGeneration,
+    int userId,
+  ) async {
+    try {
+      await pending;
+    } catch (e) {
+      // A manual retry should still get its own forced recovery attempt when
+      // the automatic foreground recovery failed.
+      print('⚠️ 等待当前服务恢复轮次结束后执行手动重试: $e');
+    }
+
+    if (!_isCurrentAppSession(sessionGeneration, userId)) {
+      throw Exception('登录会话已变更');
+    }
+
+    if (identical(_serviceRecoveryFuture, pending)) {
+      _serviceRecoveryFuture = null;
+      _serviceRecoverySessionGeneration = null;
+      _serviceRecoveryUserId = null;
+    }
+
+    final current = _serviceRecoveryFuture;
+    if (current != null) {
+      if (_serviceRecoverySessionGeneration != sessionGeneration ||
+          _serviceRecoveryUserId != userId) {
+        throw Exception('正在恢复其他登录会话');
+      }
+      return current;
+    }
+
+    return _ensureServiceConnection(
+      forceReconnect: true,
+      sessionGeneration: sessionGeneration,
+      userId: userId,
+    );
+  }
+
+  Future<void> _recoverServiceConnection(
+    bool forceReconnect,
+    int sessionGeneration,
+    int userId,
+  ) async {
+    final expectedSignalRSessionGeneration = _signalRService.sessionGeneration;
+    if (!_isCurrentAppSession(sessionGeneration, userId)) {
+      throw Exception('登录会话已变更');
+    }
+    final token = _apiService.token ?? await StorageService.getToken();
+    if (token == null || token.isEmpty) {
+      throw Exception('登录状态已失效，请重新登录');
+    }
+
+    if (!_isCurrentAppSession(sessionGeneration, userId)) {
+      throw Exception('登录会话已变更');
+    }
+    await _callManager.ensureOnline(
+      token,
+      forceReconnect: forceReconnect,
+      expectedSignalRSessionGeneration: expectedSignalRSessionGeneration,
+    );
+    if (!_isCurrentAppSession(sessionGeneration, userId)) {
+      throw Exception('登录会话已变更');
     }
   }
 
   Future<void> _retryServiceConnection() async {
     if (_retryingServiceConnection || _currentUser == null) return;
 
+    final sessionGeneration = _appSessionGeneration;
+    final userId = _currentUser!.id;
     setState(() => _retryingServiceConnection = true);
     try {
-      final token = _apiService.token ?? await StorageService.getToken();
-      if (token == null || token.isEmpty) {
-        throw Exception('登录状态已失效，请重新登录');
-      }
-
-      await _callManager.ensureOnline(token);
-      if (mounted) {
+      await _ensureServiceConnection(
+        forceReconnect: true,
+        sessionGeneration: sessionGeneration,
+        userId: userId,
+      );
+      if (_isCurrentAppSession(sessionGeneration, userId)) {
         setState(() {
           _serviceUnavailable = false;
           _contactsRefreshToken++;
@@ -215,11 +378,11 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       }
     } catch (e) {
       print('❌ 手动恢复服务连接失败: $e');
-      if (mounted) {
+      if (_isCurrentAppSession(sessionGeneration, userId)) {
         setState(() => _serviceUnavailable = true);
       }
     } finally {
-      if (mounted) {
+      if (_isCurrentAppSession(sessionGeneration, userId)) {
         setState(() => _retryingServiceConnection = false);
       }
     }
@@ -274,10 +437,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
                   ),
                   if (notes != null && notes.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    Text(
-                      notes,
-                      style: const TextStyle(height: 1.4),
-                    ),
+                    Text(notes, style: const TextStyle(height: 1.4)),
                   ],
                   if (isRequired) ...[
                     const SizedBox(height: 12),
@@ -341,10 +501,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
                     children: [
                       LinearProgressIndicator(value: progressValue),
                       const SizedBox(height: 12),
-                      Text(
-                        progressText,
-                        softWrap: true,
-                      ),
+                      Text(progressText, softWrap: true),
                     ],
                   ),
                 ),
@@ -449,10 +606,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
             content: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 360, maxHeight: 220),
               child: SingleChildScrollView(
-                child: Text(
-                  message,
-                  softWrap: true,
-                ),
+                child: Text(message, softWrap: true),
               ),
             ),
             actions: [
@@ -653,10 +807,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       route: MaterialPageRoute(
         fullscreenDialog: true,
         settings: const RouteSettings(name: _incomingCallRouteName),
-        builder: (context) => IncomingCallPage(
-          call: currentCall,
-          callManager: _callManager,
-        ),
+        builder: (context) =>
+            IncomingCallPage(call: currentCall, callManager: _callManager),
       ),
     );
   }
@@ -677,14 +829,14 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     _visibleCallRouteName = routeName;
     _visibleCallId = callId;
 
-    navigator.pushAndRemoveUntil(route, (route) => !_isCallRoute(route)).then(
-      (_) {
-        if (_visibleCallRouteName == routeName && _visibleCallId == callId) {
-          _visibleCallRouteName = null;
-          _visibleCallId = null;
-        }
-      },
-    );
+    navigator.pushAndRemoveUntil(route, (route) => !_isCallRoute(route)).then((
+      _,
+    ) {
+      if (_visibleCallRouteName == routeName && _visibleCallId == callId) {
+        _visibleCallRouteName = null;
+        _visibleCallId = null;
+      }
+    });
   }
 
   void _popVisibleCallRoutes() {
@@ -780,45 +932,62 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           borderRadius: BorderRadius.circular(18),
           borderSide: const BorderSide(color: _qqBlue, width: 1),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: _qqBlue,
           foregroundColor: Colors.white,
           elevation: 0,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: _qqBlue,
           foregroundColor: Colors.white,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       ),
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
           foregroundColor: const Color(0xFF26323F),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       ),
       textTheme: ThemeData.light().textTheme.apply(
-            bodyColor: _qqText,
-            displayColor: _qqText,
-            fontFamily: 'Roboto',
-          ),
+        bodyColor: _qqText,
+        displayColor: _qqText,
+        fontFamily: 'Roboto',
+      ),
     );
   }
 
   void _onLogout() async {
+    ++_appSessionGeneration;
+    ++_onlinePresenceRecoveryAttempt;
+    _serviceRecoveryFuture = null;
+    _serviceRecoverySessionGeneration = null;
+    _serviceRecoveryUserId = null;
     setState(() {
       _currentUser = null;
+      _retryingServiceConnection = false;
+      _serviceUnavailable = false;
     });
+
+    // Invalidate the realtime session before waiting on local storage cleanup.
+    // Otherwise a quick re-login can reuse the previous user's live socket.
+    _restoringOnlinePresence = false;
+    _callManager.disconnect();
 
     // 清除本地存储的登录信息
     try {
@@ -826,9 +995,6 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     } catch (e) {
       print('❌ 清除本地存储失败: $e');
     }
-
-    // 断开WebRTC连接
-    _callManager.disconnect();
   }
 
   @override
@@ -930,7 +1096,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     final normalizedMessage = message
         .replaceFirst(RegExp(r'^Exception:\s*'), '')
         .replaceFirst(RegExp(r'^Error:\s*'), '');
-    final isServiceFailure = isServiceUnavailableError(message) ||
+    final isServiceFailure =
+        isServiceUnavailableError(message) ||
         normalizedMessage == serviceMaintenanceMessage;
 
     return Material(
@@ -941,8 +1108,9 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
             return SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: ConstrainedBox(
-                constraints:
-                    BoxConstraints(minHeight: constraints.maxHeight - 40),
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - 40,
+                ),
                 child: Center(
                   child: Container(
                     width: double.infinity,
@@ -1015,9 +1183,21 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
                         ],
                         const SizedBox(height: 16),
                         FilledButton.icon(
-                          onPressed: _retryServiceConnection,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('重试连接'),
+                          onPressed: _retryingServiceConnection
+                              ? null
+                              : _retryServiceConnection,
+                          icon: _retryingServiceConnection
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.refresh),
+                          label: Text(
+                            _retryingServiceConnection ? '正在重试连接…' : '重试连接',
+                          ),
                         ),
                       ],
                     ),
@@ -1109,6 +1289,11 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    ++_appSessionGeneration;
+    ++_onlinePresenceRecoveryAttempt;
+    _serviceRecoveryFuture = null;
+    _serviceRecoverySessionGeneration = null;
+    _serviceRecoveryUserId = null;
     WidgetsBinding.instance.removeObserver(this);
     _callManager.removeListener(_onCallManagerChanged);
     _callManager.disconnect();

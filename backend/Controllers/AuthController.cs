@@ -183,6 +183,63 @@ namespace VideoCallAPI.Controllers
             }
         }
 
+        [HttpPost("verify-email-code")]
+        [Authorize]
+        [EnableRateLimiting("EmailCodeSend")]
+        public async Task<ActionResult<ApiResponse>> RequestEmailVerificationCode(
+            EmailCodeCaptchaVerificationDto captchaDto)
+        {
+            try
+            {
+                await _userService.RequestEmailVerificationCodeAsync(
+                    GetUserId(),
+                    captchaDto,
+                    GetCaptchaClientFingerprint());
+                return Ok(new ApiResponse
+                {
+                    Success = true,
+                    Message = "验证码已发送，5分钟内有效"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "发送邮箱认证验证码失败: UserId={UserId}", GetUserId());
+                return BadRequest(new ApiResponse
+                {
+                    Success = false,
+                    Message = ApiErrorMessage.ForClient(ex, "发送验证码失败"),
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("verify-email")]
+        [Authorize]
+        public async Task<ActionResult<ApiResponse<UserResponseDto>>> VerifyEmail(
+            VerifyEmailDto verifyEmailDto)
+        {
+            try
+            {
+                var user = await _userService.VerifyEmailAsync(GetUserId(), verifyEmailDto);
+                return Ok(new ApiResponse<UserResponseDto>
+                {
+                    Success = true,
+                    Message = "邮箱认证成功",
+                    Data = user
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "邮箱认证失败: UserId={UserId}", GetUserId());
+                return BadRequest(new ApiResponse<UserResponseDto>
+                {
+                    Success = false,
+                    Message = ApiErrorMessage.ForClient(ex, "邮箱认证失败"),
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
         [HttpPost("change-email")]
         [Authorize]
         public async Task<ActionResult<ApiResponse<UserResponseDto>>> ChangeEmail(ChangeEmailDto changeEmailDto)

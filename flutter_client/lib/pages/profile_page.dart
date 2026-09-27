@@ -435,6 +435,132 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<void> _verifyEmail() async {
+    final email = _currentUser?.email.trim();
+    if (email == null || email.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('当前邮箱为空，暂时无法认证')));
+      return;
+    }
+
+    final verificationCodeController = TextEditingController();
+    var isSendingCode = false;
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('认证邮箱'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('请先完成人机校验，验证码将发送到当前邮箱：'),
+              const SizedBox(height: 6),
+              Text(email, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 14),
+              TextField(
+                controller: verificationCodeController,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                decoration: InputDecoration(
+                  labelText: '邮箱验证码',
+                  hintText: '请输入 6 位验证码',
+                  suffixIcon: TextButton(
+                    onPressed: isSendingCode
+                        ? null
+                        : () async {
+                            final captcha = await showEmailCodeCaptchaDialog(
+                              context: dialogContext,
+                              apiService: widget.apiService,
+                              purpose: 'verify_email',
+                              email: email,
+                            );
+                            if (captcha == null || !dialogContext.mounted) {
+                              return;
+                            }
+
+                            setDialogState(() => isSendingCode = true);
+                            try {
+                              await widget.apiService
+                                  .requestEmailVerificationCode(
+                                    captcha: captcha,
+                                  );
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('验证码已发送，5分钟内有效')),
+                              );
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('发送验证码失败: $e')),
+                              );
+                            } finally {
+                              if (dialogContext.mounted) {
+                                setDialogState(() => isSendingCode = false);
+                              }
+                            }
+                          },
+                    child: isSendingCode
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('获取验证码'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: isSendingCode
+                  ? null
+                  : () {
+                      final code = verificationCodeController.text.trim();
+                      if (!RegExp(r'^\d{6}$').hasMatch(code)) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('请输入 6 位邮箱验证码')),
+                        );
+                        return;
+                      }
+                      Navigator.of(dialogContext).pop(code);
+                    },
+              child: const Text('提交认证'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    verificationCodeController.dispose();
+    if (result == null || !mounted) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final updatedUser = await widget.apiService.verifyEmail(
+        verificationCode: result,
+      );
+      if (!mounted) return;
+      setState(() {
+        _setCurrentUser(updatedUser);
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('邮箱认证成功')));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('邮箱认证失败: $e')));
+    }
+  }
+
   Future<void> _changeEmail() async {
     final emailController =
         TextEditingController(text: _currentUser?.email ?? '');
@@ -929,7 +1055,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                         Text(
                                           _currentUser!.emailVerified
                                               ? '邮箱已认证'
-                                              : '邮箱未认证，请修改邮箱并完成验证码认证',
+                                              : '邮箱未认证，请点击完成认证',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
@@ -1068,14 +1194,20 @@ class _ProfilePageState extends State<ProfilePage> {
                                 const Divider(height: 1),
                                 ListTile(
                                   leading: const Icon(Icons.email_outlined),
-                                  title: const Text('邮箱'),
+                                  title: Text(
+                                    _currentUser!.emailVerified ? '邮箱' : '认证邮箱',
+                                  ),
                                   subtitle: Text(
                                     _currentUser!.emailVerified
                                         ? '${_currentUser!.email}（已认证）'
-                                        : '${_currentUser!.email}（未认证，点击认证）',
+                                        : '${_currentUser!.email}（未认证，点击完成认证）',
                                   ),
                                   trailing: const Icon(Icons.chevron_right),
-                                  onTap: _isLoading ? null : _changeEmail,
+                                  onTap: _isLoading
+                                      ? null
+                                      : (_currentUser!.emailVerified
+                                            ? _changeEmail
+                                            : _verifyEmail),
                                 ),
                                 const Divider(height: 1),
                                 ListTile(

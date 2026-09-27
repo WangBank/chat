@@ -19,6 +19,8 @@ namespace VideoCallAPI.Services
     {
         Task<UserResponseDto> RegisterAsync(UserRegistrationDto registrationDto);
         Task RequestRegistrationEmailVerificationCodeAsync(RegistrationEmailVerificationCodeRequestDto requestDto, string clientFingerprint);
+        Task RequestEmailVerificationCodeAsync(int userId, EmailCodeCaptchaVerificationDto captchaDto, string clientFingerprint);
+        Task<UserResponseDto> VerifyEmailAsync(int userId, VerifyEmailDto verifyEmailDto);
         Task RequestEmailChangeVerificationCodeAsync(int userId, ChangeEmailVerificationCodeRequestDto requestDto, string clientFingerprint);
         Task<UserResponseDto> ChangeEmailAsync(int userId, ChangeEmailDto changeEmailDto);
         Task<string> LoginAsync(UserLoginDto loginDto);

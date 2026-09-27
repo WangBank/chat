@@ -148,6 +148,7 @@ namespace VideoCallAPI.Services
                 "registration" => EmailVerificationPurpose.Registration,
                 "change_email" => EmailVerificationPurpose.ChangeEmail,
                 "change_password" => EmailVerificationPurpose.ChangePassword,
+                "verify_email" => EmailVerificationPurpose.VerifyEmail,
                 _ => throw new ArgumentException("不支持的图案校验用途")
             };
         }
@@ -164,6 +165,8 @@ namespace VideoCallAPI.Services
             }
             if (purpose == EmailVerificationPurpose.ChangeEmail && string.IsNullOrWhiteSpace(requestDto.email))
                 throw new ArgumentException("请先填写新邮箱");
+            if (purpose == EmailVerificationPurpose.VerifyEmail && string.IsNullOrWhiteSpace(requestDto.email))
+                throw new ArgumentException("当前邮箱不能为空");
             if (purpose != EmailVerificationPurpose.Registration && !userId.HasValue)
                 throw new UnauthorizedAccessException("请先登录");
         }

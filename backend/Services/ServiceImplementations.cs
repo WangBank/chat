@@ -129,6 +129,60 @@ namespace VideoCallAPI.Services
                 EmailVerificationPurpose.Registration);
         }
 
+        public async Task RequestEmailVerificationCodeAsync(
+            int userId,
+            EmailCodeCaptchaVerificationDto captchaDto,
+            string clientFingerprint)
+        {
+            var user = await _context.users.FindAsync(userId);
+            if (user == null)
+                throw new ArgumentException("用户不存在");
+            if (user.email_verified_at.HasValue)
+                throw new InvalidOperationException("当前邮箱已经认证");
+
+            var email = NormalizeEmail(user.email);
+            await EnsureEmailCodeSendRateLimitAsync(email);
+            await _emailCodeCaptchaService.VerifyAsync(
+                captchaDto,
+                EmailVerificationPurpose.VerifyEmail,
+                email,
+                null,
+                userId,
+                clientFingerprint);
+
+            await CreateAndSendEmailVerificationCodeAsync(
+                email,
+                GetDisplayName(user),
+                EmailVerificationPurpose.VerifyEmail);
+        }
+
+        public async Task<UserResponseDto> VerifyEmailAsync(
+            int userId,
+            VerifyEmailDto verifyEmailDto)
+        {
+            var user = await _context.users.FindAsync(userId);
+            if (user == null)
+                throw new ArgumentException("用户不存在");
+            if (user.email_verified_at.HasValue)
+                return MapToUserResponse(user);
+
+            var email = NormalizeEmail(user.email);
+            var verificationCode = await GetValidEmailVerificationCodeAsync(
+                email,
+                verifyEmailDto.verification_code,
+                EmailVerificationPurpose.VerifyEmail);
+
+            var now = DateTime.UtcNow;
+            user.email_verified_at = now;
+            user.updated_at = now;
+            verificationCode.is_used = true;
+            verificationCode.used_at = now;
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("用户邮箱认证成功: UserId={UserId}", userId);
+            return MapToUserResponse(user);
+        }
+
         public async Task RequestEmailChangeVerificationCodeAsync(
             int userId,
             ChangeEmailVerificationCodeRequestDto requestDto,
@@ -384,7 +438,7 @@ namespace VideoCallAPI.Services
             else
             {
                 if (!user.email_verified_at.HasValue)
-                    throw new InvalidOperationException("当前邮箱未认证，请先在个人资料中修改并验证邮箱，或使用旧密码修改");
+                    throw new InvalidOperationException("当前邮箱未认证，请先在个人资料中完成邮箱认证，或使用旧密码修改");
 
                 verificationCode = await GetValidEmailVerificationCodeAsync(
                     user.email,
@@ -409,7 +463,7 @@ namespace VideoCallAPI.Services
             if (user == null)
                 throw new ArgumentException("用户不存在");
             if (!user.email_verified_at.HasValue)
-                throw new InvalidOperationException("当前邮箱未认证，请先在个人资料中修改并验证邮箱");
+                throw new InvalidOperationException("当前邮箱未认证，请先在个人资料中完成邮箱认证");
 
             await EnsureEmailCodeSendRateLimitAsync(user.email);
             await _emailCodeCaptchaService.VerifyAsync(

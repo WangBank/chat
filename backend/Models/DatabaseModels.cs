@@ -93,7 +93,8 @@ namespace VideoCallAPI.Models
     {
         Registration = 1,
         ChangeEmail = 2,
-        ChangePassword = 3
+        ChangePassword = 3,
+        VerifyEmail = 4
     }
 
     // 邮箱验证码表。验证码本身只保存 BCrypt 哈希，避免数据库泄露后被直接使用。

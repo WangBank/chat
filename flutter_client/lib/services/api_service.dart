@@ -371,6 +371,59 @@ class ApiService {
     }
   }
 
+  /// Requests a verification code for the user's existing email address.
+  /// This is separate from the change-email flow so an unverified user never
+  /// has to enter a different address just to verify the current one.
+  Future<void> requestEmailVerificationCode({
+    required EmailCodeCaptchaVerification captcha,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/verify-email-code'),
+        headers: _headers,
+        body: jsonEncode({
+          'captcha_id': captcha.captchaId,
+          'captcha_answer': captcha.captchaAnswer,
+        }),
+      );
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData is Map<String, dynamic> &&
+            responseData['success'] == true) {
+          return;
+        }
+      }
+      throw Exception(_responseErrorMessage(response, '发送验证码失败'));
+    } catch (e) {
+      throw Exception(userFacingServiceError(e, fallback: '发送验证码失败'));
+    }
+  }
+
+  /// The server compares the code with its stored, unexpired hash and only
+  /// then returns the user with email_verified=true.
+  Future<User> verifyEmail({required String verificationCode}) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/verify-email'),
+        headers: _headers,
+        body: jsonEncode({'verification_code': verificationCode}),
+      );
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData is Map<String, dynamic> &&
+            responseData['success'] == true &&
+            responseData['data'] is Map<String, dynamic>) {
+          final user = User.fromJson(responseData['data']);
+          _currentUser = user;
+          return user;
+        }
+      }
+      throw Exception(_responseErrorMessage(response, '邮箱认证失败'));
+    } catch (e) {
+      throw Exception(userFacingServiceError(e, fallback: '邮箱认证失败'));
+    }
+  }
+
   Future<User> changeEmail({
     required String email,
     required String verificationCode,

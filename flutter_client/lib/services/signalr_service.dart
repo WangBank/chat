@@ -1,8 +1,10 @@
 import 'package:signalr_netcore/signalr_client.dart';
+
 import '../models/call.dart';
 import '../models/chat_message.dart';
 import '../config/app_config.dart';
 import '../utils/network_error.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -12,28 +14,60 @@ typedef OnCallAcceptedCallback = void Function(String callId);
 typedef OnCallRejectedCallback = void Function(String callId);
 typedef OnCallEndedCallback = void Function(String callId);
 typedef OnOfferReceivedCallback = void Function(
-    String callId, String offer, int senderId);
+  String callId,
+  String offer,
+  int senderId,
+);
 typedef OnAnswerReceivedCallback = void Function(
-    String callId, String answer, int senderId);
+  String callId,
+  String answer,
+  int senderId,
+);
 typedef OnIceCandidateReceivedCallback = void Function(
-    String callId, String candidate, int senderId);
+  String callId,
+  String candidate,
+  int senderId,
+);
 typedef OnSfuAnswerReceivedCallback = void Function(
-    String callId, String answer);
+  String callId,
+  String answer,
+);
 typedef OnNewMessageCallback = void Function(ChatMessage message);
 typedef OnUserOnlineStatusChangedCallback = void Function(
-    int userId, bool isOnline);
+  int userId,
+  bool isOnline,
+);
+typedef OnConnectionStateChangedCallback = void Function();
 
 class SignalRService {
   static String get hubUrl => AppConfig.signalRUrl;
 
+  // signalr_netcore only applies requestTimeout to the negotiate HTTP call.
+  // Hub invocations (including Authenticate) otherwise wait forever when a
+  // mobile socket is half-open and still reports Connected.
+  static const Duration _connectTimeout = Duration(seconds: 20);
+  static const Duration _authenticateTimeout = Duration(seconds: 10);
+  static const Duration _stopTimeout = Duration(seconds: 5);
+
   HubConnection? _connection;
   int? _currentUserId; // 当前用户ID（用于日志）
   String? _lastToken;
+  String? _connectionToken;
   Timer? _heartbeatTimer;
   Timer? _reconnectTimer;
   Future<void>? _connectFuture;
+  String? _connectFutureToken;
+  int? _connectFutureSessionGeneration;
+  Future<void>? _authenticateFuture;
+  Future<void>? _ensureConnectionFuture;
+  String? _ensureFutureToken;
+  int? _ensureFutureUserId;
+  int? _ensureFutureSessionGeneration;
+  int _sessionGeneration = 0;
+  int _connectionGeneration = 0;
   bool _heartbeatInFlight = false;
   bool _reconnectInFlight = false;
+  int? _reconnectSessionGeneration;
   bool _manualDisconnect = false;
 
   // 回调函数
@@ -47,9 +81,33 @@ class SignalRService {
   OnIceCandidateReceivedCallback? onIceCandidateReceived;
   OnSfuAnswerReceivedCallback? onSfuAnswerReceived;
   OnNewMessageCallback? onNewMessage;
+  OnConnectionStateChangedCallback? onConnectionLost;
+  OnConnectionStateChangedCallback? onConnectionRestored;
   final Set<OnUserOnlineStatusChangedCallback> _onlineStatusListeners = {};
 
   bool get isConnected => _connection?.state == HubConnectionState.Connected;
+
+  // Used by the app layer to reject a recovery operation that was started
+  // before logout and resumed after a new SignalR session was created.
+  int get sessionGeneration => _sessionGeneration;
+
+  bool _isSessionActive(int sessionGeneration) {
+    return sessionGeneration == _sessionGeneration && !_manualDisconnect;
+  }
+
+  bool _isCurrentConnection(
+    HubConnection connection,
+    int connectionGeneration,
+  ) {
+    return identical(_connection, connection) &&
+        _connectionGeneration == connectionGeneration;
+  }
+
+  void _assertSessionActive(int sessionGeneration) {
+    if (!_isSessionActive(sessionGeneration)) {
+      throw Exception('SignalR已手动断开');
+    }
+  }
 
   void addOnlineStatusListener(OnUserOnlineStatusChangedCallback listener) {
     _onlineStatusListeners.add(listener);
@@ -61,12 +119,20 @@ class SignalRService {
 
   // 连接到SignalR Hub
   Future<void> connect(String token) async {
-    _lastToken = token;
     _manualDisconnect = false;
+    final sessionGeneration = _sessionGeneration;
+    await _connectForSession(token, sessionGeneration);
+  }
+
+  Future<void> _connectForSession(String token, int sessionGeneration) async {
+    _assertSessionActive(sessionGeneration);
 
     if (_connection != null && isConnected) {
-      print('SignalR already connected');
-      return;
+      if (_connectionToken == token) {
+        print('SignalR already connected');
+        return;
+      }
+      throw Exception('SignalR已连接到其他会话');
     }
 
     // 登录恢复、回到前台等入口可能在同一个事件循环内并发调用连接。
@@ -74,22 +140,35 @@ class SignalRService {
     // 接听和 WebRTC 信令被重复投递给客户端。
     final connecting = _connectFuture;
     if (connecting != null) {
+      if (_connectFutureSessionGeneration != sessionGeneration ||
+          _connectFutureToken != token) {
+        throw Exception('SignalR连接正在切换会话，请稍后重试');
+      }
       print('SignalR connection is already in progress');
       return connecting;
     }
 
-    final connectFuture = _connectInternal(token);
+    _lastToken = token;
+
+    final connectFuture = _connectInternal(token, sessionGeneration);
     _connectFuture = connectFuture;
+    _connectFutureToken = token;
+    _connectFutureSessionGeneration = sessionGeneration;
     try {
       await connectFuture;
     } finally {
       if (identical(_connectFuture, connectFuture)) {
         _connectFuture = null;
+        _connectFutureToken = null;
+        _connectFutureSessionGeneration = null;
       }
     }
   }
 
-  Future<void> _connectInternal(String token) async {
+  Future<void> _connectInternal(String token, int sessionGeneration) async {
+    HubConnection? connection;
+    _assertSessionActive(sessionGeneration);
+    final connectionGeneration = ++_connectionGeneration;
     try {
       _stopReconnectTimer();
       _stopHeartbeat();
@@ -97,14 +176,13 @@ class SignalRService {
       final previousConnection = _connection;
       if (previousConnection != null) {
         _connection = null;
-        try {
-          await previousConnection.stop();
-        } catch (e) {
-          print('停止旧SignalR连接失败: $e');
-        }
+        _connectionToken = null;
+        await _stopConnectionSafely(previousConnection, label: '旧SignalR连接');
       }
 
-      final connection = HubConnectionBuilder()
+      _assertSessionActive(sessionGeneration);
+
+      final newConnection = HubConnectionBuilder()
           .withUrl(
             hubUrl,
             options: HttpConnectionOptions(
@@ -118,88 +196,368 @@ class SignalRService {
           )
           .withAutomaticReconnect()
           .build();
+      connection = newConnection;
 
-      _connection = connection;
+      _connection = newConnection;
+      _connectionToken = token;
 
       // 重连后重新登记当前连接，服务端身份来自 JWT。
-      connection.onreconnecting(({Exception? error}) {
+      newConnection.onreconnecting(({Exception? error}) {
         print('🔄 SignalR正在重连: $error');
+        if (_isSessionActive(sessionGeneration) &&
+            _isCurrentConnection(newConnection, connectionGeneration)) {
+          onConnectionLost?.call();
+        }
       });
-      connection.onreconnected(({String? connectionId}) {
+      newConnection.onreconnected(({String? connectionId}) {
+        if (!_isSessionActive(sessionGeneration) ||
+            !_isCurrentConnection(newConnection, connectionGeneration)) {
+          return;
+        }
         print(
           '✅ SignalR重连成功: connectionId=$connectionId, 当前用户=$_currentUserId',
         );
         final uid = _currentUserId;
-        if (uid != null) {
-          authenticate(uid).then((_) {
-            print('🔐 重连后已重新认证用户: $uid');
-          }).catchError((e) {
-            print('❌ 重连后重新认证失败: $e');
-          });
+        final token = _lastToken;
+        if (uid != null && token != null && token.isNotEmpty) {
+          unawaited(
+            _reauthenticateAfterReconnect(
+              newConnection,
+              connectionGeneration,
+              sessionGeneration,
+              token,
+              uid,
+            ),
+          );
         } else {
           print('⚠️ 重连后无法重新认证：当前用户ID为空');
         }
       });
-      connection.onclose(({Exception? error}) {
+      newConnection.onclose(({Exception? error}) {
+        if (!_isSessionActive(sessionGeneration) ||
+            !_isCurrentConnection(newConnection, connectionGeneration)) {
+          return;
+        }
         print('🛑 SignalR连接关闭: $error');
         _stopHeartbeat();
-        if (!_manualDisconnect && identical(_connection, connection)) {
-          _scheduleReconnect();
-        }
+        _authenticateFuture = null;
+        onConnectionLost?.call();
+        _scheduleReconnect(sessionGeneration);
       });
 
       // 设置事件监听器
-      _setupEventListeners();
+      _setupEventListeners(
+        newConnection,
+        connectionGeneration,
+        sessionGeneration,
+      );
 
-      await connection.start();
+      final startFuture = newConnection.start();
+      if (startFuture != null) {
+        await startFuture.timeout(_connectTimeout);
+      }
+      _assertSessionActive(sessionGeneration);
       print('SignalR connected successfully');
     } catch (e) {
-      _connection = null;
+      if (connection != null &&
+          _isCurrentConnection(connection, connectionGeneration)) {
+        _connection = null;
+        _connectionToken = null;
+      }
+      if (connection != null) {
+        await _stopConnectionSafely(connection, label: '失败的SignalR连接');
+      }
       print('SignalR connection failed: $e');
       throw Exception(
-          userFacingServiceError(e, fallback: serviceMaintenanceMessage));
+        userFacingServiceError(e, fallback: serviceMaintenanceMessage),
+      );
     }
   }
 
-  Future<void> ensureConnectedAndAuthenticated(String token, int userId) async {
-    _lastToken = token;
-    _currentUserId = userId;
+  Future<void> ensureConnectedAndAuthenticated(
+    String token,
+    int userId, {
+    bool forceReconnect = false,
+    int? expectedSessionGeneration,
+  }) {
+    if (expectedSessionGeneration != null &&
+        expectedSessionGeneration != _sessionGeneration) {
+      return Future<void>.error(Exception('SignalR会话已变更'));
+    }
     _manualDisconnect = false;
+    final sessionGeneration = _sessionGeneration;
 
-    if (!isConnected) {
-      await connect(token);
+    return _ensureConnectedAndAuthenticatedForSession(
+      token,
+      userId,
+      sessionGeneration,
+      forceReconnect: forceReconnect,
+    );
+  }
+
+  Future<void> _ensureConnectedAndAuthenticatedForSession(
+    String token,
+    int userId,
+    int sessionGeneration, {
+    bool forceReconnect = false,
+  }) {
+    if (!_isSessionActive(sessionGeneration)) {
+      return Future<void>.error(Exception('SignalR已手动断开'));
     }
 
-    try {
-      await authenticate(userId);
-    } catch (e) {
-      // 网络切换后底层状态有时仍报告 Connected，但该连接已经不能完成认证。
-      // 主动重建一次连接，避免用户必须退出登录才能恢复。
-      print('⚠️ SignalR当前连接认证失败，准备重建连接: $e');
-      final staleConnection = _connection;
-      _connection = null;
-      try {
-        await staleConnection?.stop();
-      } catch (stopError) {
-        print('停止失效SignalR连接失败: $stopError');
+    final pending = _ensureConnectionFuture;
+    if (pending != null) {
+      if (_ensureFutureSessionGeneration != sessionGeneration ||
+          _ensureFutureToken != token ||
+          _ensureFutureUserId != userId) {
+        return Future<void>.error(Exception('SignalR正在恢复其他会话'));
       }
-      await connect(token);
-      await authenticate(userId);
+      print('SignalR连接恢复已在进行中');
+      if (forceReconnect) {
+        return _forceEnsureAfterPending(
+          pending,
+          token,
+          userId,
+          sessionGeneration,
+        );
+      }
+      return pending;
+    }
+
+    _lastToken = token;
+    _currentUserId = userId;
+
+    final future = _ensureConnectedAndAuthenticatedInternal(
+      token,
+      userId,
+      sessionGeneration: sessionGeneration,
+      forceReconnect: forceReconnect,
+    );
+    _ensureConnectionFuture = future;
+    _ensureFutureToken = token;
+    _ensureFutureUserId = userId;
+    _ensureFutureSessionGeneration = sessionGeneration;
+    return future.whenComplete(() {
+      if (identical(_ensureConnectionFuture, future)) {
+        _ensureConnectionFuture = null;
+        _ensureFutureToken = null;
+        _ensureFutureUserId = null;
+        _ensureFutureSessionGeneration = null;
+      }
+    });
+  }
+
+  Future<void> _forceEnsureAfterPending(
+    Future<void> pending,
+    String token,
+    int userId,
+    int sessionGeneration,
+  ) async {
+    try {
+      await pending;
+    } catch (e) {
+      print('⚠️ 等待当前SignalR恢复轮次结束后执行手动重试: $e');
+    }
+
+    _assertSessionActive(sessionGeneration);
+
+    // The completion callback normally clears this field. Clear it here as
+    // well so a forced retry cannot accidentally re-use the just-completed
+    // Future when callbacks are delivered in a later microtask.
+    if (identical(_ensureConnectionFuture, pending)) {
+      _ensureConnectionFuture = null;
+      _ensureFutureToken = null;
+      _ensureFutureUserId = null;
+      _ensureFutureSessionGeneration = null;
+    }
+
+    final current = _ensureConnectionFuture;
+    if (current != null) {
+      if (_ensureFutureSessionGeneration != sessionGeneration ||
+          _ensureFutureToken != token ||
+          _ensureFutureUserId != userId) {
+        return Future<void>.error(Exception('SignalR正在恢复其他会话'));
+      }
+      return current;
+    }
+
+    return _ensureConnectedAndAuthenticatedForSession(
+      token,
+      userId,
+      sessionGeneration,
+      forceReconnect: true,
+    );
+  }
+
+  Future<void> _ensureConnectedAndAuthenticatedInternal(
+    String token,
+    int userId, {
+    required int sessionGeneration,
+    bool forceReconnect = false,
+  }) async {
+    _assertSessionActive(sessionGeneration);
+    try {
+      if (forceReconnect) {
+        await _resetConnectionForRecovery(sessionGeneration);
+      }
+      await _ensureConnectedAndAuthenticatedOnce(
+        token,
+        userId,
+        sessionGeneration,
+      );
+    } catch (e) {
+      if (!_isSessionActive(sessionGeneration)) rethrow;
+
+      // A stale mobile socket can remain in Connected state while no longer
+      // accepting invocations. Recreate the Hub once so retry/resume can
+      // recover without requiring the process to be killed.
+      print('⚠️ SignalR连接恢复失败，准备强制重建: $e');
+      try {
+        await _resetConnectionForRecovery(sessionGeneration);
+        await _ensureConnectedAndAuthenticatedOnce(
+          token,
+          userId,
+          sessionGeneration,
+        );
+      } catch (retryError) {
+        if (_isSessionActive(sessionGeneration)) {
+          onConnectionLost?.call();
+          try {
+            // A failed Authenticate can leave the transport in Connected
+            // state. Detach it before scheduling another attempt; otherwise
+            // the timer sees isConnected=true and exits immediately.
+            await _resetConnectionForRecovery(sessionGeneration);
+          } catch (resetError) {
+            print('❌ 清理失败的SignalR连接失败: $resetError');
+          }
+          if (_isSessionActive(sessionGeneration)) {
+            _scheduleReconnect(sessionGeneration);
+          }
+        }
+        throw retryError;
+      }
+    }
+  }
+
+  Future<void> _ensureConnectedAndAuthenticatedOnce(
+    String token,
+    int userId,
+    int sessionGeneration,
+  ) async {
+    _assertSessionActive(sessionGeneration);
+    if (!isConnected || _connectionToken != token) {
+      if (isConnected && _connectionToken != token) {
+        await _resetConnectionForRecovery(sessionGeneration);
+      }
+      await _connectForSession(token, sessionGeneration);
+    }
+
+    _assertSessionActive(sessionGeneration);
+    await authenticate(userId);
+  }
+
+  Future<void> _resetConnectionForRecovery(int sessionGeneration) async {
+    _assertSessionActive(sessionGeneration);
+    _stopReconnectTimer();
+    _stopHeartbeat();
+    // The old invocation may still be waiting on a half-open socket. It must
+    // not be reused for the newly-created Hub connection.
+    _authenticateFuture = null;
+
+    final staleConnection = _connection;
+    ++_connectionGeneration;
+    _connection = null;
+    _connectionToken = null;
+    if (staleConnection != null) {
+      await _stopConnectionSafely(staleConnection, label: '失效SignalR连接');
+    }
+
+    _assertSessionActive(sessionGeneration);
+  }
+
+  Future<void> _reauthenticateAfterReconnect(
+    HubConnection connection,
+    int connectionGeneration,
+    int sessionGeneration,
+    String token,
+    int userId,
+  ) async {
+    if (!_isSessionActive(sessionGeneration) ||
+        !_isCurrentConnection(connection, connectionGeneration)) {
+      return;
+    }
+    try {
+      await _ensureConnectedAndAuthenticatedForSession(
+        token,
+        userId,
+        sessionGeneration,
+      );
+      if (!_isSessionActive(sessionGeneration) ||
+          !_isCurrentConnection(connection, connectionGeneration)) {
+        return;
+      }
+      print('🔐 重连后已重新认证用户: $userId');
+    } catch (e) {
+      print('❌ 重连后重新认证失败: $e');
     }
   }
 
   // 用户认证
-  Future<void> authenticate(int userId) async {
-    if (!isConnected) throw Exception('SignalR未连接');
+  Future<void> authenticate(int userId) {
+    final pending = _authenticateFuture;
+    if (pending != null) {
+      return pending;
+    }
+
+    final future = _authenticateInternal(userId);
+    _authenticateFuture = future;
+    return future.whenComplete(() {
+      if (identical(_authenticateFuture, future)) {
+        _authenticateFuture = null;
+      }
+    });
+  }
+
+  Future<void> _authenticateInternal(int userId) async {
+    final connection = _connection;
+    final connectionGeneration = _connectionGeneration;
+    final sessionGeneration = _sessionGeneration;
+    if (connection == null ||
+        connection.state != HubConnectionState.Connected) {
+      throw Exception('SignalR未连接');
+    }
 
     try {
-      await _connection!.invoke('Authenticate');
+      await connection.invoke('Authenticate').timeout(_authenticateTimeout);
+
+      // The connection may have been replaced while invoke was in flight.
+      // Never mark a newer connection authenticated based on an old result.
+      if (!_isSessionActive(sessionGeneration) ||
+          !_isCurrentConnection(connection, connectionGeneration) ||
+          connection.state != HubConnectionState.Connected) {
+        throw Exception('SignalR连接在认证期间已失效');
+      }
+
       _currentUserId = userId;
       _startHeartbeat();
       print('User authenticated: $userId');
+      onConnectionRestored?.call();
     } catch (e) {
       print('Error authenticating user: $e');
       throw Exception('用户认证失败: $e');
+    }
+  }
+
+  Future<void> _stopConnectionSafely(
+    HubConnection connection, {
+    required String label,
+  }) async {
+    try {
+      await connection.stop().timeout(_stopTimeout);
+    } on TimeoutException {
+      print('$label停止超时，已放弃等待');
+    } catch (e) {
+      print('$label停止失败: $e');
     }
   }
 
@@ -222,8 +580,11 @@ class SignalRService {
     _reconnectTimer = null;
   }
 
-  void _scheduleReconnect() {
-    if (_manualDisconnect || _reconnectTimer != null || _reconnectInFlight) {
+  void _scheduleReconnect(int sessionGeneration) {
+    if (!_isSessionActive(sessionGeneration) ||
+        _reconnectTimer != null ||
+        (_reconnectInFlight &&
+            _reconnectSessionGeneration == sessionGeneration)) {
       return;
     }
 
@@ -234,52 +595,127 @@ class SignalRService {
       return;
     }
 
-    _reconnectTimer = Timer(const Duration(seconds: 3), () async {
+    Timer? reconnectTimer;
+    reconnectTimer = Timer(const Duration(seconds: 3), () async {
+      if (!identical(_reconnectTimer, reconnectTimer)) {
+        return;
+      }
       _reconnectTimer = null;
-      if (_manualDisconnect || isConnected || _reconnectInFlight) {
+      if (!_isSessionActive(sessionGeneration) ||
+          _lastToken != token ||
+          _currentUserId != userId ||
+          isConnected ||
+          (_reconnectInFlight &&
+              _reconnectSessionGeneration == sessionGeneration)) {
         return;
       }
 
       _reconnectInFlight = true;
+      _reconnectSessionGeneration = sessionGeneration;
       var shouldRetry = false;
       try {
         print('🔄 SignalR尝试自动恢复连接: user=$userId');
-        await connect(token);
-        await authenticate(userId);
+        await _ensureConnectedAndAuthenticatedForSession(
+          token,
+          userId,
+          sessionGeneration,
+        );
         print('✅ SignalR自动恢复成功: user=$userId');
       } catch (e) {
         print('❌ SignalR自动恢复失败: $e');
-        shouldRetry = !_manualDisconnect;
+        shouldRetry = _isSessionActive(sessionGeneration);
       } finally {
-        _reconnectInFlight = false;
-        if (shouldRetry) {
-          _scheduleReconnect();
+        if (_reconnectSessionGeneration == sessionGeneration) {
+          _reconnectInFlight = false;
+          _reconnectSessionGeneration = null;
+        }
+        if (shouldRetry && _isSessionActive(sessionGeneration)) {
+          _scheduleReconnect(sessionGeneration);
         }
       }
     });
+    _reconnectTimer = reconnectTimer;
   }
 
   Future<void> _sendHeartbeat() async {
-    if (!isConnected || _heartbeatInFlight || _connection == null) {
+    final connection = _connection;
+    final connectionGeneration = _connectionGeneration;
+    final sessionGeneration = _sessionGeneration;
+    if (!isConnected ||
+        _heartbeatInFlight ||
+        connection == null ||
+        !_isSessionActive(sessionGeneration)) {
       return;
     }
 
     _heartbeatInFlight = true;
     try {
-      await _connection!.invoke('Heartbeat');
+      await connection.invoke('Heartbeat').timeout(_authenticateTimeout);
     } catch (e) {
       print('SignalR heartbeat failed: $e');
+      if (_isSessionActive(sessionGeneration) &&
+          _isCurrentConnection(connection, connectionGeneration)) {
+        unawaited(
+          _handleHeartbeatFailure(
+            connection,
+            connectionGeneration,
+            sessionGeneration,
+          ),
+        );
+      }
     } finally {
-      _heartbeatInFlight = false;
+      if (_isSessionActive(sessionGeneration) &&
+          _isCurrentConnection(connection, connectionGeneration)) {
+        _heartbeatInFlight = false;
+      }
+    }
+  }
+
+  Future<void> _handleHeartbeatFailure(
+    HubConnection connection,
+    int connectionGeneration,
+    int sessionGeneration,
+  ) async {
+    if (!_isSessionActive(sessionGeneration) ||
+        !_isCurrentConnection(connection, connectionGeneration)) {
+      return;
+    }
+
+    ++_connectionGeneration;
+    _connection = null;
+    _connectionToken = null;
+    _authenticateFuture = null;
+    _stopHeartbeat();
+    onConnectionLost?.call();
+    await _stopConnectionSafely(connection, label: '心跳失效SignalR连接');
+    if (_isSessionActive(sessionGeneration)) {
+      _scheduleReconnect(sessionGeneration);
     }
   }
 
   // 设置事件监听器
-  void _setupEventListeners() {
-    if (_connection == null) return;
+  void _setupEventListeners(
+    HubConnection connection,
+    int connectionGeneration,
+    int sessionGeneration,
+  ) {
+    bool isActive() {
+      return _isSessionActive(sessionGeneration) &&
+          _isCurrentConnection(connection, connectionGeneration);
+    }
+
+    void register(
+      String methodName,
+      void Function(List<Object?>? arguments) handler,
+    ) {
+      connection.on(methodName, (arguments) {
+        if (!isActive()) return;
+        handler(arguments);
+      });
+    }
 
     // 接收来电
-    _connection!.on('IncomingCall', (arguments) {
+    register('IncomingCall', (arguments) {
       print('IncomingCall: $arguments');
       try {
         final data = _eventData(arguments);
@@ -296,7 +732,7 @@ class SignalRService {
 
     // 呼叫者需要使用服务端生成的真实 call_id。若继续保留临时 ID，
     // 取消呼叫及 ICE 信令都会发往不存在的会话。
-    _connection!.on('CallInitiated', (arguments) {
+    register('CallInitiated', (arguments) {
       try {
         final data = _eventData(arguments);
         if (data == null) {
@@ -311,7 +747,7 @@ class SignalRService {
     });
 
     // 通话被接受
-    _connection!.on('CallAccepted', (arguments) {
+    register('CallAccepted', (arguments) {
       try {
         final data = _eventData(arguments);
         final callId = data?['call_id']?.toString();
@@ -326,7 +762,7 @@ class SignalRService {
     });
 
     // 通话被拒绝
-    _connection!.on('CallRejected', (arguments) {
+    register('CallRejected', (arguments) {
       try {
         final data = _eventData(arguments);
         final callId = data?['call_id']?.toString();
@@ -341,7 +777,7 @@ class SignalRService {
     });
 
     // 通话结束
-    _connection!.on('CallEnded', (arguments) {
+    register('CallEnded', (arguments) {
       print('CallEnded 11: $arguments');
       try {
         final dynamic arg0 = arguments?[0];
@@ -384,7 +820,7 @@ class SignalRService {
     });
 
     // 接收WebRTC消息
-    _connection!.on('WebRTCMessage', (arguments) {
+    register('WebRTCMessage', (arguments) {
       try {
         final data = _eventData(arguments);
         if (data == null) {
@@ -431,7 +867,7 @@ class SignalRService {
       }
     });
 
-    _connection!.on('SfuAnswer', (arguments) {
+    register('SfuAnswer', (arguments) {
       try {
         final data = _eventData(arguments);
         final callId = data?['call_id']?.toString();
@@ -447,7 +883,7 @@ class SignalRService {
     });
 
     // 接收新消息
-    _connection!.on('NewMessage', (arguments) {
+    register('NewMessage', (arguments) {
       try {
         final data = _eventData(arguments);
         if (data == null) {
@@ -463,7 +899,7 @@ class SignalRService {
     });
 
     // 接收用户在线状态变化
-    _connection!.on('UserOnlineStatusChanged', (arguments) {
+    register('UserOnlineStatusChanged', (arguments) {
       try {
         final dynamic arg0 = arguments?[0];
         Map<String, dynamic>? dataMap;
@@ -480,13 +916,13 @@ class SignalRService {
         final int? userId = userIdRaw is int
             ? userIdRaw
             : userIdRaw is num
-                ? userIdRaw.toInt()
-                : int.tryParse(userIdRaw?.toString() ?? '');
+            ? userIdRaw.toInt()
+            : int.tryParse(userIdRaw?.toString() ?? '');
         final bool? isOnline = onlineRaw is bool
             ? onlineRaw
             : onlineRaw is String
-                ? onlineRaw.toLowerCase() == 'true'
-                : null;
+            ? onlineRaw.toLowerCase() == 'true'
+            : null;
 
         if (userId == null || isOnline == null) return;
 
@@ -593,16 +1029,22 @@ class SignalRService {
 
   Future<void> sendSfuOffer(String callId, String sdp) async {
     if (!isConnected) throw Exception('SignalR未连接');
-    await _connection!.invoke('SendSfuOffer', args: [
-      {'call_id': callId, 'sdp': sdp}
-    ]);
+    await _connection!.invoke(
+      'SendSfuOffer',
+      args: [
+        {'call_id': callId, 'sdp': sdp},
+      ],
+    );
   }
 
   Future<void> sendSfuIceCandidate(String callId, String candidate) async {
     if (!isConnected) throw Exception('SignalR未连接');
-    await _connection!.invoke('SendSfuIceCandidate', args: [
-      {'call_id': callId, 'candidate': candidate}
-    ]);
+    await _connection!.invoke(
+      'SendSfuIceCandidate',
+      args: [
+        {'call_id': callId, 'candidate': candidate},
+      ],
+    );
   }
 
   // 加入通话
@@ -634,15 +1076,28 @@ class SignalRService {
   // 断开连接
   Future<void> disconnect() async {
     try {
+      ++_sessionGeneration;
+      ++_connectionGeneration;
       _manualDisconnect = true;
       _stopReconnectTimer();
       _stopHeartbeat();
+      _reconnectInFlight = false;
+      _reconnectSessionGeneration = null;
       final connection = _connection;
       _connection = null;
+      _connectionToken = null;
+      _connectFuture = null;
+      _connectFutureToken = null;
+      _connectFutureSessionGeneration = null;
+      _authenticateFuture = null;
+      _ensureConnectionFuture = null;
+      _ensureFutureToken = null;
+      _ensureFutureUserId = null;
+      _ensureFutureSessionGeneration = null;
       _currentUserId = null;
       _lastToken = null;
       if (connection != null) {
-        await connection.stop();
+        await _stopConnectionSafely(connection, label: 'SignalR连接');
         print('SignalR disconnected');
       }
     } catch (e) {
@@ -663,6 +1118,8 @@ class SignalRService {
     onIceCandidateReceived = null;
     onSfuAnswerReceived = null;
     onNewMessage = null;
+    onConnectionLost = null;
+    onConnectionRestored = null;
   }
 
   Map<String, dynamic>? _eventData(List<Object?>? arguments) {

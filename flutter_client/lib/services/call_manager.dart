@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+
 import '../models/call.dart';
 import '../models/user.dart';
 import 'webrtc_video_service.dart';
@@ -10,6 +11,7 @@ class CallManager extends ChangeNotifier {
   bool _isInCall = false;
   bool _isWaitingForAnswer = false; // 等待对方接听
   User? _currentUser;
+  int _lifecycleGeneration = 0;
 
   CallManager(this._webRTCService) {
     // 在构造函数中不设置处理器，等待initialize时设置
@@ -89,7 +91,17 @@ class CallManager extends ChangeNotifier {
   }
 
   // 初始化
-  Future<void> initialize(String token, User user) async {
+  Future<void> initialize(
+    String token,
+    User user, {
+    int? expectedSignalRSessionGeneration,
+  }) async {
+    if (expectedSignalRSessionGeneration != null &&
+        expectedSignalRSessionGeneration !=
+            _webRTCService.signalRSessionGeneration) {
+      throw Exception('SignalR会话已变更');
+    }
+    final lifecycleGeneration = ++_lifecycleGeneration;
     try {
       _currentUser = user;
       // Install the callbacks before connecting/authenticating SignalR.  The
@@ -97,8 +109,14 @@ class CallManager extends ChangeNotifier {
       // registering afterwards loses that event on a fast mobile connection.
       _setupWebRTCHandlers();
 
-      await _webRTCService.initialize(token, user);
-
+      await _webRTCService.initialize(
+        token,
+        user,
+        expectedSignalRSessionGeneration: expectedSignalRSessionGeneration,
+      );
+      if (lifecycleGeneration != _lifecycleGeneration) {
+        throw Exception('登录会话已变更');
+      }
       // 验证回调是否正确设置
       print('🔍 CallManager: 验证回调设置');
       print(
@@ -124,13 +142,26 @@ class CallManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> ensureOnline(String token) async {
+  Future<void> ensureOnline(
+    String token, {
+    bool forceReconnect = false,
+    int? expectedSignalRSessionGeneration,
+  }) async {
+    final lifecycleGeneration = _lifecycleGeneration;
     final user = _currentUser;
     if (user == null) {
       throw Exception('登录状态已失效，请重新登录');
     }
 
-    await _webRTCService.ensureSignalRConnection(token, user);
+    await _webRTCService.ensureSignalRConnection(
+      token,
+      user,
+      forceReconnect: forceReconnect,
+      expectedSignalRSessionGeneration: expectedSignalRSessionGeneration,
+    );
+    if (lifecycleGeneration != _lifecycleGeneration) {
+      throw Exception('登录会话已变更');
+    }
     _setupWebRTCHandlers();
   }
 
@@ -209,13 +240,17 @@ class CallManager extends ChangeNotifier {
 
   // 断开连接
   Future<void> disconnect() async {
+    final lifecycleGeneration = ++_lifecycleGeneration;
     try {
-      await _webRTCService.disconnect();
+      _currentUser = null;
       _currentCall = null;
       _isInCall = false;
       _isWaitingForAnswer = false;
-      _currentUser = null;
       notifyListeners();
+      await _webRTCService.disconnect();
+      if (lifecycleGeneration != _lifecycleGeneration) {
+        return;
+      }
       print('🔌 CallManager已断开连接');
     } catch (e) {
       print('❌ 断开连接失败: $e');
