@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
+
 import '../models/call.dart';
 import '../services/call_manager.dart';
 import '../config/app_config.dart';
 
 class IncomingCallPage extends StatelessWidget {
-  static const Color _qqBlue = Color(0xFF12A8F4);
+  static const Color _qqBlue = Color(0xFF4A154B);
   static const Color _callBackground = Color(0xFF0B1118);
   static const Color _callDanger = Color(0xFFFF3B30);
-  static const Color _callAccept = Color(0xFF20D67A);
+  static const Color _callAccept = Color(0xFF007A5A);
 
   final Call call;
   final CallManager callManager;
@@ -150,10 +151,11 @@ class IncomingCallPage extends StatelessWidget {
   }
 
   Widget _buildInitial() {
-    final initial = (call.caller.display_name?.isNotEmpty == true
-            ? call.caller.display_name![0]
-            : call.caller.username[0])
-        .toUpperCase();
+    final initial =
+        (call.caller.display_name?.isNotEmpty == true
+                ? call.caller.display_name![0]
+                : call.caller.username[0])
+            .toUpperCase();
 
     return Text(
       initial,

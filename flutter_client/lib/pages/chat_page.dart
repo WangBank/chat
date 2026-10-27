@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+
 import '../models/contact.dart';
 import '../models/chat_message.dart';
 import '../models/call.dart';
@@ -37,14 +39,14 @@ class _ChatPageState extends State<ChatPage> {
   final ImagePicker _imagePicker = ImagePicker();
   final AudioRecorder _audioRecorder = AudioRecorder();
   final AudioPlayer _audioPlayer = AudioPlayer();
-  static const Color _qqBlue = Color(0xFF12A8F4);
-  static const Color _qqBlueSoft = Color(0xFFE8F6FF);
-  static const Color _qqChat = Color(0xFFEEF4F8);
-  static const Color _qqText = Color(0xFF111820);
-  static const Color _qqMuted = Color(0xFF8C96A3);
-  static const Color _qqOnline = Color(0xFF20D67A);
-  static const Color _qqOffline = Color(0xFFB8C0CB);
-  static const Color _qqSentBubble = Color(0xFF95EC69);
+  static const Color _qqBlue = Color(0xFF4A154B);
+  static const Color _qqBlueSoft = Color(0xFFF7EDF7);
+  static const Color _qqChat = Color(0xFFFAF8FA);
+  static const Color _qqText = Color(0xFF1D1D1D);
+  static const Color _qqMuted = Color(0xFF696969);
+  static const Color _qqOnline = Color(0xFF007A5A);
+  static const Color _qqOffline = Color(0xFFA9A9A9);
+  static const Color _qqSentBubble = Color(0xFFECE0EC);
   static const Duration _emojiTapDebounce = Duration(milliseconds: 250);
   static const Duration _sendDebounce = Duration(milliseconds: 800);
   static const Duration _messageMergeWindow = Duration(milliseconds: 1200);
@@ -231,27 +233,27 @@ class _ChatPageState extends State<ChatPage> {
 
       widget.callManager!.webRTCService.signalRService.onNewMessage =
           (message) {
-        print('📨 收到新消息: ${message.content}');
-        // 检查消息是否属于当前聊天
-        if (message.senderId == _contact.contactUser.id ||
-            message.receiverId == _contact.contactUser.id) {
-          var added = false;
-          setState(() {
-            added = _upsertMessage(message);
-            if (message.receiverId == widget.apiService.currentUser?.id) {
-              _contact = _contact.copyWith(unreadCount: 0);
+            print('📨 收到新消息: ${message.content}');
+            // 检查消息是否属于当前聊天
+            if (message.senderId == _contact.contactUser.id ||
+                message.receiverId == _contact.contactUser.id) {
+              var added = false;
+              setState(() {
+                added = _upsertMessage(message);
+                if (message.receiverId == widget.apiService.currentUser?.id) {
+                  _contact = _contact.copyWith(unreadCount: 0);
+                }
+              });
+
+              if (message.receiverId == widget.apiService.currentUser?.id) {
+                unawaited(_markIncomingMessagesAsRead([message]));
+              }
+
+              if (added) {
+                _scrollToBottom();
+              }
             }
-          });
-
-          if (message.receiverId == widget.apiService.currentUser?.id) {
-            unawaited(_markIncomingMessagesAsRead([message]));
-          }
-
-          if (added) {
-            _scrollToBottom();
-          }
-        }
-      };
+          };
 
       // 通话事件由 WebRTCVideoService/CallManager 统一处理，聊天页不覆盖来电回调。
     }
@@ -346,9 +348,8 @@ class _ChatPageState extends State<ChatPage> {
         _isLoading = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('加载消息失败: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('加载消息失败: $e')));
       }
     }
   }
@@ -375,8 +376,9 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     if (!mounted) return;
-    final readMessageIds =
-        unreadIncomingMessages.map((message) => message.id).toSet();
+    final readMessageIds = unreadIncomingMessages
+        .map((message) => message.id)
+        .toSet();
     setState(() {
       _messages = _messages
           .map(
@@ -408,8 +410,9 @@ class _ChatPageState extends State<ChatPage> {
       return false;
     }
 
-    final duplicateIndex =
-        _messages.indexWhere((item) => _isSameMessageDelivery(item, message));
+    final duplicateIndex = _messages.indexWhere(
+      (item) => _isSameMessageDelivery(item, message),
+    );
     if (duplicateIndex >= 0) {
       _messages[duplicateIndex] = _preferMessageForDisplay(
         _messages[duplicateIndex],
@@ -440,8 +443,10 @@ class _ChatPageState extends State<ChatPage> {
       return false;
     }
 
-    final deltaMs =
-        existing.timestamp.difference(incoming.timestamp).inMilliseconds.abs();
+    final deltaMs = existing.timestamp
+        .difference(incoming.timestamp)
+        .inMilliseconds
+        .abs();
     return deltaMs <= _messageMergeWindow.inMilliseconds;
   }
 
@@ -499,9 +504,8 @@ class _ChatPageState extends State<ChatPage> {
     final path = pickedFile.path;
     if (path == null || path.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('无法读取所选文件')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('无法读取所选文件')));
       return;
     }
 
@@ -526,9 +530,8 @@ class _ChatPageState extends State<ChatPage> {
     final hasPermission = await _audioRecorder.hasPermission();
     if (!hasPermission) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('请开启麦克风权限后再发送语音')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请开启麦克风权限后再发送语音')));
       return;
     }
 
@@ -554,8 +557,10 @@ class _ChatPageState extends State<ChatPage> {
         final startedAt = _voiceStartedAt;
         if (!mounted || startedAt == null) return;
         setState(() {
-          _voiceRecordSeconds =
-              DateTime.now().difference(startedAt).inSeconds.clamp(1, 3600);
+          _voiceRecordSeconds = DateTime.now()
+              .difference(startedAt)
+              .inSeconds
+              .clamp(1, 3600);
         });
       });
     } catch (e) {
@@ -564,9 +569,8 @@ class _ChatPageState extends State<ChatPage> {
         _isRecordingVoice = false;
         _voiceRecordSeconds = 0;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('录音失败: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('录音失败: $e')));
     }
   }
 
@@ -585,9 +589,8 @@ class _ChatPageState extends State<ChatPage> {
         _isRecordingVoice = false;
         _voiceRecordSeconds = 0;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('停止录音失败: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('停止录音失败: $e')));
       return;
     }
 
@@ -602,9 +605,8 @@ class _ChatPageState extends State<ChatPage> {
     });
 
     if (path == null || path.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('没有录到声音')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('没有录到声音')));
       return;
     }
 
@@ -619,9 +621,8 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _playVoiceMessage(ChatMessage message) async {
     final audioUrl = AppConfig.resolveMediaUrl(message.filePath);
     if (audioUrl == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('语音文件不可用')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('语音文件不可用')));
       return;
     }
 
@@ -646,9 +647,8 @@ class _ChatPageState extends State<ChatPage> {
       setState(() {
         _playingAudioUrl = null;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('语音播放失败: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('语音播放失败: $e')));
     }
   }
 
@@ -695,9 +695,8 @@ class _ChatPageState extends State<ChatPage> {
       setState(() {
         _isUploading = false;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('上传发送失败: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('上传发送失败: $e')));
     }
   }
 
@@ -758,17 +757,15 @@ class _ChatPageState extends State<ChatPage> {
     final trimmedContent = content.trim();
     if (trimmedContent.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('没有可复制的内容')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('没有可复制的内容')));
       return;
     }
 
     await Clipboard.setData(ClipboardData(text: trimmedContent));
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('已复制')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('已复制')));
   }
 
   void _startReply(ChatMessage message) {
@@ -809,14 +806,14 @@ class _ChatPageState extends State<ChatPage> {
         return value.startsWith('[语音]')
             ? value
             : value.isNotEmpty
-                ? '[语音] $value'
-                : '[语音]';
+            ? '[语音] $value'
+            : '[语音]';
       case MessageType.file:
         return value.startsWith('[文件]')
             ? value
             : value.isNotEmpty
-                ? '[文件] $value'
-                : '[文件]';
+            ? '[文件] $value'
+            : '[文件]';
       case MessageType.text:
         return value.isNotEmpty ? value : '[消息]';
     }
@@ -828,9 +825,8 @@ class _ChatPageState extends State<ChatPage> {
       contacts = await widget.apiService.getContacts();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('加载联系人失败: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('加载联系人失败: $e')));
       return;
     }
 
@@ -851,15 +847,17 @@ class _ChatPageState extends State<ChatPage> {
                 if (contact.isBlocked) return false;
                 final query = keyword.trim().toLowerCase();
                 if (query.isEmpty) return true;
-                return contact.displayNameOrUsername
-                        .toLowerCase()
-                        .contains(query) ||
+                return contact.displayNameOrUsername.toLowerCase().contains(
+                      query,
+                    ) ||
                     contact.contactUser.username.toLowerCase().contains(query);
               }).toList();
 
               return Dialog(
-                insetPadding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+                insetPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 28,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -938,13 +936,15 @@ class _ChatPageState extends State<ChatPage> {
                                 ),
                               )
                             : ListView.builder(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 10),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
                                 itemCount: filteredContacts.length,
                                 itemBuilder: (context, index) {
                                   final contact = filteredContacts[index];
-                                  final selected =
-                                      selectedContactIds.contains(contact.id);
+                                  final selected = selectedContactIds.contains(
+                                    contact.id,
+                                  );
                                   return CheckboxListTile(
                                     value: selected,
                                     onChanged: (_) {
@@ -1088,17 +1088,15 @@ class _ChatPageState extends State<ChatPage> {
         _isSending = false;
       });
       _scrollToBottom();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('已转发给 $successCount 个联系人')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('已转发给 $successCount 个联系人')));
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isSending = false;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('转发失败: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('转发失败: $e')));
     }
   }
 
@@ -1198,9 +1196,8 @@ class _ChatPageState extends State<ChatPage> {
         _isSending = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('发送消息失败: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('发送消息失败: $e')));
       }
     }
   }
@@ -1280,8 +1277,9 @@ class _ChatPageState extends State<ChatPage> {
         style: IconButton.styleFrom(
           backgroundColor: active ? _qqBlueSoft : const Color(0xFFF1F5F8),
           padding: EdgeInsets.zero,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       ),
     );
@@ -1332,8 +1330,10 @@ class _ChatPageState extends State<ChatPage> {
                   _replyPreviewText(snapshot.content, snapshot.type),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style:
-                      const TextStyle(color: Color(0xFF5F6975), fontSize: 12),
+                  style: const TextStyle(
+                    color: Color(0xFF5F6975),
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -1389,11 +1389,13 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                   Row(
                     children: [
-                      Icon(Icons.circle,
-                          size: 8,
-                          color: _contact.contactUser.isOnline
-                              ? _qqOnline
-                              : Colors.white70),
+                      Icon(
+                        Icons.circle,
+                        size: 8,
+                        color: _contact.contactUser.isOnline
+                            ? _qqOnline
+                            : Colors.white70,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         _contact.contactUser.isOnline ? '在线' : '离线',
@@ -1458,27 +1460,28 @@ class _ChatPageState extends State<ChatPage> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _messages.isEmpty
-                      ? const Center(
-                          child: Text(
-                            '暂无消息',
-                            style: TextStyle(
-                              fontSize: 15,
-                              color: _qqMuted,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.fromLTRB(12, 18, 12, 18),
-                          itemCount: _messages.length,
-                          itemBuilder: (context, index) {
-                            final message = _messages[index];
-                            final isMe = message.senderId ==
-                                widget.apiService.currentUser?.id;
-                            return _buildMessageBubble(message, isMe);
-                          },
+                  ? const Center(
+                      child: Text(
+                        '暂无消息',
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: _qqMuted,
+                          fontWeight: FontWeight.w600,
                         ),
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.fromLTRB(12, 18, 12, 18),
+                      itemCount: _messages.length,
+                      itemBuilder: (context, index) {
+                        final message = _messages[index];
+                        final isMe =
+                            message.senderId ==
+                            widget.apiService.currentUser?.id;
+                        return _buildMessageBubble(message, isMe);
+                      },
+                    ),
             ),
             SafeArea(
               top: false,
@@ -1487,8 +1490,9 @@ class _ChatPageState extends State<ChatPage> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border(
-                    top:
-                        BorderSide(color: Colors.black.withValues(alpha: 0.06)),
+                    top: BorderSide(
+                      color: Colors.black.withValues(alpha: 0.06),
+                    ),
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -1532,8 +1536,8 @@ class _ChatPageState extends State<ChatPage> {
                               ),
                             ),
                             TextButton(
-                              onPressed: () => unawaited(
-                                  _stopAndSendVoiceRecording()),
+                              onPressed: () =>
+                                  unawaited(_stopAndSendVoiceRecording()),
                               child: const Text('停止并发送'),
                             ),
                           ],
@@ -1598,7 +1602,9 @@ class _ChatPageState extends State<ChatPage> {
                               hintText: '输入消息',
                               fillColor: Color(0xFFF3F6F9),
                               contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 9),
+                                horizontal: 14,
+                                vertical: 9,
+                              ),
                             ),
                             maxLines: null,
                             textInputAction: TextInputAction.send,
@@ -1619,8 +1625,9 @@ class _ChatPageState extends State<ChatPage> {
                                 height: 36,
                                 child: Padding(
                                   padding: EdgeInsets.all(8),
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 ),
                               )
                             : SizedBox(
@@ -1628,8 +1635,10 @@ class _ChatPageState extends State<ChatPage> {
                                 height: 38,
                                 child: IconButton(
                                   onPressed: _sendMessage,
-                                  icon:
-                                      const Icon(Icons.send_rounded, size: 20),
+                                  icon: const Icon(
+                                    Icons.send_rounded,
+                                    size: 20,
+                                  ),
                                   color: Colors.white,
                                   style: IconButton.styleFrom(
                                     backgroundColor: _qqBlue,
@@ -1695,17 +1704,19 @@ class _ChatPageState extends State<ChatPage> {
     final bubbleColor = isMe ? _qqSentBubble : Colors.white;
     final messageName = isMe
         ? (currentUser?.display_name?.isNotEmpty == true
-            ? currentUser!.display_name!
-            : currentUser?.username ?? '我')
+              ? currentUser!.display_name!
+              : currentUser?.username ?? '我')
         : _displayName();
-    final avatarPath =
-        isMe ? currentUser?.avatarPath : _contact.contactUser.avatarPath;
+    final avatarPath = isMe
+        ? currentUser?.avatarPath
+        : _contact.contactUser.avatarPath;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        mainAxisAlignment:
-            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isMe
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isMe)
@@ -1718,8 +1729,9 @@ class _ChatPageState extends State<ChatPage> {
           if (!isMe) const SizedBox(width: 8),
           Flexible(
             child: Column(
-              crossAxisAlignment:
-                  isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: isMe
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
@@ -1728,8 +1740,10 @@ class _ChatPageState extends State<ChatPage> {
                     constraints: BoxConstraints(
                       maxWidth: MediaQuery.sizeOf(context).width * 0.68,
                     ),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 13,
+                      vertical: 9,
+                    ),
                     decoration: BoxDecoration(
                       color: bubbleColor,
                       borderRadius: BorderRadius.only(
@@ -1857,10 +1871,7 @@ class _ChatPageState extends State<ChatPage> {
                 width: 220,
                 height: 120,
                 child: Center(
-                  child: Text(
-                    '图片加载失败',
-                    style: const TextStyle(color: _qqText),
-                  ),
+                  child: Text('图片加载失败', style: const TextStyle(color: _qqText)),
                 ),
               );
             },
@@ -1891,9 +1902,8 @@ class _ChatPageState extends State<ChatPage> {
           : () async {
               await Clipboard.setData(ClipboardData(text: fileUrl));
               if (!mounted) return;
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('文件链接已复制')));
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('文件链接已复制')));
             },
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1917,10 +1927,7 @@ class _ChatPageState extends State<ChatPage> {
                 if (message.fileSize != null)
                   Text(
                     _formatFileSize(message.fileSize!),
-                    style: TextStyle(
-                      color: _qqMuted,
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: _qqMuted, fontSize: 12),
                   ),
               ],
             ),

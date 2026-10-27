@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../services/api_service.dart';
 import '../services/call_manager.dart';
 import '../models/contact.dart';
@@ -25,12 +26,12 @@ class ChatHistoryPage extends StatefulWidget {
 }
 
 class _ChatHistoryPageState extends State<ChatHistoryPage> {
-  static const Color _qqBlue = Color(0xFF12A8F4);
-  static const Color _qqShell = Color(0xFFEFF7FC);
-  static const Color _qqText = Color(0xFF111820);
-  static const Color _qqMuted = Color(0xFF8C96A3);
-  static const Color _qqOnline = Color(0xFF20D67A);
-  static const Color _qqOffline = Color(0xFFB8C0CB);
+  static const Color _qqBlue = Color(0xFF4A154B);
+  static const Color _qqShell = Color(0xFFF4EDE4);
+  static const Color _qqText = Color(0xFF1D1D1D);
+  static const Color _qqMuted = Color(0xFF696969);
+  static const Color _qqOnline = Color(0xFF007A5A);
+  static const Color _qqOffline = Color(0xFFA9A9A9);
 
   List<Contact> _contacts = [];
   bool _isLoading = true;
@@ -113,15 +114,13 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('聊天记录已删除')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('聊天记录已删除')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('删除失败: $e')));
       }
     }
   }
@@ -154,9 +153,8 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('通话记录加载失败: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('通话记录加载失败: $e')));
     }
   }
 
@@ -187,13 +185,18 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: Icon(icon,
-          color: call.status == CallStatus.missed ? Colors.red : _qqBlue),
+      leading: Icon(
+        icon,
+        color: call.status == CallStatus.missed ? Colors.red : _qqBlue,
+      ),
       title: Text(name),
       subtitle: Text(
-          '${isOutgoing ? '呼出' : '呼入'} · $typeText · $statusText$durationText'),
-      trailing:
-          Text(dateText, style: const TextStyle(color: _qqMuted, fontSize: 11)),
+        '${isOutgoing ? '呼出' : '呼入'} · $typeText · $statusText$durationText',
+      ),
+      trailing: Text(
+        dateText,
+        style: const TextStyle(color: _qqMuted, fontSize: 11),
+      ),
     );
   }
 
@@ -317,19 +320,19 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
 
             Navigator.of(context)
                 .push(
-              MaterialPageRoute(
-                builder: (context) => ChatPage(
-                  contact: contact,
-                  apiService: widget.apiService,
-                  callManager: widget.callManager,
-                ),
-              ),
-            )
+                  MaterialPageRoute(
+                    builder: (context) => ChatPage(
+                      contact: contact,
+                      apiService: widget.apiService,
+                      callManager: widget.callManager,
+                    ),
+                  ),
+                )
                 .then((_) {
-              if (mounted) {
-                _loadContacts();
-              }
-            });
+                  if (mounted) {
+                    _loadContacts();
+                  }
+                });
           },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -434,42 +437,35 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _errorMessage != null
-                ? LoadErrorState(
-                    title: '聊天记录加载失败',
-                    message: serviceMaintenanceMessage,
-                    details: _errorMessage,
-                    onRetry: _retryConnectionsAndLoadContacts,
-                    accentColor: _qqBlue,
-                    textColor: _qqText,
-                    mutedColor: _qqMuted,
-                  )
-                : _contacts.isEmpty
-                    ? const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.chat_bubble_outline,
-                              size: 64,
-                              color: _qqMuted,
-                            ),
-                            SizedBox(height: 16),
-                            Text(
-                              '暂无聊天记录',
-                              style: TextStyle(color: _qqMuted),
-                            ),
-                          ],
-                        ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _loadContacts,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(0, 10, 0, 18),
-                          itemCount: _contacts.length,
-                          itemBuilder: (context, index) =>
-                              _buildConversationTile(_contacts[index]),
-                        ),
-                      ),
+            ? LoadErrorState(
+                title: '聊天记录加载失败',
+                message: serviceMaintenanceMessage,
+                details: _errorMessage,
+                onRetry: _retryConnectionsAndLoadContacts,
+                accentColor: _qqBlue,
+                textColor: _qqText,
+                mutedColor: _qqMuted,
+              )
+            : _contacts.isEmpty
+            ? const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.chat_bubble_outline, size: 64, color: _qqMuted),
+                    SizedBox(height: 16),
+                    Text('暂无聊天记录', style: TextStyle(color: _qqMuted)),
+                  ],
+                ),
+              )
+            : RefreshIndicator(
+                onRefresh: _loadContacts,
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(0, 10, 0, 18),
+                  itemCount: _contacts.length,
+                  itemBuilder: (context, index) =>
+                      _buildConversationTile(_contacts[index]),
+                ),
+              ),
       ),
     );
   }

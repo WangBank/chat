@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+
 import '../models/user.dart';
 import '../services/api_service.dart';
 import '../config/app_config.dart';
@@ -19,13 +21,13 @@ class UserSearchPage extends StatefulWidget {
 }
 
 class _UserSearchPageState extends State<UserSearchPage> {
-  static const Color _qqBlue = Color(0xFF12A8F4);
-  static const Color _qqBlueSoft = Color(0xFFE8F6FF);
-  static const Color _qqShell = Color(0xFFEFF7FC);
-  static const Color _qqText = Color(0xFF111820);
-  static const Color _qqMuted = Color(0xFF8C96A3);
-  static const Color _qqOnline = Color(0xFF20D67A);
-  static const Color _qqOffline = Color(0xFFB8C0CB);
+  static const Color _qqBlue = Color(0xFF4A154B);
+  static const Color _qqBlueSoft = Color(0xFFF7EDF7);
+  static const Color _qqShell = Color(0xFFF4EDE4);
+  static const Color _qqText = Color(0xFF1D1D1D);
+  static const Color _qqMuted = Color(0xFF696969);
+  static const Color _qqOnline = Color(0xFF007A5A);
+  static const Color _qqOffline = Color(0xFFA9A9A9);
 
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -101,9 +103,8 @@ class _UserSearchPageState extends State<UserSearchPage> {
         _isLoading = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('搜索失败: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('搜索失败: $e')));
       }
     }
   }
@@ -134,9 +135,8 @@ class _UserSearchPageState extends State<UserSearchPage> {
         _isLoading = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('加载用户失败: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('加载用户失败: $e')));
       }
     }
   }
@@ -170,9 +170,8 @@ class _UserSearchPageState extends State<UserSearchPage> {
         _isLoading = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('加载更多用户失败: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('加载更多用户失败: $e')));
       }
     }
   }
@@ -230,8 +229,9 @@ class _UserSearchPageState extends State<UserSearchPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color:
-            user.isOnline ? const Color(0xFFE8F8EF) : const Color(0xFFF1F4F7),
+        color: user.isOnline
+            ? const Color(0xFFE8F8EF)
+            : const Color(0xFFF1F4F7),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -351,9 +351,7 @@ class _UserSearchPageState extends State<UserSearchPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('搜索用户'),
-      ),
+      appBar: AppBar(title: const Text('搜索用户')),
       body: Column(
         children: [
           Container(
@@ -382,9 +380,7 @@ class _UserSearchPageState extends State<UserSearchPage> {
                 BorderSide(color: Color(0xFFE5EDF3)),
               ),
               shape: WidgetStatePropertyAll(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
             ),
           ),

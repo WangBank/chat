@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../services/api_service.dart';
 import '../models/user.dart';
 import '../services/storage_service.dart';
@@ -13,11 +14,7 @@ class LoginPage extends StatefulWidget {
   final Function(User user)? onLoginSuccess;
   final ApiService? apiService;
 
-  const LoginPage({
-    super.key,
-    this.onLoginSuccess,
-    this.apiService,
-  });
+  const LoginPage({super.key, this.onLoginSuccess, this.apiService});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -32,10 +29,10 @@ class _LoginPageState extends State<LoginPage> {
   late final ApiService _apiService;
   late final AppLinks _appLinks;
   StreamSubscription<Uri>? _qqLinkSubscription;
-  static const Color _qqBlue = Color(0xFF12A8F4);
-  static const Color _qqShell = Color(0xFFEFF7FC);
-  static const Color _qqText = Color(0xFF111820);
-  static const Color _qqMuted = Color(0xFF8C96A3);
+  static const Color _qqBlue = Color(0xFF4A154B);
+  static const Color _qqShell = Color(0xFFF4EDE4);
+  static const Color _qqText = Color(0xFF1D1D1D);
+  static const Color _qqMuted = Color(0xFF696969);
   static const String _qqCallbackScheme = 'lovechat';
   static const String _qqCallbackHost = 'qq-callback';
   static const String _qqHttpsCallbackHost = 'chat.wangbank.top';
@@ -64,26 +61,31 @@ class _LoginPageState extends State<LoginPage> {
       },
     );
 
-    _appLinks.getInitialLink().then((uri) {
-      if (uri != null) {
-        _handleIncomingQQLink(uri);
-      }
-    }).catchError((error) {
-      print('❌ 获取QQ初始回调失败: $error');
-    });
+    _appLinks
+        .getInitialLink()
+        .then((uri) {
+          if (uri != null) {
+            _handleIncomingQQLink(uri);
+          }
+        })
+        .catchError((error) {
+          print('❌ 获取QQ初始回调失败: $error');
+        });
   }
 
   void _handleIncomingQQLink(Uri uri) {
     final isCustomSchemeCallback =
         uri.scheme == _qqCallbackScheme && uri.host == _qqCallbackHost;
-    final isHttpsAppLinkCallback = uri.scheme == 'https' &&
+    final isHttpsAppLinkCallback =
+        uri.scheme == 'https' &&
         uri.host == _qqHttpsCallbackHost &&
         uri.path == _qqHttpsCallbackPath;
     if (!isCustomSchemeCallback && !isHttpsAppLinkCallback) {
       return;
     }
 
-    final error = uri.queryParameters['error_description'] ??
+    final error =
+        uri.queryParameters['error_description'] ??
         uri.queryParameters['error'];
     if (error != null && error.isNotEmpty) {
       if (!mounted) return;
@@ -245,7 +247,8 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(response['message']?.toString() ?? '验证码已发送，5分钟内有效')),
+          content: Text(response['message']?.toString() ?? '验证码已发送，5分钟内有效'),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -356,10 +359,7 @@ class _LoginPageState extends State<LoginPage> {
       print('⚠️ 未能直接唤起手机QQ，改用浏览器授权: $e');
     }
 
-    return launchUrl(
-      authUrl,
-      mode: LaunchMode.externalApplication,
-    );
+    return launchUrl(authUrl, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _completeQQLogin({
@@ -489,17 +489,13 @@ class _LoginPageState extends State<LoginPage> {
                           Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F8),
+                              color: const Color(0xFFF7EDF7),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Row(
                               children: [
-                                Expanded(
-                                  child: _buildModeButton('登录', true),
-                                ),
-                                Expanded(
-                                  child: _buildModeButton('注册', false),
-                                ),
+                                Expanded(child: _buildModeButton('登录', true)),
+                                Expanded(child: _buildModeButton('注册', false)),
                               ],
                             ),
                           ),
@@ -533,14 +529,15 @@ class _LoginPageState extends State<LoginPage> {
                                 suffixIcon: TextButton(
                                   onPressed:
                                       _isLoading || _isSendingVerificationCode
-                                          ? null
-                                          : _requestRegistrationEmailCode,
+                                      ? null
+                                      : _requestRegistrationEmailCode,
                                   child: _isSendingVerificationCode
                                       ? const SizedBox(
                                           width: 16,
                                           height: 16,
                                           child: CircularProgressIndicator(
-                                              strokeWidth: 2),
+                                            strokeWidth: 2,
+                                          ),
                                         )
                                       : const Text('获取验证码'),
                                 ),
@@ -659,8 +656,9 @@ class _LoginPageState extends State<LoginPage> {
                                     height: 46,
                                     child: IconButton(
                                       tooltip: 'QQ登录',
-                                      onPressed:
-                                          _isLoading ? null : _handleQQLogin,
+                                      onPressed: _isLoading
+                                          ? null
+                                          : _handleQQLogin,
                                       icon: const Text(
                                         'Q',
                                         style: TextStyle(
@@ -672,11 +670,12 @@ class _LoginPageState extends State<LoginPage> {
                                       style: IconButton.styleFrom(
                                         backgroundColor: Colors.white,
                                         side: const BorderSide(
-                                          color: Color(0xFFDCE9F2),
+                                          color: Color(0xFFD9BDDE),
                                         ),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(999),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -721,10 +720,7 @@ class _LoginPageState extends State<LoginPage> {
         foregroundColor: active ? _qqBlue : _qqMuted,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
       ),
-      child: Text(
-        label,
-        style: const TextStyle(fontWeight: FontWeight.w800),
-      ),
+      child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
     );
   }
 
@@ -737,18 +733,12 @@ class _LoginPageState extends State<LoginPage> {
       decoration: BoxDecoration(
         color: const Color(0xFFFFF5F5),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFFFD2D2),
-        ),
+        border: Border.all(color: const Color(0xFFFFD2D2)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.error_outline,
-            size: 18,
-            color: Color(0xFFD93025),
-          ),
+          const Icon(Icons.error_outline, size: 18, color: Color(0xFFD93025)),
           const SizedBox(width: 8),
           Expanded(
             child: SingleChildScrollView(

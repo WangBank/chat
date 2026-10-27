@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../models/call.dart';
 import '../models/user.dart';
 import '../services/call_manager.dart';
@@ -15,7 +16,7 @@ class CallPage extends StatefulWidget {
 }
 
 class _CallPageState extends State<CallPage> {
-  static const Color _qqBlue = Color(0xFF12A8F4);
+  static const Color _qqBlue = Color(0xFF4A154B);
   static const Color _callBackground = Color(0xFF0B1118);
   static const Color _callDanger = Color(0xFFFF3B30);
 
@@ -121,9 +122,11 @@ class _CallPageState extends State<CallPage> {
                                       width: 120,
                                       height: 120,
                                       fit: BoxFit.cover,
-                                      errorBuilder:
-                                          (context, error, stackTrace) =>
-                                              _buildInitial(),
+                                      errorBuilder: (
+                                        context,
+                                        error,
+                                        stackTrace,
+                                      ) => _buildInitial(),
                                     ),
                                   )
                                 : _buildInitial(),

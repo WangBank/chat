@@ -1,0 +1,81 @@
+.admin-page {
+  min-height: 100vh;
+  background: #f4ede4;
+}
+
+.admin-console-header {
+  border-bottom: 1px solid #592466;
+}
+
+.admin-page-content {
+  padding-bottom: 36px !important;
+}
+
+.admin-page .MuiPaper-root {
+  border: 1px solid #e6e6e6;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.admin-metric-card {
+  min-height: 112px;
+}
+
+.admin-metric-card .MuiTypography-h4 {
+  color: #4a154b;
+  font-weight: 800;
+}
+
+.admin-user-panel .MuiTab-root {
+  min-height: 50px;
+  color: #696969;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.admin-user-panel .MuiTab-root.Mui-selected {
+  color: #4a154b;
+}
+
+.admin-user-panel .MuiTabs-indicator {
+  height: 3px;
+  background: #4a154b;
+}
+
+.admin-user-table .MuiTableCell-root {
+  border-bottom-color: #e6e6e6;
+}
+
+.admin-user-table .MuiTableCell-head {
+  background: #f9f0ff;
+  color: #4a154b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-user-table .MuiTableRow-root:hover > .MuiTableCell-root {
+  background: #fcf8fc;
+}
+
+.admin-page .MuiIconButton-root:hover {
+  background: #f7edf7;
+  color: #4a154b;
+}
+
+@media (max-width: 600px) {
+  .admin-page-content {
+    padding-inline: 12px !important;
+  }
+
+  .admin-user-panel .MuiStack-root {
+    gap: 12px;
+  }
+
+  .admin-user-table {
+    overflow-x: auto;
+  }
+
+  .admin-user-table .MuiTable-root {
+    min-width: 760px;
+  }
+}

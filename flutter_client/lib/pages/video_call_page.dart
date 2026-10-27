@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+
 import '../models/call.dart';
 import '../services/call_manager.dart';
 import '../models/user.dart';
@@ -20,7 +21,7 @@ class VideoCallPage extends StatefulWidget {
 }
 
 class _VideoCallPageState extends State<VideoCallPage> {
-  static const Color _qqBlue = Color(0xFF12A8F4);
+  static const Color _qqBlue = Color(0xFF4A154B);
   static const Color _callBackground = Color(0xFF0B1118);
 
   bool _isMuted = false;
@@ -207,8 +208,9 @@ class _VideoCallPageState extends State<VideoCallPage> {
                         setState(() {
                           _isCameraOff = !_isCameraOff;
                         });
-                        widget.callManager.webRTCService
-                            .setCameraEnabled(!_isCameraOff);
+                        widget.callManager.webRTCService.setCameraEnabled(
+                          !_isCameraOff,
+                        );
                       },
                     ),
 
@@ -220,8 +222,9 @@ class _VideoCallPageState extends State<VideoCallPage> {
                         setState(() {
                           _isSpeakerOn = !_isSpeakerOn;
                         });
-                        widget.callManager.webRTCService
-                            .setSpeakerphoneEnabled(_isSpeakerOn);
+                        widget.callManager.webRTCService.setSpeakerphoneEnabled(
+                          _isSpeakerOn,
+                        );
                       },
                     ),
 
@@ -408,19 +411,17 @@ class _VideoCallPageState extends State<VideoCallPage> {
 
   // 辅助：构建首字母头像
   Widget _buildInitialAvatar(User user) {
-    final String initial = (user.display_name?.isNotEmpty == true
-            ? user.display_name![0]
-            : user.username.isNotEmpty
+    final String initial =
+        (user.display_name?.isNotEmpty == true
+                ? user.display_name![0]
+                : user.username.isNotEmpty
                 ? user.username[0]
                 : '?')
-        .toUpperCase();
+            .toUpperCase();
     return Container(
       width: 80,
       height: 80,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        color: _qqBlue,
-      ),
+      decoration: const BoxDecoration(shape: BoxShape.circle, color: _qqBlue),
       alignment: Alignment.center,
       child: Text(
         initial,

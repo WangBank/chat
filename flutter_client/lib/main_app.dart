@@ -37,11 +37,11 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   static const String _voiceCallRouteName = '/call/voice';
   static const String _videoCallRouteName = '/call/video';
   static const String _waitingCallRouteName = '/call/waiting';
-  static const Color _qqBlue = Color(0xFF12A8F4);
-  static const Color _qqBlueDark = Color(0xFF078FDB);
-  static const Color _qqShell = Color(0xFFEFF7FC);
-  static const Color _qqText = Color(0xFF111820);
-  static const Color _qqMuted = Color(0xFF8C96A3);
+  static const Color _qqBlue = Color(0xFF4A154B);
+  static const Color _qqBlueDark = Color(0xFF1264A3);
+  static const Color _qqShell = Color(0xFFF4EDE4);
+  static const Color _qqText = Color(0xFF1D1D1D);
+  static const Color _qqMuted = Color(0xFF696969);
 
   late ApiService _apiService;
   late SignalRService _signalRService;
@@ -862,7 +862,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       primary: _qqBlue,
       secondary: _qqBlueDark,
       surface: Colors.white,
-      error: const Color(0xFFFF3B30),
+      error: const Color(0xFFCC4117),
       brightness: Brightness.light,
     );
 
@@ -887,18 +887,18 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: Colors.white,
         selectedItemColor: _qqBlue,
-        unselectedItemColor: Color(0xFF8C96A3),
+        unselectedItemColor: Color(0xFF696969),
         selectedLabelStyle: TextStyle(fontWeight: FontWeight.w700),
         type: BottomNavigationBarType.fixed,
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 64,
         backgroundColor: Colors.white,
-        indicatorColor: const Color(0xFFE8F6FF),
+        indicatorColor: const Color(0xFFF7EDF7),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(
-            color: selected ? _qqBlue : const Color(0xFF8C96A3),
+            color: selected ? _qqBlue : const Color(0xFF696969),
             fontSize: 12,
             fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
           );
@@ -906,7 +906,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         iconTheme: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return IconThemeData(
-            color: selected ? _qqBlue : const Color(0xFF8C96A3),
+            color: selected ? _qqBlue : const Color(0xFF696969),
             size: 24,
           );
         }),
@@ -915,21 +915,21 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         color: Colors.white,
         elevation: 0,
         margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFFE6E6E6)),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFFE6E6E6)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: _qqBlue, width: 1),
         ),
         contentPadding: const EdgeInsets.symmetric(
@@ -943,7 +943,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           foregroundColor: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(999),
           ),
         ),
       ),
@@ -952,16 +952,14 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           backgroundColor: _qqBlue,
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(999),
           ),
         ),
       ),
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
           foregroundColor: const Color(0xFF26323F),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
       textTheme: ThemeData.light().textTheme.apply(

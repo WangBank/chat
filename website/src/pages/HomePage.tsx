@@ -4,8 +4,6 @@ import {
   Avatar,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
   Container,
   Divider,
@@ -21,6 +19,7 @@ import {
 } from '@mui/material';
 import {
   Android,
+  ArrowOutward,
   CloudSync,
   Download,
   History,
@@ -34,68 +33,30 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { APP_CONFIG } from '../config/app.config';
+import '../styles/home.css';
 
 const PRODUCT_NAME = 'Love Chat';
 
 const featureItems = [
-  {
-    icon: <Message />,
-    title: '完整聊天',
-    text: '会话列表、消息气泡、表情、图片、文件、语音和未读状态集中在同一个聊天工作台。',
-  },
-  {
-    icon: <SupervisorAccount />,
-    title: '好友管理',
-    text: '支持搜索添加好友、好友申请处理、备注名、自定义头像和个性签名展示。',
-  },
-  {
-    icon: <VideoCall />,
-    title: '音视频通话',
-    text: '在聊天和联系人页保留语音、视频通话入口，适合网页端、平板和移动端快速发起沟通。',
-  },
-  {
-    icon: <History />,
-    title: '历史记录',
-    text: '按聊天、图片、文件和链接回看关键内容，便于从长期会话中快速定位信息。',
-  },
-  {
-    icon: <CloudSync />,
-    title: '实时在线',
-    text: '在线状态、消息已读、头像和资料通过账号体系同步，减少多端状态不一致。',
-  },
-  {
-    icon: <Security />,
-    title: '安全防护',
-    text: '保留敏感词过滤、防注入和账号安全能力，为真实使用场景提供基础防线。',
-  },
+  { icon: <Message />, title: '完整聊天', text: '会话、表情、图片、文件、语音和未读状态在同一个清晰的工作台中处理。' },
+  { icon: <SupervisorAccount />, title: '好友管理', text: '搜索添加好友、处理申请、维护备注、头像和个性签名，无需离开当前会话。' },
+  { icon: <VideoCall />, title: '音视频通话', text: '从聊天和联系人列表直接发起语音或视频通话，覆盖网页、平板和移动场景。' },
+  { icon: <History />, title: '历史记录', text: '按会话、图片、文件和链接回看关键内容，长期聊天也能快速找到上下文。' },
+  { icon: <CloudSync />, title: '实时在线', text: '在线状态、已读回执、头像和资料随账号同步，让每个终端保持一致。' },
+  { icon: <Security />, title: '安全防护', text: '敏感词过滤、防注入和账号安全能力为日常沟通提供基础防护。' },
 ];
 
 const deviceItems = [
-  {
-    icon: <Web />,
-    name: '桌面浏览器',
-    status: '推荐',
-    text: '打开网页即可使用完整聊天、好友、群聊和管理控制台。',
-  },
-  {
-    icon: <TabletMac />,
-    name: 'iPad 浏览器',
-    status: '已支持',
-    text: 'iPad 横屏和竖屏下都可以直接使用网页版，聊天、好友、群组、历史记录和资料入口保持完整。',
-  },
-  {
-    icon: <Android />,
-    name: 'Android 客户端',
-    status: '可下载',
-    text: '安装 APK 后可使用移动端聊天、联系人、资料和通话功能。',
-  },
+  { icon: <Web />, name: '桌面浏览器', status: '推荐', text: '完整使用聊天、好友、群聊和管理控制台。' },
+  { icon: <TabletMac />, name: 'iPad 浏览器', status: '已支持', text: '横竖屏都保留聊天、联系人、资料和历史记录入口。' },
+  { icon: <Android />, name: 'Android 客户端', status: '可下载', text: '安装 APK 后使用移动端聊天、联系人、资料和通话。' },
 ];
 
 const metricItems = [
-  ['Web', '网页版入口'],
+  ['Web', '浏览器入口'],
   ['APK', '移动端下载'],
   ['IM', '即时消息'],
-  ['RTC', '音视频通话'],
+  ['RTC', '实时通话'],
 ];
 
 const HomePage = () => {
@@ -110,213 +71,128 @@ const HomePage = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#eef5fb', color: '#111820' }}>
-      <AppBar position="sticky" elevation={0} sx={{ bgcolor: '#12a8f4' }}>
-        <Toolbar sx={{ gap: 1.5, minHeight: 58 }}>
-          <Avatar sx={{ bgcolor: 'white', color: '#078fdb', width: 34, height: 34, fontWeight: 900 }}>
-            Q
-          </Avatar>
+    <Box className="home-page">
+      <AppBar className="home-nav" position="sticky" elevation={0}>
+        <Toolbar className="home-nav-inner">
+          <Avatar className="home-brand-mark">L</Avatar>
           <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography variant="subtitle1" noWrap sx={{ fontWeight: 900, lineHeight: 1.2 }}>
-              {PRODUCT_NAME}
-            </Typography>
-            <Typography variant="caption" noWrap sx={{ display: 'block', color: 'rgba(255,255,255,0.82)' }}>
-              网页版 · iPad · Android · 实时通信系统
-            </Typography>
+            <Typography className="home-brand-name" noWrap>{PRODUCT_NAME}</Typography>
+            <Typography className="home-brand-caption" noWrap>网页端 · iPad · Android</Typography>
           </Box>
-          <Chip
-            size="small"
-            label={`v${APP_CONFIG.VERSION}`}
-            sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'white', borderColor: 'rgba(255,255,255,0.24)' }}
-            variant="outlined"
-          />
+          <Chip className="home-version" size="small" label={`v${APP_CONFIG.VERSION}`} variant="outlined" />
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 3, lg: 4 } }}>
-        <Stack spacing={3}>
-          <Paper
-            sx={{
-              overflow: 'hidden',
-              borderRadius: 2.5,
-              boxShadow: '0 18px 42px rgba(16,42,70,0.12)',
-            }}
-          >
-            <Grid container>
+      <main>
+        <section className="home-hero">
+          <Container maxWidth="xl" className="home-hero-inner">
+            <Grid container spacing={{ xs: 4, md: 7 }} sx={{ alignItems: 'center' }}>
               <Grid size={{ xs: 12, md: 7 }}>
-                <Box sx={{ p: { xs: 3, sm: 4, lg: 5 } }}>
-                  <Chip label="实时通信系统" color="primary" sx={{ mb: 2, fontWeight: 800 }} />
-                  <Typography
-                    variant="h2"
-                    sx={{
-                      maxWidth: 680,
-                      fontSize: { xs: 34, sm: 42, md: 46, lg: 54 },
-                      lineHeight: 1.04,
-                      fontWeight: 950,
-                      letterSpacing: 0,
-                      mb: 2,
-                      overflowWrap: 'break-word',
-                    }}
-                  >
-                    Love Chat 通讯系统
+                <Box className="home-hero-copy">
+                  <Chip className="home-eyebrow" label="实时通信工作台" size="small" />
+                  <Typography component="h1" className="home-title">让每一段对话保持同步</Typography>
+                  <Typography className="home-lead">
+                    Love Chat 将账号、聊天、联系人、历史记录与音视频通话放进统一界面，跨设备衔接仍然清晰可靠。
                   </Typography>
-                  <Typography
-                    variant="body1"
-                    color="text.secondary"
-                    sx={{ maxWidth: 720, lineHeight: 1.8, mb: 3, overflowWrap: 'break-word' }}
-                  >
-                    面向桌面浏览器、iPad 和 Android 的即时通信应用，覆盖账号登录、聊天、好友、群组、历史记录、个性资料、表情和音视频通话等核心能力。
-                  </Typography>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-                    <Button variant="contained" size="large" startIcon={<Login />} onClick={() => navigate('/login')}>
+                  <Stack className="home-actions" direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
+                    <Button className="home-primary-action" variant="contained" size="large" startIcon={<Login />} onClick={() => navigate('/login')}>
                       进入网页版
                     </Button>
-                    <Button variant="outlined" size="large" startIcon={<Download />} onClick={handleDownload}>
+                    <Button className="home-secondary-action" variant="outlined" size="large" startIcon={<Download />} onClick={handleDownload}>
                       下载 Android
                     </Button>
                   </Stack>
                 </Box>
               </Grid>
               <Grid size={{ xs: 12, md: 5 }}>
-                <Box
-                  sx={{
-                    height: '100%',
-                    minHeight: { xs: 300, sm: 360 },
-                    p: { xs: 2, sm: 2.5, lg: 3 },
-                    bgcolor: '#f8fbfd',
-                    borderLeft: { md: '1px solid #e5edf3' },
-                    borderTop: { xs: '1px solid #e5edf3', md: 'none' },
-                  }}
-                >
-                  <Card sx={{ height: '100%', borderRadius: 2, boxShadow: 'none', border: '1px solid #e5edf3' }}>
-                    <CardContent>
-                      <Stack direction="row" spacing={1.25} sx={{ mb: 2, alignItems: 'center' }}>
-                        <Security color="primary" />
-                        <Typography variant="subtitle1" sx={{ fontWeight: 900, flex: 1 }}>
-                          系统状态
-                        </Typography>
-                        <Chip size="small" color="success" label="Ready" />
-                      </Stack>
-                      <Divider sx={{ mb: 2 }} />
-                      <Grid container spacing={1.25}>
-                        {metricItems.map(([value, label]) => (
-                          <Grid size={{ xs: 6 }} key={value}>
-                            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', borderRadius: 2 }}>
-                              <Typography variant="h5" sx={{ fontWeight: 950 }}>
-                                {value}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {label}
-                              </Typography>
-                            </Paper>
-                          </Grid>
-                        ))}
+                <Box className="home-product-stage" aria-label="Love Chat 产品能力概览">
+                  <Box className="home-product-heading">
+                    <Box>
+                      <Typography className="home-product-kicker">LOVE CHAT</Typography>
+                      <Typography className="home-product-title">沟通状态</Typography>
+                    </Box>
+                    <Chip className="home-status-chip" size="small" label="服务可用" />
+                  </Box>
+                  <Divider />
+                  <Grid container className="home-metric-grid">
+                    {metricItems.map(([value, label]) => (
+                      <Grid size={{ xs: 6 }} key={value}>
+                        <Box className="home-metric">
+                          <Typography className="home-metric-value">{value}</Typography>
+                          <Typography className="home-metric-label">{label}</Typography>
+                        </Box>
                       </Grid>
-                      <Box
-                        component="img"
-                        src="/chat.svg"
-                        alt="Love Chat"
-                        sx={{
-                          display: 'block',
-                          width: 124,
-                          height: 124,
-                          mx: 'auto',
-                          mt: 3,
-                          opacity: 0.9,
-                        }}
-                      />
-                    </CardContent>
-                  </Card>
+                    ))}
+                  </Grid>
+                  <Box className="home-product-footer">
+                    <img src="/chat.svg" alt="Love Chat 对话图标" className="home-product-art" />
+                    <Typography>消息、资料与通话入口保持在一个连续的工作流中。</Typography>
+                  </Box>
                 </Box>
               </Grid>
             </Grid>
-          </Paper>
+          </Container>
+        </section>
 
-          <Box>
-            <Typography variant="h5" sx={{ fontWeight: 950, mb: 0.5 }}>
-              系统功能
-            </Typography>
-            <Grid container spacing={2} sx={{ mt: 1.75 }}>
+        <section className="home-section">
+          <Container maxWidth="xl">
+            <Box className="home-section-heading">
+              <Typography component="h2" variant="h4">围绕日常沟通的核心能力</Typography>
+              <Typography>以可扫描的信息层级组织每次联系、每一条消息和每个通话入口。</Typography>
+            </Box>
+            <Grid container spacing={2}>
               {featureItems.map((item) => (
-                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={item.title}>
-                  <Card sx={{ height: '100%', borderRadius: 2.5, boxShadow: 'none', border: '1px solid #e5edf3' }}>
-                    <CardContent>
-                      <Avatar sx={{ bgcolor: '#e8f6ff', color: '#078fdb', mb: 1.5 }}>{item.icon}</Avatar>
-                      <Typography variant="h6" sx={{ fontWeight: 900, mb: 0.75 }}>
-                        {item.title}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.7 }}>
-                        {item.text}
-                      </Typography>
-                    </CardContent>
-                  </Card>
+                <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={item.title}>
+                  <Paper className="home-feature" variant="outlined">
+                    <Avatar className="home-feature-icon">{item.icon}</Avatar>
+                    <Typography component="h3" variant="h6">{item.title}</Typography>
+                    <Typography>{item.text}</Typography>
+                  </Paper>
                 </Grid>
               ))}
             </Grid>
-          </Box>
+          </Container>
+        </section>
 
-          <Paper sx={{ borderRadius: 2.5, overflow: 'hidden' }}>
-            <Box sx={{ p: { xs: 2, sm: 2.5 }, borderBottom: '1px solid #e5edf3' }}>
-              <Typography variant="h5" sx={{ fontWeight: 950 }}>
-                支持设备
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                根据使用场景选择桌面浏览器、iPad 网页版或 Android 客户端。
-              </Typography>
-            </Box>
-            <List disablePadding>
-              {deviceItems.map((item, index) => (
-                <ListItem
-                  key={item.name}
-                  divider={index < deviceItems.length - 1}
-                  secondaryAction={<Chip size="small" label={item.status} color={index === 0 ? 'primary' : 'success'} />}
-                  sx={{
-                    py: { xs: 1.5, sm: 2 },
-                    pr: { xs: 11, sm: 14 },
-                    alignItems: 'flex-start',
-                  }}
-                >
-                  <ListItemAvatar>
-                    <Avatar sx={{ bgcolor: '#e8f6ff', color: '#078fdb' }}>{item.icon}</Avatar>
-                  </ListItemAvatar>
-                  <ListItemText
-                    primary={<Typography sx={{ fontWeight: 900 }}>{item.name}</Typography>}
-                    secondary={item.text}
-                    slotProps={{ secondary: { sx: { color: 'text.secondary' } } }}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          </Paper>
+        <section className="home-devices-section">
+          <Container maxWidth="xl">
+            <Grid container spacing={{ xs: 3, md: 6 }} sx={{ alignItems: 'flex-start' }}>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <Box className="home-section-heading home-devices-heading">
+                  <Typography component="h2" variant="h4">在你正在使用的设备上继续对话</Typography>
+                  <Typography>界面针对桌面、平板和移动端的阅读及触控方式收紧布局。</Typography>
+                </Box>
+              </Grid>
+              <Grid size={{ xs: 12, md: 8 }}>
+                <List className="home-device-list" disablePadding>
+                  {deviceItems.map((item, index) => (
+                    <ListItem key={item.name} divider={index < deviceItems.length - 1} className="home-device-row">
+                      <ListItemAvatar><Avatar className="home-device-icon">{item.icon}</Avatar></ListItemAvatar>
+                      <ListItemText primary={<Typography variant="h6">{item.name}</Typography>} secondary={item.text} />
+                      <Chip className="home-device-status" label={item.status} size="small" />
+                    </ListItem>
+                  ))}
+                </List>
+              </Grid>
+            </Grid>
+          </Container>
+        </section>
 
-          <Paper
-            sx={{
-              p: 2.5,
-              borderRadius: 2.5,
-              display: 'flex',
-              gap: 2,
-              alignItems: { xs: 'stretch', md: 'center' },
-              justifyContent: 'space-between',
-              flexDirection: { xs: 'column', md: 'row' },
-            }}
-          >
-            <Box>
-              <Typography variant="h5" sx={{ fontWeight: 950 }}>
-                开始使用
-              </Typography>
-              <Typography color="text.secondary">使用网页端登录已有账号，iPad 可直接打开网页版，Android 可下载 APK 使用。</Typography>
+        <section className="home-cta-section">
+          <Container maxWidth="xl">
+            <Box className="home-cta-content">
+              <Box>
+                <Typography component="h2" variant="h4">回到正在进行的对话</Typography>
+                <Typography>登录网页端，或在 Android 设备上继续使用 Love Chat。</Typography>
+              </Box>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
+                <Button className="home-cta-primary" variant="contained" endIcon={<ArrowOutward />} onClick={() => navigate('/login')}>打开网页版</Button>
+                <Button className="home-cta-secondary" variant="outlined" startIcon={<Download />} onClick={handleDownload}>下载 Android</Button>
+              </Stack>
             </Box>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-              <Button variant="contained" startIcon={<Login />} onClick={() => navigate('/login')}>
-                打开网页版
-              </Button>
-              <Button variant="outlined" startIcon={<Download />} onClick={handleDownload}>
-                下载 APK
-              </Button>
-            </Stack>
-          </Paper>
-        </Stack>
-      </Container>
+          </Container>
+        </section>
+      </main>
     </Box>
   );
 };

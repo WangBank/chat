@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+
 import '../models/contact.dart';
 import '../models/friend_request.dart';
 import '../models/user.dart';
@@ -29,12 +31,12 @@ class ContactsPage extends StatefulWidget {
 }
 
 class _ContactsPageState extends State<ContactsPage> {
-  static const Color _qqBlue = Color(0xFF12A8F4);
-  static const Color _qqShell = Color(0xFFEFF7FC);
-  static const Color _qqText = Color(0xFF111820);
-  static const Color _qqMuted = Color(0xFF8C96A3);
-  static const Color _qqOnline = Color(0xFF20D67A);
-  static const Color _qqOffline = Color(0xFFB8C0CB);
+  static const Color _qqBlue = Color(0xFF4A154B);
+  static const Color _qqShell = Color(0xFFF4EDE4);
+  static const Color _qqText = Color(0xFF1D1D1D);
+  static const Color _qqMuted = Color(0xFF696969);
+  static const Color _qqOnline = Color(0xFF007A5A);
+  static const Color _qqOffline = Color(0xFFA9A9A9);
 
   List<Contact> _contacts = [];
   List<Contact> _filteredContacts = [];
@@ -125,10 +127,7 @@ class _ContactsPageState extends State<ContactsPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _contactsErrorMessage = userFacingServiceError(
-          e,
-          fallback: '获取联系人失败',
-        );
+        _contactsErrorMessage = userFacingServiceError(e, fallback: '获取联系人失败');
       });
       return;
     }
@@ -294,9 +293,8 @@ class _ContactsPageState extends State<ContactsPage> {
         _contacts.removeWhere((c) => c.id == contact.id);
         _filteredContacts.removeWhere((c) => c.id == contact.id);
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('联系人删除成功')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('联系人删除成功')));
     } catch (e) {
       if (!mounted) return;
 
@@ -325,9 +323,8 @@ class _ContactsPageState extends State<ContactsPage> {
         );
       });
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('备注已更新')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('备注已更新')));
     } catch (e) {
       if (!mounted) return;
 
@@ -541,10 +538,11 @@ class _ContactsPageState extends State<ContactsPage> {
         icon: Icon(icon, size: 18),
         color: color,
         style: IconButton.styleFrom(
-          backgroundColor: const Color(0xFFE8F6FF),
+          backgroundColor: const Color(0xFFF7EDF7),
           padding: EdgeInsets.zero,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       ),
     );
@@ -816,46 +814,46 @@ class _ContactsPageState extends State<ContactsPage> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _contactsErrorMessage != null
-                      ? LoadErrorState(
-                          title: '联系人加载失败',
-                          message: serviceMaintenanceMessage,
-                          details: _contactsErrorMessage,
-                          onRetry: _retryContacts,
-                          accentColor: _qqBlue,
-                          textColor: _qqText,
-                          mutedColor: _qqMuted,
-                        )
-                      : _filteredContacts.isEmpty
-                          ? const Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.person_search_outlined,
-                                    size: 58,
-                                    color: _qqMuted,
-                                  ),
-                                  SizedBox(height: 12),
-                                  Text(
-                                    '没有联系人',
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      color: _qqMuted,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : RefreshIndicator(
-                              onRefresh: _loadContacts,
-                              child: ListView.builder(
-                                padding: const EdgeInsets.only(bottom: 18),
-                                itemCount: _filteredContacts.length,
-                                itemBuilder: (context, index) =>
-                                    _buildContactCard(_filteredContacts[index]),
-                              ),
+                  ? LoadErrorState(
+                      title: '联系人加载失败',
+                      message: serviceMaintenanceMessage,
+                      details: _contactsErrorMessage,
+                      onRetry: _retryContacts,
+                      accentColor: _qqBlue,
+                      textColor: _qqText,
+                      mutedColor: _qqMuted,
+                    )
+                  : _filteredContacts.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.person_search_outlined,
+                            size: 58,
+                            color: _qqMuted,
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            '没有联系人',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: _qqMuted,
+                              fontWeight: FontWeight.w600,
                             ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _loadContacts,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.only(bottom: 18),
+                        itemCount: _filteredContacts.length,
+                        itemBuilder: (context, index) =>
+                            _buildContactCard(_filteredContacts[index]),
+                      ),
+                    ),
             ),
           ],
         ),
@@ -898,10 +896,10 @@ class FriendRequestsPage extends StatefulWidget {
 }
 
 class _FriendRequestsPageState extends State<FriendRequestsPage> {
-  static const Color _qqBlue = Color(0xFF12A8F4);
-  static const Color _qqShell = Color(0xFFEFF7FC);
-  static const Color _qqText = Color(0xFF111820);
-  static const Color _qqMuted = Color(0xFF8C96A3);
+  static const Color _qqBlue = Color(0xFF4A154B);
+  static const Color _qqShell = Color(0xFFF4EDE4);
+  static const Color _qqText = Color(0xFF1D1D1D);
+  static const Color _qqMuted = Color(0xFF696969);
 
   late List<FriendRequest> _requests;
   bool _isLoading = false;
@@ -954,9 +952,7 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            updatedRequest.isAccepted ? '已同意好友申请' : '已拒绝好友申请',
-          ),
+          content: Text(updatedRequest.isAccepted ? '已同意好友申请' : '已拒绝好友申请'),
         ),
       );
       await _loadRequests();
@@ -981,9 +977,8 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
       await widget.apiService.clearHandledFriendRequests();
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('已清理处理过的好友申请')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('已清理处理过的好友申请')));
       await _loadRequests();
     } catch (e) {
       if (!mounted) return;
@@ -1166,18 +1161,16 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
               request.isOutgoingForUser(currentUserId) && request.isPending,
         )
         .toList();
-    final handled =
-        visibleRequests.where((request) => !request.isPending).toList();
+    final handled = visibleRequests
+        .where((request) => !request.isPending)
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('好友通知'),
         actions: [
           if (handled.isNotEmpty)
-            TextButton(
-              onPressed: _clearHandled,
-              child: const Text('清理'),
-            ),
+            TextButton(onPressed: _clearHandled, child: const Text('清理')),
         ],
       ),
       body: Container(

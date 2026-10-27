@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:app_links/app_links.dart';
@@ -8,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as image;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../services/api_service.dart';
 import '../services/call_manager.dart';
 import '../services/signalr_service.dart';
@@ -35,12 +37,12 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  static const Color _qqBlue = Color(0xFF12A8F4);
-  static const Color _qqShell = Color(0xFFEFF7FC);
-  static const Color _qqText = Color(0xFF111820);
-  static const Color _qqMuted = Color(0xFF8C96A3);
-  static const Color _qqOnline = Color(0xFF20D67A);
-  static const Color _qqOffline = Color(0xFFB8C0CB);
+  static const Color _qqBlue = Color(0xFF4A154B);
+  static const Color _qqShell = Color(0xFFF4EDE4);
+  static const Color _qqText = Color(0xFF1D1D1D);
+  static const Color _qqMuted = Color(0xFF696969);
+  static const Color _qqOnline = Color(0xFF007A5A);
+  static const Color _qqOffline = Color(0xFFA9A9A9);
 
   User? _currentUser;
   bool _isLoading = true;
@@ -88,12 +90,14 @@ class _ProfilePageState extends State<ProfilePage> {
   void _handleIncomingQQLink(Uri uri) {
     final isCustomSchemeCallback =
         uri.scheme == _qqCallbackScheme && uri.host == _qqCallbackHost;
-    final isHttpsAppLinkCallback = uri.scheme == 'https' &&
+    final isHttpsAppLinkCallback =
+        uri.scheme == 'https' &&
         uri.host == _qqHttpsCallbackHost &&
         uri.path == _qqHttpsCallbackPath;
     if (!isCustomSchemeCallback && !isHttpsAppLinkCallback) return;
 
-    final authorizationError = uri.queryParameters['error_description'] ??
+    final authorizationError =
+        uri.queryParameters['error_description'] ??
         uri.queryParameters['error'];
     if (authorizationError != null && authorizationError.isNotEmpty) {
       _showQQBindingResult('QQ授权失败：$authorizationError', failed: true);
@@ -119,7 +123,9 @@ class _ProfilePageState extends State<ProfilePage> {
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content: Text(message), backgroundColor: failed ? Colors.red : null),
+        content: Text(message),
+        backgroundColor: failed ? Colors.red : null,
+      ),
     );
   }
 
@@ -203,9 +209,8 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('选择图片失败: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('选择图片失败: $e')));
       }
     }
   }
@@ -224,9 +229,8 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('拍照失败: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('拍照失败: $e')));
       }
     }
   }
@@ -247,22 +251,23 @@ class _ProfilePageState extends State<ProfilePage> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(
-          content: Text(processedFile.path == imageFile.path
-              ? '头像上传成功'
-              : '头像已裁剪压缩至 100KB 以内并上传成功'),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              processedFile.path == imageFile.path
+                  ? '头像上传成功'
+                  : '头像已裁剪压缩至 100KB 以内并上传成功',
+            ),
+          ),
+        );
       }
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('头像上传失败: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('头像上传失败: $e')));
       }
     } finally {
       if (processedFile != null && processedFile.path != imageFile.path) {
@@ -320,7 +325,8 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<File> _writeCroppedAvatar(List<int> bytes) async {
     final directory = await getTemporaryDirectory();
     final file = File(
-        '${directory.path}/avatar_${DateTime.now().microsecondsSinceEpoch}.jpg');
+      '${directory.path}/avatar_${DateTime.now().microsecondsSinceEpoch}.jpg',
+    );
     return file.writeAsBytes(bytes, flush: true);
   }
 
@@ -363,15 +369,13 @@ class _ProfilePageState extends State<ProfilePage> {
         });
 
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('昵称更新成功')));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('昵称更新成功')));
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('更新失败: $e')));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('更新失败: $e')));
         }
       }
     }
@@ -422,14 +426,12 @@ class _ProfilePageState extends State<ProfilePage> {
           _setCurrentUser(updatedUser);
         });
 
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('个性签名更新成功')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('个性签名更新成功')));
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('更新失败: $e')));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('更新失败: $e')));
         }
       }
     }
@@ -562,8 +564,9 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _changeEmail() async {
-    final emailController =
-        TextEditingController(text: _currentUser?.email ?? '');
+    final emailController = TextEditingController(
+      text: _currentUser?.email ?? '',
+    );
     final verificationCodeController = TextEditingController();
     var isSendingCode = false;
 
@@ -674,14 +677,12 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() {
         _setCurrentUser(updatedUser);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('邮箱修改成功')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('邮箱修改成功')));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('邮箱修改失败: $e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('邮箱修改失败: $e')));
       }
     }
   }
@@ -740,15 +741,13 @@ class _ProfilePageState extends State<ProfilePage> {
         );
 
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('密码修改成功')));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('密码修改成功')));
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('修改失败: $e')));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('修改失败: $e')));
         }
       }
     }
@@ -787,8 +786,9 @@ class _ProfilePageState extends State<ProfilePage> {
         throw Exception(response['message']?.toString() ?? 'QQ绑定尚未配置');
       }
 
-      final launched =
-          await _launchQQAuthUrl(_withMobileQQHints(Uri.parse(authUrl)));
+      final launched = await _launchQQAuthUrl(
+        _withMobileQQHints(Uri.parse(authUrl)),
+      );
       if (!launched) {
         throw Exception('未检测到可用的 QQ 或浏览器，请安装并登录手机 QQ 后重试');
       }
@@ -809,9 +809,8 @@ class _ProfilePageState extends State<ProfilePage> {
         _isBindingQQ = false;
       });
       final message = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('QQ绑定失败: $message')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('QQ绑定失败: $message')));
     }
   }
 
@@ -866,8 +865,10 @@ class _ProfilePageState extends State<ProfilePage> {
       _isLoading = true;
     });
     try {
-      final updatedUser =
-          await widget.apiService.qqBind(code: code, state: state);
+      final updatedUser = await widget.apiService.qqBind(
+        code: code,
+        state: state,
+      );
       if (!mounted) return;
       setState(() => _setCurrentUser(updatedUser));
       _showQQBindingResult('QQ绑定成功');
@@ -959,283 +960,265 @@ class _ProfilePageState extends State<ProfilePage> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _errorMessage != null
-              ? LoadErrorState(
-                  title: '个人资料加载失败',
-                  message: serviceMaintenanceMessage,
-                  details: _errorMessage,
-                  onRetry: _retryProfile,
-                  accentColor: _qqBlue,
-                  textColor: _qqText,
-                  mutedColor: _qqMuted,
-                )
-              : _currentUser == null
-                  ? const Center(child: Text('用户信息为空'))
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+          ? LoadErrorState(
+              title: '个人资料加载失败',
+              message: serviceMaintenanceMessage,
+              details: _errorMessage,
+              onRetry: _retryProfile,
+              accentColor: _qqBlue,
+              textColor: _qqText,
+              mutedColor: _qqMuted,
+            )
+          : _currentUser == null
+          ? const Center(child: Text('用户信息为空'))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Card(
+                    color: Colors.white,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Card(
-                            color: Colors.white,
-                            child: Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(18, 18, 18, 20),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  Stack(
-                                    clipBehavior: Clip.none,
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 38,
-                                        backgroundColor: _qqBlue,
-                                        backgroundImage: avatarUrl != null
-                                            ? NetworkImage(avatarUrl)
-                                            : null,
-                                        child: avatarUrl == null
-                                            ? Text(
-                                                displayName.isNotEmpty
-                                                    ? displayName[0]
-                                                        .toUpperCase()
-                                                    : '?',
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 28,
-                                                  fontWeight: FontWeight.w900,
-                                                ),
-                                              )
-                                            : null,
-                                      ),
-                                      Positioned(
-                                        right: 2,
-                                        bottom: 2,
-                                        child: Container(
-                                          width: 14,
-                                          height: 14,
-                                          decoration: BoxDecoration(
-                                            color: _currentUser!.isOnline
-                                                ? _qqOnline
-                                                : _qqOffline,
-                                            border: Border.all(
-                                              color: Colors.white,
-                                              width: 2,
-                                            ),
-                                            borderRadius:
-                                                BorderRadius.circular(999),
-                                          ),
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              CircleAvatar(
+                                radius: 38,
+                                backgroundColor: _qqBlue,
+                                backgroundImage: avatarUrl != null
+                                    ? NetworkImage(avatarUrl)
+                                    : null,
+                                child: avatarUrl == null
+                                    ? Text(
+                                        displayName.isNotEmpty
+                                            ? displayName[0].toUpperCase()
+                                            : '?',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w900,
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          displayName,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            color: _qqText,
-                                            fontSize: 22,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          _currentUser!.email,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style:
-                                              const TextStyle(color: _qqMuted),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          _currentUser!.emailVerified
-                                              ? '邮箱已认证'
-                                              : '邮箱未认证，请点击完成认证',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: _currentUser!.emailVerified
-                                                ? const Color(0xFF2E7D32)
-                                                : const Color(0xFFB26A00),
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          signature,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            color: _qqText,
-                                            height: 1.35,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  IconButton(
-                                    onPressed: _updateAvatar,
-                                    icon:
-                                        const Icon(Icons.photo_camera_outlined),
-                                    tooltip: '修改头像',
-                                  ),
-                                ],
+                                      )
+                                    : null,
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Card(
-                            color: Colors.white,
-                            child: Column(
-                              children: [
-                                ListTile(
-                                  leading: const Icon(Icons.edit_outlined),
-                                  title: const Text('修改昵称'),
-                                  subtitle:
-                                      Text(_currentUser!.display_name ?? '未设置'),
-                                  trailing: const Icon(Icons.chevron_right),
-                                  onTap: _updateProfile,
-                                ),
-                                const Divider(height: 1),
-                                ListTile(
-                                  leading:
-                                      const Icon(Icons.format_quote_outlined),
-                                  title: const Text('修改个性签名'),
-                                  subtitle: Text(
-                                    _currentUser!.signature
-                                                ?.trim()
-                                                .isNotEmpty ==
-                                            true
-                                        ? _currentUser!.signature!.trim()
-                                        : '未设置',
-                                  ),
-                                  trailing: const Icon(Icons.chevron_right),
-                                  onTap: _updateSignature,
-                                ),
-                                const Divider(height: 1),
-                                ListTile(
-                                  leading: const Icon(Icons.lock_outline),
-                                  title: const Text('修改密码'),
-                                  subtitle: const Text('点击修改登录密码'),
-                                  trailing: const Icon(Icons.chevron_right),
-                                  onTap: _changePassword,
-                                ),
-                                const Divider(height: 1),
-                                ListTile(
-                                  leading: CircleAvatar(
-                                    radius: 14,
-                                    backgroundColor: _qqBlue,
-                                    backgroundImage:
-                                        _currentUser!.qqAvatarUrl != null
-                                            ? NetworkImage(
-                                                AppConfig.resolveMediaUrl(
-                                                      _currentUser!.qqAvatarUrl,
-                                                    ) ??
-                                                    _currentUser!.qqAvatarUrl!,
-                                              )
-                                            : null,
-                                    child: _currentUser!.qqAvatarUrl == null
-                                        ? const Text(
-                                            'Q',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          )
-                                        : null,
-                                  ),
-                                  title: const Text('QQ绑定'),
-                                  subtitle: Text(
-                                    _currentUser!.qqBound
-                                        ? (_currentUser!.qqNickname
-                                                    ?.trim()
-                                                    .isNotEmpty ==
-                                                true
-                                            ? _currentUser!.qqNickname!.trim()
-                                            : '已绑定 QQ')
-                                        : '未绑定，绑定后可用 QQ 登录',
-                                  ),
-                                  trailing: TextButton(
-                                    onPressed: _isLoading ? null : _bindQQ,
-                                    child: Text(
-                                      _currentUser!.qqBound ? '重新绑定' : '绑定',
-                                    ),
-                                  ),
-                                  onTap: _isLoading ? null : _bindQQ,
-                                ),
-                                const Divider(height: 1),
-                                ListTile(
-                                  leading:
-                                      const Icon(Icons.photo_camera_outlined),
-                                  title: const Text('修改头像'),
-                                  subtitle: const Text('上传新的头像'),
-                                  trailing: const Icon(Icons.chevron_right),
-                                  onTap: _updateAvatar,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Card(
-                            color: Colors.white,
-                            child: Column(
-                              children: [
-                                ListTile(
-                                  leading: const Icon(Icons.person_outline),
-                                  title: const Text('用户名'),
-                                  subtitle: Text(_currentUser!.username),
-                                ),
-                                const Divider(height: 1),
-                                ListTile(
-                                  leading: const Icon(Icons.email_outlined),
-                                  title: Text(
-                                    _currentUser!.emailVerified ? '邮箱' : '认证邮箱',
-                                  ),
-                                  subtitle: Text(
-                                    _currentUser!.emailVerified
-                                        ? '${_currentUser!.email}（已认证）'
-                                        : '${_currentUser!.email}（未认证，点击完成认证）',
-                                  ),
-                                  trailing: const Icon(Icons.chevron_right),
-                                  onTap: _isLoading
-                                      ? null
-                                      : (_currentUser!.emailVerified
-                                            ? _changeEmail
-                                            : _verifyEmail),
-                                ),
-                                const Divider(height: 1),
-                                ListTile(
-                                  leading: Icon(
-                                    Icons.circle,
+                              Positioned(
+                                right: 2,
+                                bottom: 2,
+                                child: Container(
+                                  width: 14,
+                                  height: 14,
+                                  decoration: BoxDecoration(
                                     color: _currentUser!.isOnline
                                         ? _qqOnline
                                         : _qqOffline,
-                                    size: 18,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 2,
+                                    ),
+                                    borderRadius: BorderRadius.circular(999),
                                   ),
-                                  title: const Text('在线状态'),
-                                  subtitle: Text(
-                                      _currentUser!.isOnline ? '在线' : '离线'),
                                 ),
-                                const Divider(height: 1),
-                                ListTile(
-                                  leading:
-                                      const Icon(Icons.access_time_outlined),
-                                  title: const Text('注册时间'),
-                                  subtitle: Text(
-                                      _formatDate(_currentUser!.createdAt)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: _qqText,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _currentUser!.email,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: _qqMuted),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _currentUser!.emailVerified
+                                      ? '邮箱已认证'
+                                      : '邮箱未认证，请点击完成认证',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: _currentUser!.emailVerified
+                                        ? const Color(0xFF2E7D32)
+                                        : const Color(0xFFB26A00),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  signature,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: _qqText,
+                                    height: 1.35,
+                                  ),
                                 ),
                               ],
                             ),
+                          ),
+                          IconButton(
+                            onPressed: _updateAvatar,
+                            icon: const Icon(Icons.photo_camera_outlined),
+                            tooltip: '修改头像',
                           ),
                         ],
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    color: Colors.white,
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.edit_outlined),
+                          title: const Text('修改昵称'),
+                          subtitle: Text(_currentUser!.display_name ?? '未设置'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: _updateProfile,
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.format_quote_outlined),
+                          title: const Text('修改个性签名'),
+                          subtitle: Text(
+                            _currentUser!.signature?.trim().isNotEmpty == true
+                                ? _currentUser!.signature!.trim()
+                                : '未设置',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: _updateSignature,
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.lock_outline),
+                          title: const Text('修改密码'),
+                          subtitle: const Text('点击修改登录密码'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: _changePassword,
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: CircleAvatar(
+                            radius: 14,
+                            backgroundColor: _qqBlue,
+                            backgroundImage: _currentUser!.qqAvatarUrl != null
+                                ? NetworkImage(
+                                    AppConfig.resolveMediaUrl(
+                                          _currentUser!.qqAvatarUrl,
+                                        ) ??
+                                        _currentUser!.qqAvatarUrl!,
+                                  )
+                                : null,
+                            child: _currentUser!.qqAvatarUrl == null
+                                ? const Text(
+                                    'Q',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          title: const Text('QQ绑定'),
+                          subtitle: Text(
+                            _currentUser!.qqBound
+                                ? (_currentUser!.qqNickname
+                                              ?.trim()
+                                              .isNotEmpty ==
+                                          true
+                                      ? _currentUser!.qqNickname!.trim()
+                                      : '已绑定 QQ')
+                                : '未绑定，绑定后可用 QQ 登录',
+                          ),
+                          trailing: TextButton(
+                            onPressed: _isLoading ? null : _bindQQ,
+                            child: Text(_currentUser!.qqBound ? '重新绑定' : '绑定'),
+                          ),
+                          onTap: _isLoading ? null : _bindQQ,
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.photo_camera_outlined),
+                          title: const Text('修改头像'),
+                          subtitle: const Text('上传新的头像'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: _updateAvatar,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    color: Colors.white,
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.person_outline),
+                          title: const Text('用户名'),
+                          subtitle: Text(_currentUser!.username),
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.email_outlined),
+                          title: Text(
+                            _currentUser!.emailVerified ? '邮箱' : '认证邮箱',
+                          ),
+                          subtitle: Text(
+                            _currentUser!.emailVerified
+                                ? '${_currentUser!.email}（已认证）'
+                                : '${_currentUser!.email}（未认证，点击完成认证）',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: _isLoading
+                              ? null
+                              : (_currentUser!.emailVerified
+                                    ? _changeEmail
+                                    : _verifyEmail),
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: Icon(
+                            Icons.circle,
+                            color: _currentUser!.isOnline
+                                ? _qqOnline
+                                : _qqOffline,
+                            size: 18,
+                          ),
+                          title: const Text('在线状态'),
+                          subtitle: Text(_currentUser!.isOnline ? '在线' : '离线'),
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.access_time_outlined),
+                          title: const Text('注册时间'),
+                          subtitle: Text(_formatDate(_currentUser!.createdAt)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
     );
   }
 
