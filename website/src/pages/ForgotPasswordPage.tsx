@@ -3,6 +3,7 @@ import { Form, Input, Button, message, Card } from 'antd';
 import { MailOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { apiService, getApiErrorMessage } from '../services/api.service';
+import BrandMark from '../components/BrandMark';
 import '../styles/common.css';
 
 const ForgotPasswordPage = () => {
@@ -31,7 +32,7 @@ const ForgotPasswordPage = () => {
     <div className="qq-login-page">
       <section className="qq-login-window" aria-label="找回密码窗口">
         <div className="qq-login-titlebar">
-          <span className="qq-login-avatar">Q</span>
+          <BrandMark className="qq-login-avatar" size={30} decorative />
           <span className="qq-login-account">Love Chat</span>
           <span className="qq-login-status">密码找回</span>
         </div>

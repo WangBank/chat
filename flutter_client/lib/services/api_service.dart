@@ -34,6 +34,35 @@ class ChatUploadResult {
   bool get isImage => contentType.toLowerCase().startsWith('image/');
 }
 
+class LiveKitConnection {
+  final String url;
+  final String token;
+  final String roomName;
+  final DateTime expiresAt;
+
+  const LiveKitConnection({
+    required this.url,
+    required this.token,
+    required this.roomName,
+    required this.expiresAt,
+  });
+
+  factory LiveKitConnection.fromJson(Map<String, dynamic> json) {
+    final url = json['url']?.toString() ?? '';
+    final token = json['token']?.toString() ?? '';
+    if (url.isEmpty || token.isEmpty) {
+      throw const FormatException('媒体连接响应不完整');
+    }
+    return LiveKitConnection(
+      url: url,
+      token: token,
+      roomName: json['room_name']?.toString() ?? '',
+      expiresAt: DateTime.tryParse(json['expires_at']?.toString() ?? '') ??
+          DateTime.now().toUtc(),
+    );
+  }
+}
+
 class EmailCodeCaptchaTile {
   final int position;
   final String symbol;
@@ -1190,6 +1219,28 @@ class ApiService {
       }
     } catch (e) {
       throw Exception('获取通话历史错误: $e');
+    }
+  }
+
+  Future<LiveKitConnection> createLiveKitToken(String callId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/calls/${Uri.encodeComponent(callId)}/livekit-token'),
+        headers: _headers,
+      );
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic> &&
+            decoded['success'] == true &&
+            decoded['data'] is Map<String, dynamic>) {
+          return LiveKitConnection.fromJson(
+            decoded['data'] as Map<String, dynamic>,
+          );
+        }
+      }
+      throw Exception(_responseErrorMessage(response, '获取媒体连接失败'));
+    } catch (e) {
+      throw Exception(userFacingServiceError(e, fallback: '获取媒体连接失败'));
     }
   }
 

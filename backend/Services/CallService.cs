@@ -44,10 +44,12 @@ namespace VideoCallAPI.Services
             }
 
             var startedAt = DateTime.UtcNow;
+            var callId = Guid.NewGuid().ToString();
 
             // 创建通话记录
             var callHistory = new CallHistory
             {
+                call_id = callId,
                 caller_id = callerId,
                 receiver_id = receiverId,
                 call_type = callType,
@@ -71,8 +73,6 @@ namespace VideoCallAPI.Services
             await UpdateConversationActivityAsync(callerId, receiverId, startedAt);
             await _context.SaveChangesAsync();
 
-            var callId = Guid.NewGuid().ToString();
-            
             // 创建通话会话
             var callSession = new CallSession
             {
@@ -156,11 +156,19 @@ namespace VideoCallAPI.Services
 
         public async Task EndCallAsync(string callId, int userId)
         {
-            if (!_activeCalls.TryRemove(callId, out var callSession))
+            if (!_activeCalls.TryGetValue(callId, out var callSession))
             {
                 _logger.LogWarning("结束通话失败，通话不存在: CallId={CallId}, UserId={UserId}", callId, userId);
                 throw new InvalidOperationException("通话不存在");
             }
+
+            if (callSession.caller_id != userId && callSession.receiver_id != userId)
+            {
+                _logger.LogWarning("结束通话失败，用户不是参与者: CallId={CallId}, UserId={UserId}", callId, userId);
+                throw new UnauthorizedAccessException("无权操作此通话");
+            }
+
+            _activeCalls.TryRemove(callId, out _);
 
             // 更新数据库记录
             var callHistory = await _context.CallHistories.FindAsync(callSession.CallHistoryId);
@@ -342,7 +350,9 @@ namespace VideoCallAPI.Services
 
             return histories.Select(history => new CallResponseDto
             {
-                call_id = history.id.ToString(),
+                // Records created before the persistent UUID was introduced
+                // remain readable while every new record uses the live call ID.
+                call_id = history.call_id ?? history.id.ToString(),
                 caller = MapToUserResponse(history.Caller),
                 receiver = MapToUserResponse(history.receiver),
                 call_type = history.call_type,
@@ -351,6 +361,25 @@ namespace VideoCallAPI.Services
                 end_time = history.end_time,
                 duration = history.duration
             }).ToList();
+        }
+
+        public Task<CallSession?> GetActiveCallForUserAsync(string callId, int userId)
+        {
+            if (_activeCalls.TryGetValue(callId, out var session) &&
+                (session.caller_id == userId || session.receiver_id == userId))
+            {
+                return Task.FromResult<CallSession?>(session);
+            }
+
+            return Task.FromResult<CallSession?>(null);
+        }
+
+        public Task<IReadOnlyList<CallSession>> GetActiveCallsForUserAsync(int userId)
+        {
+            IReadOnlyList<CallSession> sessions = _activeCalls.Values
+                .Where(session => session.caller_id == userId || session.receiver_id == userId)
+                .ToArray();
+            return Task.FromResult(sessions);
         }
 
         private async Task UpdateConversationActivityAsync(

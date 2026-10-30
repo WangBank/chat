@@ -108,6 +108,10 @@ namespace VideoCallAPI.Data
             // CallHistory 表配置
             modelBuilder.Entity<CallHistory>(entity =>
             {
+                entity.HasIndex(e => e.call_id)
+                    .IsUnique()
+                    .HasFilter("\"call_id\" IS NOT NULL");
+
                 entity.HasOne(d => d.Caller)
                     .WithMany(p => p.InitiatedCalls)
                     .HasForeignKey(d => d.caller_id)

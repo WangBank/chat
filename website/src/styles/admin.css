@@ -1,10 +1,10 @@
 .admin-page {
   min-height: 100vh;
-  background: #f4ede4;
+  background: #f4faff;
 }
 
 .admin-console-header {
-  border-bottom: 1px solid #592466;
+  border-bottom: 1px solid #0f6fa9;
 }
 
 .admin-page-content {
@@ -22,7 +22,7 @@
 }
 
 .admin-metric-card .MuiTypography-h4 {
-  color: #4a154b;
+  color: #197fb8;
   font-weight: 800;
 }
 
@@ -34,12 +34,12 @@
 }
 
 .admin-user-panel .MuiTab-root.Mui-selected {
-  color: #4a154b;
+  color: #197fb8;
 }
 
 .admin-user-panel .MuiTabs-indicator {
   height: 3px;
-  background: #4a154b;
+  background: #197fb8;
 }
 
 .admin-user-table .MuiTableCell-root {
@@ -47,19 +47,19 @@
 }
 
 .admin-user-table .MuiTableCell-head {
-  background: #f9f0ff;
-  color: #4a154b;
+  background: #edf8ff;
+  color: #197fb8;
   font-size: 12px;
   font-weight: 800;
 }
 
 .admin-user-table .MuiTableRow-root:hover > .MuiTableCell-root {
-  background: #fcf8fc;
+  background: #f7fcff;
 }
 
 .admin-page .MuiIconButton-root:hover {
-  background: #f7edf7;
-  color: #4a154b;
+  background: #e5f5ff;
+  color: #197fb8;
 }
 
 @media (max-width: 600px) {
@@ -78,4 +78,32 @@
   .admin-user-table .MuiTable-root {
     min-width: 760px;
   }
+}
+
+.admin-page {
+  background: var(--love-sky-50);
+}
+
+.admin-console-header {
+  border-bottom-color: #73c5ed;
+  background: #0d5f93 !important;
+}
+
+.admin-page .MuiPaper-root {
+  border-color: var(--love-line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(42, 121, 166, 0.07);
+}
+
+.admin-page .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-color: var(--love-sky-600);
+}
+
+.admin-page .MuiInputLabel-root.Mui-focused {
+  color: var(--love-sky-700);
+}
+
+.admin-user-table .MuiTableCell-head {
+  background: var(--love-sky-100);
+  color: var(--love-sky-700);
 }

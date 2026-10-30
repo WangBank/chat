@@ -72,8 +72,8 @@ const ChatHistoryPage = observer(() => {
   const contact = chatStore.contacts.find((c) => c.id === Number(contactId));
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1000px', margin: '0 auto' }}>
-      <Card
+    <div className="aux-page history-page">
+      <Card className="aux-page-card"
         title={
           <Space>
             <Button
@@ -135,8 +135,8 @@ const ChatHistoryPage = observer(() => {
                 <div
                   style={{
                     maxWidth: '70%',
-                    background: isCurrentUserMessage ? '#f0f0f0' : '#1890ff',
-                    color: isCurrentUserMessage ? '#000' : '#fff',
+                    background: isCurrentUserMessage ? '#f2f8fc' : '#197fb8',
+                    color: isCurrentUserMessage ? '#0d2742' : '#fff',
                     padding: '12px 16px',
                     borderRadius: '8px',
                     wordWrap: 'break-word',

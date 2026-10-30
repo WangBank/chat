@@ -14,6 +14,23 @@ body {
 
 #root {
   min-height: 100vh;
-  background-color: #f4ede4;
+  background-color: var(--love-sky-50);
+}
+
+.love-surface {
+  border: 1px solid var(--love-line);
+  background: #fff;
+  box-shadow: var(--love-shadow);
+}
+
+.ant-btn-primary:not(:disabled) {
+  background: var(--love-sky-600);
+  border-color: var(--love-sky-600);
+}
+
+.ant-btn-primary:not(:disabled):hover,
+.ant-btn-primary:not(:disabled):focus-visible {
+  background: var(--love-sky-700) !important;
+  border-color: var(--love-sky-700) !important;
 }
 

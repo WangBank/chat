@@ -34,7 +34,6 @@ import {
   Typography,
 } from '@mui/material';
 import {
-  AdminPanelSettings,
   Badge,
   EditOutlined,
   InfoOutlined,
@@ -55,6 +54,7 @@ import { apiService } from '../services/api.service';
 import { isAdminUser } from '../utils/admin.utils';
 import { formatFullTime, formatTime } from '../utils/time.utils';
 import AdminErrorMessagePanel from '../components/AdminErrorMessagePanel';
+import BrandMark from '../components/BrandMark';
 import { errorMessageStore } from '../stores/error-message.store';
 import { getApiErrorMessage } from '../utils/error-message';
 import '../styles/admin.css';
@@ -76,8 +76,8 @@ type NoticeState = {
 
 const adminShell = {
   minHeight: '100vh',
-  bgcolor: '#f4ede4',
-  color: '#1d1d1d',
+  bgcolor: '#f4faff',
+  color: '#0d2742',
 };
 const emptyUserForm: UserFormState = {
   username: '',
@@ -348,11 +348,9 @@ const AdminPage = observer(() => {
 
   return (
     <Box className="admin-page" sx={adminShell}>
-      <AppBar className="admin-console-header" position="sticky" elevation={0} sx={{ bgcolor: '#4a154b' }}>
+      <AppBar className="admin-console-header" position="sticky" elevation={0} sx={{ bgcolor: '#0d5f93' }}>
         <Toolbar sx={{ gap: 2, minHeight: 62 }}>
-          <Avatar sx={{ bgcolor: 'white', color: '#4a154b', width: 34, height: 34 }}>
-            <AdminPanelSettings fontSize="small" />
-          </Avatar>
+          <BrandMark size={36} decorative />
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
               管理控制台
@@ -395,7 +393,7 @@ const AdminPage = observer(() => {
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Paper className="admin-metric-card" sx={{ p: 2.25, borderRadius: 1 }}>
                 <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-                  <Avatar sx={{ bgcolor: '#f7edf7', color: '#4a154b' }}>
+                  <Avatar sx={{ bgcolor: '#e5f5ff', color: '#197fb8' }}>
                     <PeopleAltOutlined />
                   </Avatar>
                   <Box>
@@ -421,7 +419,7 @@ const AdminPage = observer(() => {
                 }}
               >
                 <Stack direction="row" spacing={1.5} sx={{ minWidth: 0, alignItems: 'center' }}>
-                  <Badge sx={{ color: '#4a154b' }} />
+                  <Badge sx={{ color: '#197fb8' }} />
                   <Box sx={{ minWidth: 0 }}>
                     <Typography variant="body2" color="text.secondary">
                       当前管理员
@@ -469,7 +467,7 @@ const AdminPage = observer(() => {
                   variant="contained"
                   startIcon={<PersonAddAltOutlined />}
                   onClick={openCreateUserDialog}
-                  sx={{ bgcolor: '#4a154b', boxShadow: 'none', '&:hover': { bgcolor: '#611f69', boxShadow: 'none' } }}
+                  sx={{ bgcolor: '#197fb8', boxShadow: 'none', '&:hover': { bgcolor: '#0f6fa9', boxShadow: 'none' } }}
                 >
                   新建用户
                 </Button>
@@ -547,7 +545,7 @@ const AdminPage = observer(() => {
                         <TableCell>{user.id}</TableCell>
                         <TableCell>
                           <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
-                            <Avatar src={getAvatarUrl(user.avatar_path)} sx={{ bgcolor: '#4a154b' }}>
+                            <Avatar src={getAvatarUrl(user.avatar_path)} sx={{ bgcolor: '#197fb8' }}>
                               {getDisplayName(user).slice(0, 1).toUpperCase()}
                             </Avatar>
                             <Box sx={{ minWidth: 0 }}>
@@ -618,7 +616,7 @@ const AdminPage = observer(() => {
           {detailUser && (
             <Stack spacing={1.25} sx={{ pt: 1 }}>
               <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-                <Avatar src={getAvatarUrl(detailUser.avatar_path)} sx={{ bgcolor: '#4a154b', width: 52, height: 52 }}>
+                <Avatar src={getAvatarUrl(detailUser.avatar_path)} sx={{ bgcolor: '#197fb8', width: 52, height: 52 }}>
                   {getDisplayName(detailUser).slice(0, 1).toUpperCase()}
                 </Avatar>
                 <Box>
@@ -652,7 +650,7 @@ const AdminPage = observer(() => {
       <Dialog open={isUserDialogOpen} onClose={closeUserDialog} maxWidth="sm" fullWidth>
         <DialogTitle>
           <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
-            <Avatar sx={{ bgcolor: '#f7edf7', color: '#4a154b', width: 34, height: 34 }}>
+            <Avatar sx={{ bgcolor: '#e5f5ff', color: '#197fb8', width: 34, height: 34 }}>
               {userDialogMode === 'create' ? <PersonAddAltOutlined fontSize="small" /> : <EditOutlined fontSize="small" />}
             </Avatar>
             <Box>

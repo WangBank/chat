@@ -1,10 +1,6 @@
-import type { UserSummaryResponse } from './api.service';
-import {
-  signalRService,
-  WebRTCMessageType,
-  type WebRTCMessage,
-} from './signalr.service';
-import { APP_CONFIG } from '../config/app.config';
+import { Room, RoomEvent } from 'livekit-client';
+import { apiService, type UserSummaryResponse } from './api.service';
+import { signalRService } from './signalr.service';
 
 export const CallType = {
   Voice: 1,
@@ -24,15 +20,13 @@ export interface Call {
 }
 
 class WebRTCService {
-  private peerConnection: RTCPeerConnection | null = null;
+  private room: Room | null = null;
   private localStream: MediaStream | null = null;
   private remoteStream: MediaStream | null = null;
   private currentCall: Call | null = null;
-  private isInCall: boolean = false;
-  private pendingIceCandidates: RTCIceCandidateInit[] = [];
-  private iceServersPromise: Promise<RTCIceServer[]> | null = null;
+  private isInCall = false;
+  private isDisconnecting = false;
 
-  // Callbacks
   onLocalStream?: (stream: MediaStream) => void;
   onRemoteStream?: (stream: MediaStream) => void;
   onCallEnded?: () => void;
@@ -46,159 +40,8 @@ class WebRTCService {
     return this.isInCall;
   }
 
-  // Create peer connection
-  private async createPeerConnection(): Promise<RTCPeerConnection> {
-    const configuration: RTCConfiguration = {
-      iceServers: await this.loadIceServers(),
-    };
-
-    const pc = new RTCPeerConnection(configuration);
-
-    // Attach local stream
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, this.localStream!);
-      });
-    }
-
-    // Listen for remote stream
-    pc.ontrack = (event) => {
-      console.log('Received remote stream');
-      const [stream] = event.streams;
-      if (stream) {
-        this.remoteStream = stream;
-      } else {
-        this.remoteStream ??= new MediaStream();
-        this.remoteStream.addTrack(event.track);
-      }
-      this.onRemoteStream?.(this.remoteStream);
-    };
-
-    // Listen for ICE candidates
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        const candidate = JSON.stringify(event.candidate);
-        // Use current callId if available; otherwise temporary value
-        const callId = this.currentCall?.callId || '';
-        const currentUserId = this.getCurrentUserId();
-        
-        // Resolve receiver ID
-        let receiverId = 0;
-        if (this.currentCall) {
-          receiverId = this.currentCall.caller.id === currentUserId
-            ? this.currentCall.receiver.id
-            : this.currentCall.caller.id;
-        }
-        
-        if (callId && receiverId) {
-          signalRService.sendWebRTCMessage({
-            call_id: callId,
-            type: WebRTCMessageType.IceCandidate,
-            data: candidate,
-            receiver_id: receiverId,
-          });
-        }
-      }
-    };
-
-    // Listen for connection state
-    pc.onconnectionstatechange = () => {
-      console.log('Connection state:', pc.connectionState);
-      console.log('ICE state:', pc.iceConnectionState, 'signaling:', pc.signalingState);
-      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-        this.endCall();
-      }
-    };
-    pc.oniceconnectionstatechange = () => {
-      console.log('ICE connection state:', pc.iceConnectionState);
-    };
-    pc.onicecandidateerror = (event) => {
-      console.warn('ICE candidate error:', event.errorCode, event.errorText || '');
-    };
-
-    return pc;
-  }
-
-  private async loadIceServers(): Promise<RTCIceServer[]> {
-    if (!this.iceServersPromise) {
-      this.iceServersPromise = this.fetchIceServers();
-    }
-    return this.iceServersPromise;
-  }
-
-  private async fetchIceServers(): Promise<RTCIceServer[]> {
-    const fallback: RTCIceServer[] = [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-    ];
-
-    try {
-      const response = await fetch(`${APP_CONFIG.API_BASE_URL}/api/system/webrtc-config`);
-      if (!response.ok) return fallback;
-
-      const payload = await response.json() as { ice_servers?: unknown };
-      if (!Array.isArray(payload.ice_servers)) return fallback;
-
-      const iceServers = payload.ice_servers.flatMap((server): RTCIceServer[] => {
-        if (!server || typeof server !== 'object') return [];
-        const value = server as { urls?: unknown; username?: unknown; credential?: unknown };
-        const urls = Array.isArray(value.urls)
-          ? value.urls.filter((url): url is string => typeof url === 'string' && url.length > 0)
-          : typeof value.urls === 'string' && value.urls.length > 0
-            ? value.urls
-            : [];
-        if (Array.isArray(urls) && urls.length === 0) return [];
-
-        return [{
-          urls,
-          ...(typeof value.username === 'string' ? { username: value.username } : {}),
-          ...(typeof value.credential === 'string' ? { credential: value.credential } : {}),
-        }];
-      });
-
-      return iceServers.length > 0 ? iceServers : fallback;
-    } catch {
-      return fallback;
-    }
-  }
-
-  // Get user media
-  async getUserMedia(callType: CallType): Promise<MediaStream> {
-    const constraints: MediaStreamConstraints = {
-      audio: true,
-      video: callType === CallType.Video,
-    };
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      this.localStream = stream;
-      this.onLocalStream?.(stream);
-      return stream;
-    } catch (error) {
-      console.error('Failed to get user media:', error);
-      throw error;
-    }
-  }
-
-  // Initiate call
   async initiateCall(receiverId: number, callType: CallType): Promise<void> {
-    try {
-      // Get user media
-      await this.getUserMedia(callType);
-
-      // Create peer connection
-      this.peerConnection = await this.createPeerConnection();
-
-      // Initiate call. Offer is created only after the receiver accepts.
-      await signalRService.initiateCall({
-        receiver_id: receiverId,
-        call_type: callType,
-      });
-    } catch (error) {
-      console.error('Failed to initiate call:', error);
-      this.onError?.('Failed to initiate call');
-      throw error;
-    }
+    await signalRService.initiateCall({ receiver_id: receiverId, call_type: callType });
   }
 
   setCurrentCall(call: Call): void {
@@ -206,206 +49,119 @@ class WebRTCService {
   }
 
   async startCallAsCaller(call: Call): Promise<void> {
+    await this.connectToLiveKit(call);
+  }
+
+  async acceptCall(call: Call): Promise<void> {
     this.currentCall = call;
-    this.isInCall = true;
+    await signalRService.answerCall(call.callId, true);
+    await this.connectToLiveKit(call);
+  }
 
-    if (!this.localStream) {
-      await this.getUserMedia(call.callType);
+  async rejectCall(callId: string): Promise<void> {
+    await signalRService.answerCall(callId, false);
+    await this.disconnectFromLiveKit();
+  }
+
+  async endCall(): Promise<void> {
+    const callId = this.currentCall?.callId;
+    await this.disconnectFromLiveKit();
+    if (callId) {
+      await signalRService.endCall(callId);
     }
+  }
 
-    if (!this.peerConnection) {
-      this.peerConnection = await this.createPeerConnection();
+  async disconnectFromLiveKit(): Promise<void> {
+    const room = this.room;
+    this.isDisconnecting = true;
+    this.room = null;
+    this.isInCall = false;
+    this.localStream = null;
+    this.remoteStream = null;
+    if (room) {
+      room.disconnect();
+    }
+    this.isDisconnecting = false;
+  }
+
+  cleanup(): void {
+    void this.disconnectFromLiveKit();
+    this.currentCall = null;
+  }
+
+  async setMuted(muted: boolean): Promise<void> {
+    await this.room?.localParticipant.setMicrophoneEnabled(!muted);
+  }
+
+  async setCameraEnabled(enabled: boolean): Promise<void> {
+    if (this.currentCall?.callType !== CallType.Video) return;
+    await this.room?.localParticipant.setCameraEnabled(enabled);
+    this.refreshStreams();
+  }
+
+  private async connectToLiveKit(call: Call): Promise<void> {
+    await this.disconnectFromLiveKit();
+    this.currentCall = call;
+
+    const response = await apiService.createLiveKitToken(call.callId);
+    if (!response.success || !response.data) {
+      throw new Error(response.message || '媒体服务暂不可用');
     }
 
     await signalRService.joinCall(call.callId);
+    // Calls are strictly one-to-one. Keep both subscriptions active so a remote
+    // track is immediately available to the CallPage MediaStream renderer.
+    const room = new Room({ adaptiveStream: false, dynacast: false });
+    this.room = room;
+    this.bindRoomEvents(room);
 
-    const offer = await this.peerConnection.createOffer();
-    await this.peerConnection.setLocalDescription(offer);
-
-    const receiverId = call.receiver.id;
-    await signalRService.sendWebRTCMessage({
-      call_id: call.callId,
-      type: WebRTCMessageType.Offer,
-      data: JSON.stringify(offer),
-      receiver_id: receiverId,
-    });
-  }
-
-  // Accept call
-  async acceptCall(call: Call): Promise<void> {
     try {
-      this.currentCall = call;
+      await room.connect(response.data.url, response.data.token);
+      await room.localParticipant.setMicrophoneEnabled(true);
+      if (call.callType === CallType.Video) {
+        await room.localParticipant.setCameraEnabled(true);
+      }
       this.isInCall = true;
-
-      // Get user media
-      await this.getUserMedia(call.callType);
-
-      // Create peer connection
-        this.peerConnection = await this.createPeerConnection();
-
-      // Join call
-      await signalRService.joinCall(call.callId);
-
-      // Answer call
-      await signalRService.answerCall(call.callId, true);
-
-      // Do not create answer here
-      // Answer should be created in handleWebRTCMessage after receiving Offer
+      this.refreshStreams();
     } catch (error) {
-      console.error('Failed to accept call:', error);
-      this.onError?.('Failed to accept call');
+      await this.disconnectFromLiveKit();
+      const message = error instanceof Error ? error.message : '连接媒体服务失败';
+      this.onError?.(message);
       throw error;
     }
   }
 
-  // Reject call
-  async rejectCall(callId: string): Promise<void> {
-    try {
-      await signalRService.answerCall(callId, false);
-    } catch (error) {
-      console.error('Failed to reject call:', error);
-    } finally {
-      // Ensure resources are cleaned up
-      this.cleanup();
-    }
+  private bindRoomEvents(room: Room): void {
+    const refresh = () => this.refreshStreams();
+    room.on(RoomEvent.TrackSubscribed, refresh);
+    room.on(RoomEvent.TrackUnsubscribed, refresh);
+    room.on(RoomEvent.LocalTrackPublished, refresh);
+    room.on(RoomEvent.LocalTrackUnpublished, refresh);
+    room.on(RoomEvent.ParticipantConnected, refresh);
+    room.on(RoomEvent.ParticipantDisconnected, refresh);
+    room.on(RoomEvent.Disconnected, () => {
+      if (this.room !== room || this.isDisconnecting) return;
+      this.isInCall = false;
+      this.onError?.('媒体连接已断开');
+    });
   }
 
-  // Handle WebRTC message
-  async handleWebRTCMessage(message: WebRTCMessage): Promise<void> {
-    try {
-      const data = JSON.parse(message.data);
+  private refreshStreams(): void {
+    const room = this.room;
+    if (!room) return;
 
-      switch (message.type) {
-        case WebRTCMessageType.Offer: {
-          // Create peer connection if not created yet (callee side)
-          if (!this.peerConnection) {
-            // Ensure user media is available
-            if (!this.localStream) {
-              // Determine call type from currentCall
-              if (this.currentCall) {
-                await this.getUserMedia(this.currentCall.callType);
-              } else {
-                // Default to video call if currentCall is missing
-                await this.getUserMedia(CallType.Video);
-              }
-            }
-            this.peerConnection = await this.createPeerConnection();
-          }
+    const localTracks = [...room.localParticipant.trackPublications.values()]
+      .map((publication) => publication.track?.mediaStreamTrack)
+      .filter((track): track is MediaStreamTrack => Boolean(track));
+    const remoteTracks = [...room.remoteParticipants.values()]
+      .flatMap((participant) => [...participant.trackPublications.values()])
+      .map((publication) => publication.track?.mediaStreamTrack)
+      .filter((track): track is MediaStreamTrack => Boolean(track));
 
-          // Set remote description (offer)
-          await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data));
-          console.log('Remote offer installed:', {
-            signaling: this.peerConnection.signalingState,
-            transceivers: this.peerConnection.getTransceivers().map((item) => ({
-              direction: item.direction,
-              currentDirection: item.currentDirection,
-              kind: item.receiver.track.kind,
-            })),
-          });
-          await this.flushPendingIceCandidates();
-          
-          // Create answer
-          const answer = await this.peerConnection.createAnswer();
-          await this.peerConnection.setLocalDescription(answer);
-          console.log('Local answer created:', {
-            signaling: this.peerConnection.signalingState,
-            transceivers: this.peerConnection.getTransceivers().map((item) => ({
-              direction: item.direction,
-              currentDirection: item.currentDirection,
-              kind: item.receiver.track.kind,
-            })),
-          });
-
-          const answerData = JSON.stringify(answer);
-          await signalRService.sendWebRTCMessage({
-            call_id: message.call_id,
-            type: WebRTCMessageType.Answer,
-            data: answerData,
-            receiver_id: message.sender_id,
-          });
-          break;
-        }
-
-        case WebRTCMessageType.Answer:
-          if (!this.peerConnection) {
-            console.error('Received answer without peer connection');
-            return;
-          }
-          await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data));
-          await this.flushPendingIceCandidates();
-          break;
-
-        case WebRTCMessageType.IceCandidate:
-          // ICE delivery can race ahead of the offer/answer. WebRTC rejects a
-          // candidate until the matching remote description is installed, so
-          // preserve it and flush immediately after setRemoteDescription.
-          if (!this.peerConnection || !this.peerConnection.remoteDescription) {
-            console.warn('Received ICE candidate before remote description; queued for later');
-            this.pendingIceCandidates.push(data);
-            return;
-          }
-          await this.peerConnection.addIceCandidate(new RTCIceCandidate(data));
-          break;
-      }
-    } catch (error) {
-      console.error('Failed to handle WebRTC message:', error);
-      this.onError?.('Failed to handle WebRTC message');
-    }
-  }
-
-  // End call
-  async endCall(): Promise<void> {
-    if (this.currentCall) {
-      try {
-        await signalRService.endCall(this.currentCall.callId);
-      } catch (error) {
-        console.error('Failed to end call:', error);
-      }
-    }
-
-    // Ensure resources are cleaned up
-    this.cleanup();
-    this.onCallEnded?.();
-  }
-
-  // Cleanup resources
-  private cleanup(): void {
-    // Stop local stream
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => track.stop());
-      this.localStream = null;
-    }
-
-    // Close peer connection
-    if (this.peerConnection) {
-      this.peerConnection.close();
-      this.peerConnection = null;
-    }
-
-    this.currentCall = null;
-    this.isInCall = false;
-    this.remoteStream = null;
-    this.pendingIceCandidates = [];
-  }
-
-  private async flushPendingIceCandidates(): Promise<void> {
-    if (!this.peerConnection || this.pendingIceCandidates.length === 0) return;
-
-    const candidates = this.pendingIceCandidates;
-    this.pendingIceCandidates = [];
-    for (const candidate of candidates) {
-      await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-    }
-  }
-
-  // Get current user ID from localStorage
-  private getCurrentUserId(): number {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      const user = JSON.parse(userStr);
-      return user.id;
-    }
-    return 0;
+    this.localStream = localTracks.length > 0 ? new MediaStream(localTracks) : null;
+    this.remoteStream = remoteTracks.length > 0 ? new MediaStream(remoteTracks) : null;
+    if (this.localStream) this.onLocalStream?.(this.localStream);
+    if (this.remoteStream) this.onRemoteStream?.(this.remoteStream);
   }
 }
 

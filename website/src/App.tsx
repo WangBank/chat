@@ -17,18 +17,18 @@ import { observer } from 'mobx-react-lite';
 import { authStore } from './stores/auth.store';
 import './App.css';
 
-const uiFontFamily = 'Inter, "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+const uiFontFamily = 'Manrope, Inter, "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
 const muiTheme = createTheme({
   palette: {
     mode: 'light',
-    primary: { main: '#4a154b', dark: '#38103a', light: '#f7edf7', contrastText: '#ffffff' },
-    secondary: { main: '#1264a3', dark: '#0c4f83', light: '#eaf4fb' },
+    primary: { main: '#197fb8', dark: '#0f6fa9', light: '#e5f5ff', contrastText: '#ffffff' },
+    secondary: { main: '#4aaedc', dark: '#197fb8', light: '#eaf8ff' },
     success: { main: '#007a5a', dark: '#005d45', light: '#e5f4ee' },
     error: { main: '#cc4117' },
-    background: { default: '#f4ede4', paper: '#ffffff' },
-    text: { primary: '#1d1d1d', secondary: '#696969' },
-    divider: '#e6e6e6',
+    background: { default: '#f4faff', paper: '#ffffff' },
+    text: { primary: '#0d2742', secondary: '#54748a' },
+    divider: '#d7e9f4',
   },
   shape: { borderRadius: 8 },
   typography: {
@@ -42,15 +42,15 @@ const muiTheme = createTheme({
     button: { fontWeight: 700, letterSpacing: 0 },
   },
   components: {
-    MuiCssBaseline: { styleOverrides: { body: { backgroundColor: '#f4ede4' } } },
+    MuiCssBaseline: { styleOverrides: { body: { backgroundColor: '#f4faff' } } },
     MuiButton: {
       styleOverrides: {
         root: {
           minHeight: 44,
-          borderRadius: 999,
+          borderRadius: 8,
           boxShadow: 'none',
           textTransform: 'none',
-          '&.MuiButton-containedPrimary:hover': { backgroundColor: '#611f69', boxShadow: 'none' },
+          '&.MuiButton-containedPrimary:hover': { backgroundColor: '#0f6fa9', boxShadow: 'none' },
         },
       },
     },
@@ -61,14 +61,14 @@ const muiTheme = createTheme({
 
 const antdTheme = {
   token: {
-    colorPrimary: '#4a154b',
-    colorInfo: '#1264a3',
+    colorPrimary: '#197fb8',
+    colorInfo: '#237fb1',
     colorSuccess: '#007a5a',
     colorError: '#cc4117',
-    colorText: '#1d1d1d',
-    colorTextSecondary: '#696969',
-    colorBorder: '#e6e6e6',
-    colorBgLayout: '#f4ede4',
+    colorText: '#0d2742',
+    colorTextSecondary: '#54748a',
+    colorBorder: '#d7e9f4',
+    colorBgLayout: '#f4faff',
     colorBgContainer: '#ffffff',
     borderRadius: 8,
     fontFamily: uiFontFamily,
@@ -76,7 +76,7 @@ const antdTheme = {
   },
   components: {
     Button: { borderRadius: 8, primaryShadow: 'none' },
-    Input: { activeBorderColor: '#4a154b', activeShadow: '0 0 0 2px rgba(74, 21, 75, 0.12)' },
+    Input: { activeBorderColor: '#197fb8', activeShadow: '0 0 0 2px rgba(25, 127, 184, 0.16)' },
     Modal: { borderRadiusLG: 8 },
   },
 };

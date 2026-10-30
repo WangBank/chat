@@ -33,6 +33,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { APP_CONFIG } from '../config/app.config';
+import BrandMark from '../components/BrandMark';
 import '../styles/home.css';
 
 const PRODUCT_NAME = 'Love Chat';
@@ -74,7 +75,7 @@ const HomePage = () => {
     <Box className="home-page">
       <AppBar className="home-nav" position="sticky" elevation={0}>
         <Toolbar className="home-nav-inner">
-          <Avatar className="home-brand-mark">L</Avatar>
+          <BrandMark className="home-brand-mark" size={38} />
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography className="home-brand-name" noWrap>{PRODUCT_NAME}</Typography>
             <Typography className="home-brand-caption" noWrap>网页端 · iPad · Android</Typography>
@@ -90,7 +91,7 @@ const HomePage = () => {
               <Grid size={{ xs: 12, md: 7 }}>
                 <Box className="home-hero-copy">
                   <Chip className="home-eyebrow" label="实时通信工作台" size="small" />
-                  <Typography component="h1" className="home-title">让每一段对话保持同步</Typography>
+                  <Typography component="h1" className="home-title">让每一次回应，都清澈抵达</Typography>
                   <Typography className="home-lead">
                     Love Chat 将账号、聊天、联系人、历史记录与音视频通话放进统一界面，跨设备衔接仍然清晰可靠。
                   </Typography>
@@ -125,7 +126,7 @@ const HomePage = () => {
                     ))}
                   </Grid>
                   <Box className="home-product-footer">
-                    <img src="/chat.svg" alt="Love Chat 对话图标" className="home-product-art" />
+                    <BrandMark className="home-product-art" size={68} decorative />
                     <Typography>消息、资料与通话入口保持在一个连续的工作流中。</Typography>
                   </Box>
                 </Box>

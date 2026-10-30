@@ -7,6 +7,7 @@ import { authStore } from '../stores/auth.store';
 import { apiService } from '../services/api.service';
 import { isAdminUser } from '../utils/admin.utils';
 import EmailCodeCaptchaModal, { type EmailCodeCaptchaResult } from '../components/EmailCodeCaptchaModal';
+import BrandMark from '../components/BrandMark';
 import '../styles/common.css';
 
 interface LoginFormValues {
@@ -216,7 +217,7 @@ const LoginPage = observer(() => {
     <div className="qq-login-page">
       <section className="qq-login-window" aria-label="登录窗口" aria-busy={isAuthBusy}>
         <div className="qq-login-titlebar">
-          <span className="qq-login-avatar">Q</span>
+          <BrandMark className="qq-login-avatar" size={30} decorative />
           <span className="qq-login-account">Love Chat</span>
           <span className="qq-login-status">
             {isQQCallbackBusy ? 'QQ 授权中' : isQQRedirecting ? '跳转 QQ' : '网页版登录'}

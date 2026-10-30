@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:livekit_client/livekit_client.dart';
 
 import '../models/call.dart';
 import '../services/call_manager.dart';
@@ -256,15 +256,12 @@ class _VideoCallPageState extends State<VideoCallPage> {
   // 构建主视频流（根据_isLocalVideoExpanded切换本地/远端）
   Widget _buildMainVideoStream() {
     final isLocalMain = _isLocalVideoExpanded;
-    final renderer = isLocalMain
-        ? widget.callManager.webRTCService.localRenderer
-        : widget.callManager.webRTCService.remoteRenderer;
+    final track = isLocalMain
+        ? widget.callManager.webRTCService.localVideoTrack
+        : widget.callManager.webRTCService.remoteVideoTrack;
 
-    if (renderer != null) {
-      return RTCVideoView(
-        renderer,
-        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-      );
+    if (track != null) {
+      return VideoTrackRenderer(track, fit: VideoViewFit.cover);
     } else {
       // 视频未就绪时显示对应用户头像/首字母
       final user = isLocalMain ? _selfUser : _otherUser;
@@ -307,9 +304,9 @@ class _VideoCallPageState extends State<VideoCallPage> {
   // 构建小视频流（显示与主视频相反的流，点击切换大小）
   Widget _buildSmallVideoStream() {
     final isLocalSmall = !_isLocalVideoExpanded;
-    final renderer = isLocalSmall
-        ? widget.callManager.webRTCService.localRenderer
-        : widget.callManager.webRTCService.remoteRenderer;
+    final track = isLocalSmall
+        ? widget.callManager.webRTCService.localVideoTrack
+        : widget.callManager.webRTCService.remoteVideoTrack;
 
     return Positioned(
       top: 60,
@@ -345,12 +342,8 @@ class _VideoCallPageState extends State<VideoCallPage> {
               borderRadius: BorderRadius.circular(10),
               child: Stack(
                 children: [
-                  renderer != null
-                      ? RTCVideoView(
-                          renderer,
-                          objectFit:
-                              RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                        )
+                  track != null
+                      ? VideoTrackRenderer(track, fit: VideoViewFit.cover)
                       : Container(
                           color: Colors.grey[800],
                           child: Center(

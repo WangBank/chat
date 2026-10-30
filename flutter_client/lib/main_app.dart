@@ -95,7 +95,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   void _initializeServices() {
     _apiService = ApiService();
     _signalRService = SignalRService();
-    _webRTCService = WebRTCVideoService(_signalRService);
+    _webRTCService = WebRTCVideoService(_signalRService, _apiService);
     _callManager = CallManager(_webRTCService);
     _updateService = AppUpdateService();
 

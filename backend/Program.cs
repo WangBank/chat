@@ -182,10 +182,9 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IContentSecurityService, ContentSecurityService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IEmailCodeCaptchaService, EmailCodeCaptchaService>();
+builder.Services.AddSingleton<ILiveKitTokenService, LiveKitTokenService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<IQQAuthService, QQAuthService>();
-builder.Services.AddSingleton<IWebRTCService, WebRTCService>();
-builder.Services.AddSingleton<ISfuMediaService, SfuMediaService>();
 
 // 配置SignalR
 builder.Services.AddSignalR(options =>
@@ -357,21 +356,6 @@ app.MapGet("/api/system/version", () => Results.Ok(new
 {
     version = appVersion
 }));
-
-// ICE server settings are intentionally served by the API instead of being
-// compiled into each client.  This lets web and mobile builds use the same
-// STUN/TURN configuration, including the TURN relay that is needed when a
-// direct peer-to-peer candidate pair cannot be established.
-app.MapGet("/api/system/webrtc-config", (IConfiguration configuration) => Results.Ok(new
-{
-    ice_servers = BuildWebRtcIceServers(configuration)
-}));
-
-app.MapGet("/api/system/webrtc-sfu-status", (ISfuMediaService sfu) => Results.Ok(new
-{
-    active_peer_connections = sfu.ActivePeerConnectionCount,
-    forwarded_rtp_packets = sfu.ForwardedRtpPacketCount
-})).RequireAuthorization();
 
 app.MapControllers();
 
@@ -603,50 +587,6 @@ static bool IsSafeInlineMediaType(string? contentType)
                !string.Equals(normalized, "image/svg+xml", StringComparison.OrdinalIgnoreCase) ||
            normalized.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) ||
            normalized.StartsWith("video/", StringComparison.OrdinalIgnoreCase);
-}
-
-static IReadOnlyList<object> BuildWebRtcIceServers(IConfiguration configuration)
-{
-    var stunUrls = configuration.GetSection("WebRtc:StunUrls")
-        .GetChildren()
-        .Select(item => item.Value?.Trim())
-        .Where(item => !string.IsNullOrWhiteSpace(item))
-        .Cast<string>()
-        .ToArray();
-
-    if (stunUrls.Length == 0)
-    {
-        stunUrls =
-        [
-            "stun:stun.l.google.com:19302",
-            "stun:stun1.l.google.com:19302"
-        ];
-    }
-
-    var iceServers = new List<object>
-    {
-        new { urls = stunUrls }
-    };
-
-    var turnUrl = configuration["WebRtc:TurnUrl"]?.Trim();
-    var turnUsername = configuration["WebRtc:TurnUsername"]?.Trim();
-    var turnCredential = configuration["WebRtc:TurnCredential"]?.Trim();
-    if (!string.IsNullOrWhiteSpace(turnUrl) &&
-        !string.IsNullOrWhiteSpace(turnUsername) &&
-        !string.IsNullOrWhiteSpace(turnCredential) &&
-        Uri.TryCreate(turnUrl, UriKind.Absolute, out var turnUri) &&
-        (string.Equals(turnUri.Scheme, "turn", StringComparison.OrdinalIgnoreCase) ||
-         string.Equals(turnUri.Scheme, "turns", StringComparison.OrdinalIgnoreCase)))
-    {
-        iceServers.Add(new
-        {
-            urls = new[] { turnUri.ToString() },
-            username = turnUsername,
-            credential = turnCredential
-        });
-    }
-
-    return iceServers;
 }
 
 static void ApplyStaticFileSecurityHeaders(HttpResponse response, bool allowInline)

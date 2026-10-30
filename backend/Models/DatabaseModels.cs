@@ -433,6 +433,11 @@ namespace VideoCallAPI.Models
     {
         [Key]
         public int id { get; set; }
+
+        // The UUID shared by SignalR, LiveKit and the client. Older rows
+        // predate this column and deliberately remain null.
+        [StringLength(64)]
+        public string? call_id { get; set; }
         
         [Required]
         public int caller_id { get; set; }

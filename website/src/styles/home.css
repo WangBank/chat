@@ -18,7 +18,7 @@
 .home-brand-mark {
   width: 34px !important;
   height: 34px !important;
-  background: #4a154b !important;
+  background: #197fb8 !important;
   color: #ffffff !important;
   font-size: 16px !important;
   font-weight: 800 !important;
@@ -39,14 +39,14 @@
 }
 
 .home-version {
-  border-color: #d9bdde !important;
-  color: #4a154b !important;
+  border-color: #b8def2 !important;
+  color: #197fb8 !important;
   font-weight: 700 !important;
 }
 
 .home-hero {
   overflow: hidden;
-  background: #f4ede4;
+  background: #f4faff;
   border-bottom: 1px solid #e6e6e6;
 }
 
@@ -62,7 +62,7 @@
 .home-eyebrow {
   margin-bottom: 18px;
   background: #ffffff !important;
-  color: #4a154b !important;
+  color: #197fb8 !important;
   font-weight: 800 !important;
 }
 
@@ -93,22 +93,22 @@
 
 .home-primary-action,
 .home-cta-primary {
-  background: #4a154b !important;
+  background: #197fb8 !important;
 }
 
 .home-primary-action:hover,
 .home-cta-primary:hover {
-  background: #611f69 !important;
+  background: #0f6fa9 !important;
 }
 
 .home-secondary-action {
-  border: 2px solid #4a154b !important;
-  color: #4a154b !important;
+  border: 2px solid #197fb8 !important;
+  color: #197fb8 !important;
 }
 
 .home-secondary-action:hover {
-  border-color: #611f69 !important;
-  background: #f9f0ff !important;
+  border-color: #0f6fa9 !important;
+  background: #edf8ff !important;
 }
 
 .home-product-stage {
@@ -116,7 +116,7 @@
   overflow: hidden;
   min-height: 360px;
   padding: 26px;
-  border: 1px solid #d9bdde;
+  border: 1px solid #b8def2;
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 0 32px rgba(0, 0, 0, 0.1);
@@ -128,7 +128,7 @@
   right: 0;
   bottom: 0;
   width: 8px;
-  background: #4a154b;
+  background: #197fb8;
   content: '';
 }
 
@@ -172,7 +172,7 @@
 }
 
 .home-metric-value {
-  color: #4a154b;
+  color: #197fb8;
   font-size: 32px !important;
   font-weight: 800 !important;
   line-height: 1.1 !important;
@@ -203,8 +203,8 @@
 }
 
 .home-devices-section {
-  background: #f9f0ff;
-  border-block: 1px solid #eadceb;
+  background: #edf8ff;
+  border-block: 1px solid #ccecff;
 }
 
 .home-section-heading {
@@ -232,8 +232,8 @@
 .home-feature-icon,
 .home-device-icon {
   margin-bottom: 16px;
-  background: #f7edf7 !important;
-  color: #4a154b !important;
+  background: #e5f5ff !important;
+  color: #197fb8 !important;
 }
 
 .home-feature h3 {
@@ -250,7 +250,7 @@
 }
 
 .home-device-list {
-  border-top: 1px solid #d9bdde;
+  border-top: 1px solid #b8def2;
 }
 
 .home-device-row {
@@ -279,14 +279,14 @@
 .home-device-status {
   margin-left: 16px;
   background: #ffffff !important;
-  border: 1px solid #d9bdde !important;
-  color: #4a154b !important;
+  border: 1px solid #b8def2 !important;
+  color: #197fb8 !important;
   font-weight: 700 !important;
 }
 
 .home-cta-section {
   padding: 56px 0;
-  background: #4a154b;
+  background: #197fb8;
   color: #ffffff;
 }
 
@@ -296,17 +296,17 @@
 }
 
 .home-cta-content > div > .MuiTypography-root:last-child {
-  color: #d9bdde;
+  color: #b8def2;
   line-height: 1.6;
 }
 
 .home-cta-primary {
   background: #ffffff !important;
-  color: #4a154b !important;
+  color: #197fb8 !important;
 }
 
 .home-cta-primary:hover {
-  background: #f9f0ff !important;
+  background: #edf8ff !important;
 }
 
 .home-cta-secondary {
@@ -351,5 +351,132 @@
   .home-cta-content {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+/* The landing page uses one quiet connection arc instead of decorative imagery. */
+.home-page {
+  background: var(--love-sky-50);
+  color: var(--love-ink);
+}
+
+.home-nav {
+  border-bottom-color: rgba(215, 233, 244, 0.92);
+  background: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(14px);
+}
+
+.home-brand-mark {
+  display: block;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 10px;
+  background: transparent !important;
+}
+
+.home-brand-name,
+.home-title,
+.home-section-heading h2,
+.home-product-title {
+  color: var(--love-ink);
+}
+
+.home-brand-caption,
+.home-lead,
+.home-section-heading > .MuiTypography-root:not(h2),
+.home-metric-label,
+.home-product-footer > .MuiTypography-root,
+.home-device-row .MuiListItemText-secondary {
+  color: var(--love-muted);
+}
+
+.home-hero {
+  position: relative;
+  isolation: isolate;
+  border-bottom-color: var(--love-line);
+  background: var(--love-sky-50);
+}
+
+.home-hero::before {
+  position: absolute;
+  z-index: -1;
+  top: -420px;
+  right: -280px;
+  width: 860px;
+  height: 860px;
+  border: 1px solid rgba(74, 174, 220, 0.28);
+  border-radius: 50%;
+  content: '';
+}
+
+.home-hero::after {
+  position: absolute;
+  z-index: -1;
+  top: -285px;
+  right: -118px;
+  width: 590px;
+  height: 590px;
+  border: 1px solid rgba(74, 174, 220, 0.24);
+  border-radius: 50%;
+  content: '';
+}
+
+.home-product-stage {
+  border-color: var(--love-line);
+  border-radius: 8px;
+  box-shadow: var(--love-shadow);
+}
+
+.home-product-stage::before {
+  width: 5px;
+  background: var(--love-sky-600);
+}
+
+.home-status-chip {
+  background: var(--love-mint) !important;
+  color: var(--love-mint-ink) !important;
+}
+
+.home-feature {
+  border-color: var(--love-line) !important;
+  border-radius: 8px !important;
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.home-feature:hover {
+  border-color: var(--love-sky-300) !important;
+  box-shadow: 0 10px 28px rgba(42, 121, 166, 0.1);
+  transform: translateY(-2px);
+}
+
+.home-devices-section {
+  background: #edf8ff;
+  border-block-color: var(--love-sky-200);
+}
+
+.home-cta-section {
+  background: var(--love-ink);
+}
+
+.home-cta-content > div > .MuiTypography-root:last-child {
+  color: #b9d8e8;
+}
+
+.home-cta-primary {
+  color: var(--love-ink) !important;
+}
+
+.home-cta-primary:hover {
+  background: var(--love-sky-100) !important;
+}
+
+@media (max-width: 767px) {
+  .home-hero::before {
+    top: -350px;
+    right: -395px;
+  }
+
+  .home-hero::after {
+    right: -266px;
   }
 }

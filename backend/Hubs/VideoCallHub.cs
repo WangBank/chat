@@ -11,8 +11,6 @@ namespace VideoCallAPI.Hubs
     [Authorize]
     public class VideoCallHub : Hub
     {
-        private readonly IWebRTCService _webRTCService;
-        private readonly ISfuMediaService _sfuMediaService;
         private readonly IUserService _userService;
         private readonly ICallService _callService;
         private readonly ILogger<VideoCallHub> _logger;
@@ -22,16 +20,12 @@ namespace VideoCallAPI.Hubs
         private static readonly ConcurrentDictionary<int, CancellationTokenSource> _pendingOfflineTimers = new();
 
         public VideoCallHub(
-            IWebRTCService webRTCService,
-            ISfuMediaService sfuMediaService,
             IUserService userService,
             ICallService callService,
             ILogger<VideoCallHub> logger,
             IServiceScopeFactory serviceScopeFactory,
             IHubContext<VideoCallHub> hubContext)
         {
-            _webRTCService = webRTCService;
-            _sfuMediaService = sfuMediaService;
             _userService = userService;
             _callService = callService;
             _logger = logger;
@@ -216,12 +210,6 @@ namespace VideoCallAPI.Hubs
                 }
 
                 var callResponse = await _callService.InitiateCallAsync(callerId.Value, request.receiver_id, request.call_type);
-                await _webRTCService.CreateSessionAsync(
-                    callerId.Value,
-                    request.receiver_id,
-                    request.call_type,
-                    callResponse.call_id);
-
                 var callData = new
                 {
                     call_id = callResponse.call_id,
@@ -260,54 +248,18 @@ namespace VideoCallAPI.Hubs
                     return;
                 }
 
-                if (request.accept)
+                var call = await _callService.AnswerCallAsync(request.call_id, userId.Value, request.accept);
+                var eventName = request.accept ? "CallAccepted" : "CallRejected";
+                await Clients.Group($"user_{call.caller.id}").SendAsync(eventName, new
                 {
-                    var session = await _webRTCService.GetSessionAsync(request.call_id);
-                    if (session == null)
-                    {
-                        await Clients.Caller.SendAsync("CallError", "通话不存在");
-                        return;
-                    }
+                    call_id = request.call_id,
+                    receiver_id = userId.Value
+                });
 
-                    await _callService.AnswerCallAsync(request.call_id, userId.Value, true);
-                    var success = await _webRTCService.AcceptCallAsync(request.call_id, userId.Value);
-                    if (success)
-                    {
-                        // 通知呼叫者通话被接受
-                        await Clients.Group($"user_{session.caller_id}").SendAsync("CallAccepted", new
-                        {
-                            call_id = request.call_id,
-                            receiver_id = userId
-                        });
-
-                        _logger.LogInformation("通话被接受: {call_id}, 接收者: {user_id}", request.call_id, userId);
-                    }
-                }
-                else
-                {
-                    var session = await _webRTCService.GetSessionAsync(request.call_id);
-                    if (session == null)
-                    {
-                        await Clients.Caller.SendAsync("CallError", "通话不存在");
-                        return;
-                    }
-
-                    await _callService.AnswerCallAsync(request.call_id, userId.Value, false);
-                    var success = await _webRTCService.RejectCallAsync(request.call_id, userId.Value);
-                    if (success)
-                    {
-                        // 通知呼叫者通话被拒绝
-                        await Clients.Group($"user_{session.caller_id}").SendAsync("CallRejected", new
-                        {
-                            call_id = request.call_id,
-                            receiver_id = userId
-                        });
-                        await _webRTCService.EndSessionAsync(request.call_id);
-                        await _sfuMediaService.RemoveCallAsync(request.call_id);
-
-                        _logger.LogInformation("通话被拒绝: {call_id}, 接收者: {user_id}", request.call_id, userId);
-                    }
-                }
+                _logger.LogInformation(
+                    request.accept ? "通话被接受: {CallId}, 接收者: {UserId}" : "通话被拒绝: {CallId}, 接收者: {UserId}",
+                    request.call_id,
+                    userId.Value);
             }
             catch (Exception ex)
             {
@@ -321,7 +273,6 @@ namespace VideoCallAPI.Hubs
         {
             try
             {
-                // 获取当前用户ID（按你的现有实现）
                 var userId = GetCurrentUserId();
                 if (!userId.HasValue)
                 {
@@ -329,7 +280,12 @@ namespace VideoCallAPI.Hubs
                     await Clients.Caller.SendAsync("Error", new { message = "Unauthorized" });
                     return;
                 }
-                var session = await _webRTCService.GetSessionAsync(callId);
+                var session = await _callService.GetActiveCallForUserAsync(callId, userId.Value);
+                if (session == null)
+                {
+                    await Clients.Caller.SendAsync("CallError", "通话不存在或无权结束");
+                    return;
+                }
                 var callEndedPayload = new
                 {
                     call_id = callId,
@@ -338,30 +294,10 @@ namespace VideoCallAPI.Hubs
 
                 // 先广播，再清理，避免被动端漏消息。用户组兜底覆盖尚未加入 call 组的未接听场景。
                 var targetGroups = new List<string> { $"call_{callId}" };
-                if (session != null)
-                {
-                    targetGroups.Add($"user_{session.caller_id}");
-                    targetGroups.Add($"user_{session.receiver_id}");
-                }
+                targetGroups.Add($"user_{session.caller_id}");
+                targetGroups.Add($"user_{session.receiver_id}");
                 await Clients.Groups(targetGroups.Distinct()).SendAsync("CallEnded", callEndedPayload);
-
-                try
-                {
-                    await _callService.EndCallAsync(callId, userId.Value);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "写入通话结束历史失败: CallId={CallId}, UserId={UserId}", callId, userId.Value);
-                }
-
-                var success = await _webRTCService.EndCallAsync(callId, userId.Value);
-                await _sfuMediaService.RemoveCallAsync(callId);
-                if (!success)
-                {
-                    _logger.LogWarning("结束通话失败，通话不存在: CallId={CallId}, UserId={UserId}", callId, userId.Value);
-                    await Clients.Caller.SendAsync("Error", new { message = "End call failed" });
-                    return;
-                }
+                await _callService.EndCallAsync(callId, userId.Value);
 
                 _logger.LogInformation("通话已结束: CallId={CallId}, UserId={UserId}", callId, userId.Value);
             }
@@ -369,97 +305,6 @@ namespace VideoCallAPI.Hubs
             {
                 _logger.LogError(ex, "结束通话异常: CallId={CallId}", callId);
                 await Clients.Caller.SendAsync("CallError", "结束通话失败");
-            }
-        }
-
-        // WebRTC 信令消息
-        public async Task SendWebRTCMessage(WebRTCMessage message)
-        {
-            try
-            {
-                var userId = GetCurrentUserId();
-                if (userId == null)
-                {
-                    await Clients.Caller.SendAsync("CallError", "用户未认证");
-                    return;
-                }
-
-                message.sender_id = userId.Value;
-                await _webRTCService.SendMessageAsync(message);
-
-                var session = await _webRTCService.GetSessionAsync(message.call_id);
-                if (session != null)
-                {
-                    // 转发消息给通话中的其他用户
-                    var targetUserId = message.sender_id == session.caller_id ? session.receiver_id : session.caller_id;
-                    await Clients.Group($"user_{targetUserId}").SendAsync("WebRTCMessage", message);
-
-                    _logger.LogDebug("转发WebRTC消息: {call_id}, 类型: {type}, 从: {sender_id}, 到: {TargetUserId}", 
-                        message.call_id, message.type, message.sender_id, targetUserId);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "发送WebRTC消息失败");
-                await Clients.Caller.SendAsync("CallError", "发送WebRTC消息失败");
-            }
-        }
-
-        // SFU 媒体协商：客户端只把 SDP Offer 发给服务端，服务端返回自己的 Answer。
-        // 该通道不把 Offer/Answer 转发给另一名用户。
-        public async Task SendSfuOffer(SfuOfferRequest request)
-        {
-            var userId = GetCurrentUserId();
-            if (userId == null)
-            {
-                await Clients.Caller.SendAsync("CallError", "用户未认证");
-                return;
-            }
-
-            try
-            {
-                var answer = await _sfuMediaService.HandleOfferAsync(
-                    request.call_id, userId.Value, request.sdp, Context.ConnectionAborted);
-                if (answer == null)
-                {
-                    await Clients.Caller.SendAsync("CallError", "无权加入该通话");
-                    return;
-                }
-
-                await Clients.Caller.SendAsync("SfuAnswer", new
-                {
-                    call_id = answer.CallId,
-                    sdp = answer.Sdp
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "SFU Offer 处理失败: CallId={CallId}, UserId={UserId}", request.call_id, userId.Value);
-                await Clients.Caller.SendAsync("CallError", "SFU 媒体协商失败");
-            }
-        }
-
-        public async Task SendSfuIceCandidate(SfuIceCandidateRequest request)
-        {
-            var userId = GetCurrentUserId();
-            if (userId == null)
-            {
-                await Clients.Caller.SendAsync("CallError", "用户未认证");
-                return;
-            }
-
-            try
-            {
-                var accepted = await _sfuMediaService.HandleIceCandidateAsync(
-                    request.call_id, userId.Value, request.candidate, Context.ConnectionAborted);
-                if (!accepted)
-                {
-                    _logger.LogDebug("忽略 SFU ICE candidate: CallId={CallId}, UserId={UserId}", request.call_id, userId.Value);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "SFU ICE candidate 处理失败: CallId={CallId}, UserId={UserId}", request.call_id, userId.Value);
             }
         }
 
@@ -475,7 +320,12 @@ namespace VideoCallAPI.Hubs
                     return;
                 }
 
-                await _webRTCService.ConnectUserAsync(callId, userId.Value, Context.ConnectionId);
+                var call = await _callService.GetActiveCallForUserAsync(callId, userId.Value);
+                if (call == null || call.Status != CallStatus.Answered)
+                {
+                    await Clients.Caller.SendAsync("CallError", "通话不存在或尚未接听");
+                    return;
+                }
 
                 // 将当前连接加入 SignalR 通话组，确保可接收 CallEnded 广播
                 await Groups.AddToGroupAsync(Context.ConnectionId, $"call_{callId}");
@@ -503,9 +353,6 @@ namespace VideoCallAPI.Hubs
                     await Clients.Caller.SendAsync("CallError", "用户未认证");
                     return;
                 }
-
-                await _webRTCService.DisconnectUserAsync(callId, userId.Value);
-                await _sfuMediaService.RemovePeerAsync(callId, userId.Value);
 
                 // 将当前连接移出 SignalR 通话组
                 await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"call_{callId}");
@@ -555,12 +402,12 @@ namespace VideoCallAPI.Hubs
         // session state so the UI can recover without polling or losing the call.
         private async Task ReplayActiveCallsAsync(int userId)
         {
-            var sessions = await _webRTCService.GetActiveSessionsForUserAsync(userId);
+            var sessions = await _callService.GetActiveCallsForUserAsync(userId);
             foreach (var session in sessions)
             {
-                var isIncoming = session.receiver_id == userId && session.status == CallStatus.Initiated;
-                var isAcceptedForCaller = session.caller_id == userId && session.status == CallStatus.Answered;
-                if (!isIncoming && !isAcceptedForCaller)
+                var isIncoming = session.receiver_id == userId && session.Status == CallStatus.Initiated;
+                var isAccepted = session.Status == CallStatus.Answered;
+                if (!isIncoming && !isAccepted)
                 {
                     continue;
                 }
@@ -571,24 +418,24 @@ namespace VideoCallAPI.Hubs
                     var receiver = await _userService.GetUserByIdAsync(session.receiver_id);
                     var payload = new
                     {
-                        call_id = session.call_id,
+                        call_id = session.id,
                         caller,
                         receiver,
-                        call_type = session.call_type,
-                        status = session.status,
+                        call_type = session.CallType,
+                        status = session.Status,
                         start_time = session.start_time
                     };
 
                     await Clients.Caller.SendAsync(isIncoming ? "IncomingCall" : "CallAccepted", payload);
                     _logger.LogInformation(
                         "重放活跃通话事件: CallId={CallId}, UserId={UserId}, Event={Event}",
-                        session.call_id,
+                        session.id,
                         userId,
                         isIncoming ? "IncomingCall" : "CallAccepted");
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "重放活跃通话事件失败: CallId={CallId}, UserId={UserId}", session.call_id, userId);
+                    _logger.LogWarning(ex, "重放活跃通话事件失败: CallId={CallId}, UserId={UserId}", session.id, userId);
                 }
             }
         }

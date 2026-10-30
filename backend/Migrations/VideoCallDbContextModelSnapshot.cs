@@ -17,7 +17,7 @@ namespace VideoCallAPI.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.11")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -29,6 +29,10 @@ namespace VideoCallAPI.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("id"));
+
+                    b.Property<string>("call_id")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<int>("call_type")
                         .HasColumnType("integer");
@@ -59,6 +63,10 @@ namespace VideoCallAPI.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("id");
+
+                    b.HasIndex("call_id")
+                        .IsUnique()
+                        .HasFilter("\"call_id\" IS NOT NULL");
 
                     b.HasIndex("caller_id");
 

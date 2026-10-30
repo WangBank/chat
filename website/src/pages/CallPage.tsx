@@ -59,23 +59,16 @@ const CallPage = observer(() => {
   }, [callStore.localStream, callStore.remoteStream, callStore.isInCall, callStore.currentCall, isVideoCall]);
 
   const handleMute = () => {
-    if (callStore.localStream) {
-      const audioTracks = callStore.localStream.getAudioTracks();
-      audioTracks.forEach((track) => {
-        track.enabled = isMuted;
-      });
-      setIsMuted(!isMuted);
-    }
+    const nextMuted = !isMuted;
+    void callStore.setMuted(nextMuted);
+    setIsMuted(nextMuted);
   };
 
   const handleToggleVideo = () => {
-    if (callStore.localStream && isVideoCall) {
-      const videoTracks = callStore.localStream.getVideoTracks();
-      videoTracks.forEach((track) => {
-        track.enabled = isVideoEnabled;
-      });
-      setIsVideoEnabled(!isVideoEnabled);
-    }
+    if (!isVideoCall) return;
+    const nextEnabled = !isVideoEnabled;
+    void callStore.setCameraEnabled(nextEnabled);
+    setIsVideoEnabled(nextEnabled);
   };
 
   const handleEndCall = async () => {
@@ -112,13 +105,14 @@ const CallPage = observer(() => {
 
   return (
     <div
+      className="call-page"
       style={{
         position: 'fixed',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        background: isVideoCall ? '#000' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: isVideoCall ? '#000' : '#0d5f93',
         zIndex: 2000,
         display: 'flex',
         flexDirection: 'column',
@@ -165,7 +159,7 @@ const CallPage = observer(() => {
             height: 150,
             borderRadius: 8,
             overflow: 'hidden',
-            border: '2px solid #fff',
+            border: '2px solid #ccecff',
             background: '#000',
           }}
         >

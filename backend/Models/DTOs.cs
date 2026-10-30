@@ -533,6 +533,14 @@ namespace VideoCallAPI.Models.DTOs
         public int? duration { get; set; }
     }
 
+    public class LiveKitConnectionDto
+    {
+        public string url { get; set; } = string.Empty;
+        public string token { get; set; } = string.Empty;
+        public string room_name { get; set; } = string.Empty;
+        public DateTime expires_at { get; set; }
+    }
+
     public class CreateRoomDto
     {
         public string room_name { get; set; } = string.Empty;

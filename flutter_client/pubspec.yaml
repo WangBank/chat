@@ -13,8 +13,8 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   
-  # WebRTC - 使用最新兼容版本
-  flutter_webrtc: ^1.6.2
+  # LiveKit owns signaling, NAT traversal and the SFU media plane.
+  livekit_client: ^2.13.2
   
   # 信令服务
   signalr_netcore: ^1.4.3

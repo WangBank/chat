@@ -57,7 +57,6 @@ class CallStore {
         }
         if (this.currentCall.call_id === callId) {
           this.isRinging = false;
-          this.isInCall = true;
           await webRTCService.startCallAsCaller({
             callId: this.currentCall.call_id,
             caller: this.currentCall.caller,
@@ -66,6 +65,7 @@ class CallStore {
             status: this.currentCall.status,
             startTime: this.currentCall.start_time,
           });
+          this.isInCall = true;
         }
       }
     };
@@ -80,10 +80,6 @@ class CallStore {
       if (this.currentCall && this.currentCall.call_id === callId) {
         this.cleanup();
       }
-    };
-
-    signalRService.onWebRTCMessage = async (message) => {
-      await webRTCService.handleWebRTCMessage(message);
     };
 
     signalRService.onError = (error: string) => {
@@ -181,19 +177,16 @@ class CallStore {
     this.cleanup();
   }
 
+  async setMuted(muted: boolean) {
+    await webRTCService.setMuted(muted);
+  }
+
+  async setCameraEnabled(enabled: boolean) {
+    await webRTCService.setCameraEnabled(enabled);
+  }
+
   private cleanup() {
-    // Stop all media streams
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => {
-        track.stop();
-      });
-    }
-    if (this.remoteStream) {
-      this.remoteStream.getTracks().forEach((track) => {
-        track.stop();
-      });
-    }
-    
+    webRTCService.cleanup();
     this.currentCall = null;
     this.isInCall = false;
     this.isRinging = false;

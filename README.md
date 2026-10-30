@@ -2,16 +2,16 @@
 
 Forever Love Chat 是一个跨平台即时通讯系统，包含 ASP.NET Core API、React Web
 客户端和 Flutter 移动端客户端。系统通过 REST API 处理业务数据，通过 SignalR
-保持在线状态与推送实时事件；语音和视频通话由 API 承担 SFU 媒体转发。
+保持在线状态与推送实时事件；语音和视频通话由自建 LiveKit SFU 承担媒体转发。
 
-发布、环境变量、Docker、Android APK 和 SFU/TURN 的操作步骤见
+发布、环境变量、Docker、Android APK 和 LiveKit 的操作步骤见
 [发布流程](DEPLOYMENT.md)。
 
 ## 系统组成
 
 | 组件 | 职责 |
 | --- | --- |
-| `backend/` | API、SignalR Hub、PostgreSQL 数据访问、文件存储、通话记录与 SFU 媒体转发 |
+| `backend/` | API、SignalR Hub、PostgreSQL 数据访问、文件存储、通话记录与 LiveKit 令牌签发 |
 | `website/` | Web 聊天、好友、群聊、收藏、音视频通话、管理员后台与 APK 下载页面 |
 | `flutter_client/` | Android/iOS 聊天、联系人、个人资料、实时状态、语音和视频通话、应用更新 |
 
@@ -46,16 +46,16 @@ Forever Love Chat 是一个跨平台即时通讯系统，包含 ASP.NET Core API
 ## 语音与视频通话
 
 - 一对一语音和视频通话，通话状态和历史记录写入后端。
-- SignalR 负责来电、接听、拒绝、结束与 WebRTC 信令；网络切换时自动重连并重新认证。
-- 双方各自与 API 建立 DTLS-SRTP PeerConnection。API 使用 SIPSorcery 解密收到的 RTP，转发给其他通话方后重新加密；不对音视频做解码或混音。
-- 客户端会缓存早到的 ICE 候选、重试短暂丢失的 SFU Offer 和 ICE 信令，并只应用一次 SFU Answer。
-- 公网 SFU 必须配置公网 IPv4 和 UDP 媒体端口；受限网络可使用可选 TURN 中继。具体配置见[发布流程](DEPLOYMENT.md#音视频-sfu-与-turn)。
+- SignalR 负责来电、接听、拒绝、结束、在线状态和移动端重连后的事件重放；不传输 SDP 或 ICE。
+- API 仅向已接听通话的参与者签发短期 LiveKit 房间令牌。LiveKit 负责 WebRTC 协商、NAT 穿透、重连和 SFU 媒体转发。
+- Web 使用 `livekit-client`，Flutter 使用 `livekit_client`；媒体流不再经过 ASP.NET 或 SignalR。
+- 通话 UUID 会持久化到历史记录，时间按 UTC 存储并由客户端转换为本地时区显示。公网部署须开放 LiveKit HTTP、TCP 和 UDP 媒体端口。
 
 ## 管理与可观测性
 
 - 管理员可查看在线用户和分页用户列表，并创建、编辑用户或重置用户密码。
 - Swagger/OpenAPI 提供 API 浏览与调试入口。
-- Serilog 输出控制台和按日滚动的文件日志；SFU 记录 PeerConnection 状态和转发 RTP 计数，不记录 SDP 凭据或媒体内容。
+- Serilog 输出控制台和按日滚动的文件日志；API 记录通话控制事件，不记录 LiveKit 令牌或媒体内容。
 
 ## 客户端差异
 
@@ -76,9 +76,9 @@ Forever Love Chat 是一个跨平台即时通讯系统，包含 ASP.NET Core API
 - `/api/chat`：消息、上传、已读/未读、聊天列表和历史记录。
 - `/api/groups`：群聊、成员和群消息。
 - `/api/favorites`：收藏及笔记。
-- `/api/calls`：通话历史和群组通话房间。
+- `/api/calls`：通话历史、群组通话房间，以及已接听一对一通话的 LiveKit 令牌。
 - `/api/admin`：管理员用户和在线状态管理。
-- `/api/system`：版本、WebRTC ICE 配置和受鉴权保护的 SFU 状态。
+- `/api/system`：版本信息。
 
 本地运行时可通过 `/swagger` 查看与当前代码一致的请求模型和完整接口清单。
 

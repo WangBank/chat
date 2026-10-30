@@ -1,18 +1,8 @@
 import 'user.dart';
 
-enum CallType {
-  voice,
-  video,
-}
+enum CallType { voice, video }
 
-enum CallStatus {
-  initiated,
-  ringing,
-  inProgress,
-  ended,
-  missed,
-  rejected,
-}
+enum CallStatus { initiated, ringing, inProgress, ended, missed, rejected }
 
 class Call {
   final String callId;
@@ -43,7 +33,9 @@ class Call {
       callType: _parseCallType(json['call_type'] as int),
       status: _parseCallStatusFromDynamic(json['status']),
       startTime: DateTime.parse(json['start_time'] as String),
-      endTime: json['end_time'] != null ? DateTime.parse(json['end_time'] as String) : null,
+      endTime: json['end_time'] != null
+          ? DateTime.parse(json['end_time'] as String)
+          : null,
       duration: json['duration'] as int?,
     );
   }
@@ -148,8 +140,6 @@ class Call {
     }
   }
 
-
-
   Call copyWith({
     String? callId,
     User? caller,
@@ -177,10 +167,7 @@ class InitiateCallRequest {
   final int receiverId;
   final CallType callType;
 
-  InitiateCallRequest({
-    required this.receiverId,
-    required this.callType,
-  });
+  InitiateCallRequest({required this.receiverId, required this.callType});
 
   Map<String, dynamic> toJson() {
     return {
@@ -194,66 +181,9 @@ class AnswerCallRequest {
   final String callId;
   final bool accept;
 
-  AnswerCallRequest({
-    required this.callId,
-    required this.accept,
-  });
+  AnswerCallRequest({required this.callId, required this.accept});
 
   Map<String, dynamic> toJson() {
-    return {
-      'call_id': callId,
-      'accept': accept,
-    };
-  }
-}
-
-class WebRTCOffer {
-  final String callId;
-  final String offer;
-
-  WebRTCOffer({
-    required this.callId,
-    required this.offer,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'callId': callId,
-      'offer': offer,
-    };
-  }
-}
-
-class WebRTCAnswer {
-  final String callId;
-  final String answer;
-
-  WebRTCAnswer({
-    required this.callId,
-    required this.answer,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'callId': callId,
-      'answer': answer,
-    };
-  }
-}
-
-class WebRTCCandidate {
-  final String callId;
-  final String candidate;
-
-  WebRTCCandidate({
-    required this.callId,
-    required this.candidate,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'callId': callId,
-      'candidate': candidate,
-    };
+    return {'call_id': callId, 'accept': accept};
   }
 }

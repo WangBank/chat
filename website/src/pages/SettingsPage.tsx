@@ -277,8 +277,8 @@ const SettingsPage = observer(() => {
   };
 
   return (
-    <div style={{ padding: '24px', maxWidth: '800px', margin: '0 auto' }}>
-      <Card 
+    <div className="aux-page settings-page">
+      <Card className="aux-page-card"
         title={
           <Space>
             <Button 
@@ -428,7 +428,7 @@ const SettingsPage = observer(() => {
         </Space>
       </Card>
 
-      <Card title="QQ 绑定" style={{ marginBottom: 24 }}>
+      <Card className="aux-page-card" title="QQ 绑定" style={{ marginBottom: 24 }}>
         <Space align="center" size="middle" wrap>
           <Avatar
             size={48}
@@ -455,7 +455,7 @@ const SettingsPage = observer(() => {
         </Space>
       </Card>
 
-      <Card title="Change Password">
+      <Card className="aux-page-card" title="Change Password">
         <Form
           form={passwordForm}
           layout="vertical"

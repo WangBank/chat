@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Button, Card, Spin } from 'antd';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import BrandMark from '../components/BrandMark';
 import '../styles/common.css';
 
 const APP_CALLBACK_SCHEME = 'lovechat';
@@ -56,7 +57,7 @@ const QQCallbackBridgePage = () => {
     <div className="qq-login-page">
       <section className="qq-login-window" aria-label="QQ 登录回调">
         <div className="qq-login-titlebar">
-          <span className="qq-login-avatar">Q</span>
+          <BrandMark className="qq-login-avatar" size={30} decorative />
           <span className="qq-login-account">Love Chat</span>
           <span className="qq-login-status">QQ 授权中</span>
         </div>

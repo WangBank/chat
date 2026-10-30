@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+
 import '../models/call.dart';
 import '../services/call_manager.dart';
 
@@ -76,7 +76,8 @@ class _WaitingCallPageState extends State<WaitingCallPage> {
         child: Column(
           children: [
             const Spacer(),
-            // 本地视频流（呼叫者自己的视频）
+            // LiveKit only opens local media after the recipient accepts, so the
+            // ringing state deliberately stays camera-free.
             Container(
               width: 200,
               height: 150,
@@ -86,22 +87,16 @@ class _WaitingCallPageState extends State<WaitingCallPage> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: widget.callManager.webRTCService.localRenderer != null
-                    ? RTCVideoView(
-                        widget.callManager.webRTCService.localRenderer!,
-                        objectFit:
-                            RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                      )
-                    : Container(
-                        color: Colors.grey[800],
-                        child: const Center(
-                          child: Icon(
-                            Icons.videocam_off,
-                            color: Colors.white54,
-                            size: 48,
-                          ),
-                        ),
-                      ),
+                child: Container(
+                  color: Colors.grey[800],
+                  child: const Center(
+                    child: Icon(
+                      Icons.videocam_off,
+                      color: Colors.white54,
+                      size: 48,
+                    ),
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 32),
@@ -119,10 +114,7 @@ class _WaitingCallPageState extends State<WaitingCallPage> {
             const SizedBox(height: 8),
             Text(
               widget.call.callType == CallType.voice ? '语音通话' : '视频通话',
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 18,
-              ),
+              style: const TextStyle(color: Colors.white70, fontSize: 18),
             ),
             const SizedBox(height: 16),
             Row(
@@ -139,10 +131,7 @@ class _WaitingCallPageState extends State<WaitingCallPage> {
                 const SizedBox(width: 12),
                 Text(
                   '等待接听...',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 16,
-                  ),
+                  style: const TextStyle(color: Colors.white70, fontSize: 16),
                 ),
               ],
             ),

@@ -19,23 +19,6 @@ export interface IncomingCall {
   start_time: string;
 }
 
-// Keep these values aligned with backend/Models/WebRTCModels.cs and the
-// Flutter SignalR client. SignalR serializes the C# enum as its zero-based
-// numeric value, not as a one-based UI enum.
-export const WebRTCMessageType = {
-  Offer: 0,
-  Answer: 1,
-  IceCandidate: 2,
-} as const;
-
-export interface WebRTCMessage {
-  call_id: string;
-  type: number; // WebRTCMessageType
-  data: string;
-  sender_id: number;
-  receiver_id: number;
-}
-
 class SignalRService {
   private connection: signalR.HubConnection | null = null;
   private currentUserId: number | null = null;
@@ -48,7 +31,6 @@ class SignalRService {
   onCallAccepted?: (callId: string, receiverId: number) => void;
   onCallRejected?: (callId: string, receiverId: number) => void;
   onCallEnded?: (callId: string, endedBy: number) => void;
-  onWebRTCMessage?: (message: WebRTCMessage) => void;
   onNewMessage?: (message: ChatMessageApiResponse) => void;
   onUserOnlineStatusChanged?: (userId: number, isOnline: boolean) => void;
   onError?: (error: string) => void;
@@ -143,12 +125,6 @@ class SignalRService {
     this.connection.on('CallEnded', (data: { call_id: string; EndedBy: number }) => {
       console.log('Call ended:', data);
       this.onCallEnded?.(data.call_id, data.EndedBy);
-    });
-
-    // WebRTC messages
-    this.connection.on('WebRTCMessage', (message: WebRTCMessage) => {
-      console.log('Received WebRTC message:', message);
-      this.onWebRTCMessage?.(message);
     });
 
     // Chat messages
@@ -300,25 +276,6 @@ class SignalRService {
       console.log('Leave call:', callId);
     } catch (error) {
       console.error('Failed to leave call:', error);
-      throw error;
-    }
-  }
-
-  async sendWebRTCMessage(message: {
-    call_id: string;
-    type: number;
-    data: string;
-    receiver_id: number;
-  }): Promise<void> {
-    if (!this.connection || !this.isConnected) {
-      throw new Error('SignalR is not connected');
-    }
-
-    try {
-      await this.connection.invoke('SendWebRTCMessage', message);
-      console.log('Send WebRTC message:', message);
-    } catch (error) {
-      console.error('Failed to send WebRTC message:', error);
       throw error;
     }
   }

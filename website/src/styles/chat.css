@@ -1,12 +1,12 @@
 :root,
 .qq-app {
-  --qq-blue: #4a154b;
-  --qq-blue-strong: #611f69;
-  --qq-blue-soft: #f7edf7;
-  --qq-shell: #f4ede4;
+  --qq-blue: #197fb8;
+  --qq-blue-strong: #0f6fa9;
+  --qq-blue-soft: #e5f5ff;
+  --qq-shell: #f4faff;
   --qq-list: #ffffff;
-  --qq-list-hover: #f9f0ff;
-  --qq-list-active: #ead9eb;
+  --qq-list-hover: #edf8ff;
+  --qq-list-active: #d6efff;
   --qq-main: #ffffff;
   --qq-chat: #faf8fa;
   --qq-border: #e6e6e6;
@@ -15,7 +15,7 @@
   --qq-online: #007a5a;
   --qq-offline: #a9a9a9;
   --qq-unread: #cc4117;
-  --qq-sent-bubble: #ece0ec;
+  --qq-sent-bubble: #d7efff;
   --qq-shadow: 0 0 32px rgba(0, 0, 0, 0.1);
 }
 
@@ -1244,9 +1244,9 @@
 
 .composer-input {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 88px;
+  grid-template-columns: minmax(0, 1fr) 40px;
   align-items: end;
-  gap: 13px;
+  gap: 10px;
   padding: 0 18px 16px;
 }
 
@@ -1263,10 +1263,25 @@
   box-shadow: none;
 }
 
-.composer-input .ant-btn-primary {
-  height: 38px;
+.composer-input .composer-send-button.ant-btn-primary {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
   border-radius: 8px;
   background: var(--qq-blue);
+  border-color: var(--qq-blue);
+  box-shadow: 0 1px 2px rgba(29, 29, 29, 0.16);
+}
+
+.composer-input .composer-send-button.ant-btn-primary:hover:not(:disabled),
+.composer-input .composer-send-button.ant-btn-primary:focus-visible {
+  background: var(--qq-blue-strong);
+  border-color: var(--qq-blue-strong);
+}
+
+.composer-input .composer-send-button .anticon {
+  font-size: 16px;
 }
 
 .group-chat-panel {
@@ -4404,16 +4419,12 @@ button.mac-dot {
   }
 
   .composer-input {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 40px;
     padding: 0 12px 12px;
   }
 
   .composer-reply-card {
     margin-inline: 12px;
-  }
-
-  .composer-input .ant-btn {
-    justify-self: end;
   }
 
   .emoji-grid {
@@ -4604,12 +4615,12 @@ button.mac-dot {
 
 /* Shared workbench palette: compact chrome stays neutral while primary actions use aubergine. */
 .qq-app {
-  background: #f4ede4;
+  background: #f4faff;
   font-family: Inter, "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .qq-window {
-  border-color: #d9bdde;
+  border-color: #b8def2;
 }
 
 .qq-rail,
@@ -4620,20 +4631,20 @@ button.mac-dot {
 
 .sidebar-tools .ant-input-affix-wrapper,
 .sidebar-tools .ant-btn {
-  background: #f7edf7;
+  background: #e5f5ff;
 }
 
 .sidebar-tools .ant-input-affix-wrapper:focus-within {
-  box-shadow: 0 0 0 2px rgba(74, 21, 75, 0.12);
+  box-shadow: 0 0 0 2px rgba(25, 127, 184, 0.12);
 }
 
 .conversation-item.pinned {
-  background: #f9f0ff;
+  background: #edf8ff;
 }
 
 .conversation-tags em {
-  background: #f7edf7;
-  color: #4a154b;
+  background: #e5f5ff;
+  color: #197fb8;
 }
 
 .conversation-title-row time,
@@ -4667,9 +4678,90 @@ button.mac-dot {
 }
 
 .composer-reply-card {
-  background: #f9f0ff;
+  background: #edf8ff;
 }
 
 .voice-recording-strip {
-  color: #4a154b;
+  color: #197fb8;
+}
+
+/* Pale blue workbench chrome. Keep the message canvas bright for long sessions. */
+:root,
+.qq-app {
+  --qq-blue: #197fb8;
+  --qq-blue-strong: #0f6fa9;
+  --qq-blue-soft: #e5f5ff;
+  --qq-shell: #f4faff;
+  --qq-list-hover: #edf8ff;
+  --qq-list-active: #d6efff;
+  --qq-sent-bubble: #d7efff;
+  --qq-chat: #f8fcff;
+  --qq-text: #0d2742;
+  --qq-muted: #54748a;
+  --qq-border: #d7e9f4;
+  --qq-shadow: 0 18px 46px rgba(42, 121, 166, 0.14);
+}
+
+.qq-app {
+  background: var(--qq-shell);
+  color: var(--qq-text);
+  font-family: Manrope, Inter, "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.qq-window {
+  border-color: var(--qq-border);
+  border-radius: 8px;
+  box-shadow: var(--qq-shadow);
+}
+
+.qq-titlebar {
+  background: #0d5f93;
+}
+
+.titlebar-brand-mark {
+  display: block;
+  flex: 0 0 auto;
+  border-radius: 8px;
+}
+
+.qq-rail,
+.chat-header,
+.composer {
+  border-color: var(--qq-border);
+}
+
+.conversation-item.active,
+.conversation-item:hover {
+  background: var(--qq-list-active);
+}
+
+.chat-header .ant-btn:hover,
+.composer-toolbar .ant-btn:hover {
+  background: var(--qq-blue-soft);
+  color: var(--qq-blue-strong);
+}
+
+.composer-input .ant-input {
+  border-color: var(--qq-border);
+  background: #fff;
+}
+
+.composer-input .ant-input:focus {
+  box-shadow: 0 0 0 2px rgba(25, 127, 184, 0.13);
+}
+
+.qq-message.received .qq-bubble {
+  border-color: var(--qq-border);
+  background: #fff;
+}
+
+.qq-message.sent .qq-bubble {
+  background: var(--qq-sent-bubble);
+}
+
+@media (max-width: 767px) {
+  .qq-window {
+    border-radius: 0;
+    box-shadow: none;
+  }
 }

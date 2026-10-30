@@ -13,6 +13,13 @@ namespace VideoCallAPI.Services
         Task<RoomResponseDto> JoinRoomAsync(string roomCode, int userId);
         Task LeaveRoomAsync(int roomId, int userId);
         Task<List<CallResponseDto>> GetCallHistoryAsync(int userId);
+        Task<CallSession?> GetActiveCallForUserAsync(string callId, int userId);
+        Task<IReadOnlyList<CallSession>> GetActiveCallsForUserAsync(int userId);
+    }
+
+    public interface ILiveKitTokenService
+    {
+        LiveKitConnectionDto CreateConnection(int userId, string callId);
     }
 
     public interface IUserService

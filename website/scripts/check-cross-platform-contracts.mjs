@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -7,11 +7,18 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptDirectory, '..', '..');
 const read = (relativePath) => readFileSync(resolve(repositoryRoot, relativePath), 'utf8');
 
-const backendWebRtc = read('backend/Models/WebRTCModels.cs');
 const webSignalR = read('website/src/services/signalr.service.ts');
 const webWebRtc = read('website/src/services/webrtc.service.ts');
 const flutterSignalR = read('flutter_client/lib/services/signalr_service.dart');
 const flutterWebRtc = read('flutter_client/lib/services/webrtc_video_service.dart');
+const flutterCallPage = read('flutter_client/lib/pages/video_call_page.dart');
+const callsController = read('backend/Controllers/CallsController.cs');
+const liveKitTokenService = read('backend/Services/LiveKitTokenService.cs');
+const callService = read('backend/Services/CallService.cs');
+const callHistoryModel = read('backend/Models/DatabaseModels.cs');
+const dbContext = read('backend/Data/VideoCallDbContext.cs');
+const webPackage = read('website/package.json');
+const flutterPubspec = read('flutter_client/pubspec.yaml');
 const chatPage = read('website/src/pages/ChatPage.tsx');
 const program = read('backend/Program.cs');
 const userModel = read('backend/Models/DatabaseModels.cs');
@@ -23,37 +30,45 @@ const flutterUpdateService = read('flutter_client/lib/services/app_update_servic
 const apkSyncScript = read('scripts/sync-android-release.ps1');
 const apkSyncWorkflow = read('.github/workflows/sync-android-apk.yml');
 const composeFile = read('docker-compose.yml');
+const liveKitConfig = read('livekit.yaml');
 
-assert.match(
-  backendWebRtc,
-  /enum WebRTCMessageType\s*\{\s*Offer,\s*Answer,\s*IceCandidate,/s,
-  'Backend WebRTC enum must remain zero-based Offer/Answer/ICE.',
-);
-assert.match(webSignalR, /Offer:\s*0/, 'Web must send Offer as 0.');
-assert.match(webSignalR, /Answer:\s*1/, 'Web must send Answer as 1.');
-assert.match(webSignalR, /IceCandidate:\s*2/, 'Web must send ICE as 2.');
-assert.match(webWebRtc, /WebRTCMessageType\.Offer/);
-assert.match(webWebRtc, /WebRTCMessageType\.Answer/);
-assert.match(webWebRtc, /WebRTCMessageType\.IceCandidate/);
-assert.match(program, /MapGet\("\/api\/system\/webrtc-config"/);
-assert.match(program, /WebRtc:TurnUrl/);
-assert.match(webWebRtc, /loadIceServers\(\)/);
-assert.match(webWebRtc, /\/api\/system\/webrtc-config/);
-assert.match(
-  webWebRtc,
-  /!this\.peerConnection\s*\|\|\s*!this\.peerConnection\.remoteDescription/,
-  'Web must queue ICE candidates until the remote description is available.',
-);
-assert.match(webWebRtc, /await this\.flushPendingIceCandidates\(\)/);
-assert.match(
-  flutterWebRtc,
-  /for \(final track in localStream\.getTracks\(\)\)\s*\{\s*await pc\.addTrack\(track, localStream\);/s,
-  'Flutter must finish registering local tracks before creating an offer or answer.',
-);
-assert.match(flutterSignalR, /case 'Offer':\s*return 0/);
-assert.match(flutterSignalR, /case 'Offer':\s*return 0/);
-assert.match(flutterSignalR, /case 'Answer':\s*return 1/);
-assert.match(flutterSignalR, /case 'IceCandidate':\s*return 2/);
+// LiveKit owns SDP, ICE, reconnection and SFU forwarding. SignalR stays on the
+// business-control plane, so no client may retain the retired hand-rolled media
+// protocol.
+assert.match(callsController, /HttpPost\("\{callId\}\/livekit-token"\)/);
+assert.match(callsController, /call\.Status != CallStatus\.Answered/);
+assert.match(liveKitTokenService, /roomJoin = true/);
+assert.match(liveKitTokenService, /canPublish = true/);
+assert.match(liveKitTokenService, /canSubscribe = true/);
+assert.match(callService, /var callId = Guid\.NewGuid\(\)\.ToString\(\);/);
+assert.match(callService, /call_id = callId/);
+assert.match(callService, /call_id = history\.call_id \?\? history\.id\.ToString\(\)/);
+assert.match(callHistoryModel, /string\?\s+call_id/);
+assert.match(dbContext, /HasIndex\(e => e\.call_id\)\s*\.IsUnique\(\)/s);
+assert.match(webPackage, /"livekit-client"/);
+assert.match(flutterPubspec, /livekit_client:/);
+assert.match(webWebRtc, /import \{ Room, RoomEvent \} from 'livekit-client'/);
+assert.match(webWebRtc, /room\.connect\(response\.data\.url, response\.data\.token\)/);
+assert.match(webWebRtc, /RoomEvent\.TrackSubscribed/);
+assert.match(flutterWebRtc, /package:livekit_client\/livekit_client\.dart/);
+assert.match(flutterWebRtc, /await room\.connect\(connection\.url, connection\.token\)/);
+assert.match(flutterCallPage, /VideoTrackRenderer\(track, fit: VideoViewFit\.cover\)/);
+assert.doesNotMatch(webSignalR, /WebRTCMessage|SendWebRTCMessage/);
+assert.doesNotMatch(flutterSignalR, /WebRTCMessage|SendWebRTCMessage|SfuAnswer|SendSfu/);
+assert.doesNotMatch(program, /webrtc-config|BuildWebRtcIceServers|WebRtc:Turn/);
+for (const obsoletePath of [
+  'backend/Models/WebRTCModels.cs',
+  'backend/Services/IWebRTCService.cs',
+  'backend/Services/WebRTCService.cs',
+  'backend/Services/ISfuMediaService.cs',
+  'backend/Services/SfuMediaService.cs',
+]) {
+  assert.equal(existsSync(resolve(repositoryRoot, obsoletePath)), false, `${obsoletePath} must be removed.`);
+}
+assert.match(composeFile, /livekit\/livekit-server:v1\.13\.11/);
+assert.match(composeFile, /LIVEKIT_RTC_PORT_MIN/);
+assert.match(liveKitConfig, /port_range_start: 50000/);
+assert.match(liveKitConfig, /max_participants: 2/);
 
 assert.match(chatPage, /formatVoiceFileName[\s\S]*\.weba/);
 assert.match(program, /\["\.weba"\]\s*=\s*"audio\/webm"/);

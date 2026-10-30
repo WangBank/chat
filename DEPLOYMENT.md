@@ -173,43 +173,44 @@ curl.exe -I https://chat.wangbank.top/download/android
 curl.exe -s https://chat.wangbank.top/download/android-version.json
 ```
 
-## 音视频 SFU 与 TURN
+## LiveKit 音视频服务
 
-### SFU 公网配置
+通话媒体由 `livekit` 容器承载；API 只校验通话状态并签发短期房间令牌，SignalR 只传递来电、接听和结束事件。不要配置已移除的 `WEBRTC_SFU_*`、`WEBRTC_TURN_*` 或旧 `/api/system/webrtc-config` 接口。
 
-API 内置 SFU；客户端媒体直接连接到 API 的 UDP 端口，不经过 HTTP 反向代理。发布主机的受保护环境文件或 GitHub Variables 必须包含：
+### 公网配置
 
-```dotenv
-WEBRTC_SFU_PUBLIC_IP=PUBLIC_IPV4_OF_THIS_HOST
-WEBRTC_SFU_BIND_ADDRESS=0.0.0.0
-WEBRTC_SFU_PORT_MIN=40000
-WEBRTC_SFU_PORT_MAX=40100
-SFU_BIND_HOST=0.0.0.0
-```
-
-在 Windows 防火墙、云安全组和路由器/NAT 上，把 UDP `40000-40100`（或配置后的范围）转发到 API Docker 主机。修改变量后必须重新执行部署，让 Docker 容器重新创建并读取新环境。
-
-### 可选 TURN 中继
-
-公网 SFU 能覆盖普通网络；设备网络禁止 UDP 或 NAT 严格时，需要 TURN。Compose 提供可选的 `coturn/coturn` profile：
+在发布主机的受保护环境文件中配置。`LIVEKIT_NODE_IP` 必须是这台主机能被手机客户端访问的公网 IPv4，不能填 Docker 容器地址、`127.0.0.1` 或内网地址。API 使用的密钥必须与 LiveKit 使用的密钥完全一致。
 
 ```dotenv
-COMPOSE_PROFILES=turn
-TURN_EXTERNAL_IP=PUBLIC_IPV4_OF_THIS_HOST
-TURN_REALM=turn.example.com
-TURN_PORT=3478
-TURN_RELAY_MIN_PORT=49160
-TURN_RELAY_MAX_PORT=49200
-WEBRTC_TURN_URL=turn:turn.example.com:3478?transport=udp
-WEBRTC_TURN_USERNAME=TURN_USERNAME
-WEBRTC_TURN_CREDENTIAL=TURN_PASSWORD
+LIVEKIT_PUBLIC_URL=wss://media.example.com
+LIVEKIT_API_KEY=replace-with-a-livekit-api-key
+LIVEKIT_API_SECRET=replace-with-at-least-32-random-characters
+LIVEKIT_NODE_IP=PUBLIC_IPV4_OF_THIS_HOST
+LIVEKIT_USE_EXTERNAL_IP=false
+LIVEKIT_BIND_HOST=0.0.0.0
+LIVEKIT_PORT=7880
+LIVEKIT_RTC_TCP_PORT=7881
+LIVEKIT_RTC_PORT_MIN=50000
+LIVEKIT_RTC_PORT_MAX=50100
 ```
 
-`turn.example.com` 必须直接解析到 TURN 公网 IP，不能经过 HTTP/CDN 代理。放行 TCP/UDP `3478` 和 UDP `49160-49200`（或配置后的范围）。API 仅在 TURN URL、用户名和凭据均存在时才把 TURN 下发给客户端。
+`media.example.com` 需要解析到该公网 IP。网站走 HTTPS 时，`LIVEKIT_PUBLIC_URL` 必须为 `wss://`；通过反向代理终止 TLS 时，代理必须把 WebSocket 和 HTTP 请求转发到 `livekit:7880`。媒体 UDP 不经过 HTTP 反向代理。
+
+在 Windows 防火墙、云安全组和路由器/NAT 上放行并映射：TCP `7880`（或反向代理入口）、TCP `7881`、UDP `50000-50100`。Docker 的 LiveKit 端口映射必须绑定到 `0.0.0.0`，不能只绑定 `127.0.0.1`。修改公网 IP、端口范围或密钥后重新创建 `livekit` 容器：
+
+```powershell
+docker compose up -d --force-recreate livekit api website
+```
+
+没有固定公网 IP 时可设置 `LIVEKIT_USE_EXTERNAL_IP=true` 让 LiveKit 通过 STUN 探测地址，并留空 `LIVEKIT_NODE_IP`；有固定公网 IP 时优先显式设置 `LIVEKIT_NODE_IP`，结果更可预测。
+
+### 受限网络和 TURN
+
+LiveKit 的 UDP 和 TCP 候选可以覆盖大多数网络。若运营商网络或企业网络仍阻断媒体，按 LiveKit 的 TURN 文档为 LiveKit 配置内置 TURN 或独立 coturn；TURN 参数属于 LiveKit 的服务器配置，不再由 API 下发。TURN 域名必须直连公网 IP，不能置于仅支持 HTTP 的 CDN 代理之后，并应额外放行其监听与 relay 端口范围。
 
 ### 发布后验证
 
-1. 登录后调用受鉴权的 `/api/system/webrtc-sfu-status`，确认端点可访问。
-2. 用一台 Wi-Fi 设备和一台移动数据设备，分别完成双向语音和视频通话。
-3. 服务端日志应显示两个 SFU PeerConnection 为 `connected`，且转发 RTP 计数递增。
-4. 配置 TURN 后确认 `/api/system/webrtc-config` 的 `ice_servers` 中含有 `turn:` URL；日志和命令输出不得暴露 TURN 密码。
+1. 检查 `docker compose ps`，确认 `livekit`、`api` 和 `website` 均已运行；检查 `docker logs <livekit-container>`，确认 `nodeIP` 是服务器公网 IPv4，不能是 Docker `172.*` 地址。
+2. 使用两台真实设备，分别在 Wi-Fi 和移动数据网络完成一次双向视频通话及一次双向语音通话。
+3. 确认接听前 `/api/calls/{callId}/livekit-token` 返回 `409`，接听后双方取得同一房间名的令牌，旁观账号返回 `404`。
+4. 结束后检查通话历史包含该 UUID、结束时间与正确状态；日志不得记录 LiveKit 令牌、API Secret 或媒体内容。

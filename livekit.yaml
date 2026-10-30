@@ -1,0 +1,17 @@
+# LiveKit media-plane configuration. Credentials come from LIVEKIT_KEYS so
+# production secrets stay in the deployment environment rather than this file.
+port: 7880
+
+rtc:
+  port_range_start: 50000
+  port_range_end: 50100
+  tcp_port: 7881
+  use_external_ip: false
+
+room:
+  max_participants: 2
+  empty_timeout: 60
+  departure_timeout: 20
+
+logging:
+  level: info

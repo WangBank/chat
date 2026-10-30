@@ -13,25 +13,6 @@ typedef OnCallInitiatedCallback = void Function(Call call);
 typedef OnCallAcceptedCallback = void Function(String callId);
 typedef OnCallRejectedCallback = void Function(String callId);
 typedef OnCallEndedCallback = void Function(String callId);
-typedef OnOfferReceivedCallback = void Function(
-  String callId,
-  String offer,
-  int senderId,
-);
-typedef OnAnswerReceivedCallback = void Function(
-  String callId,
-  String answer,
-  int senderId,
-);
-typedef OnIceCandidateReceivedCallback = void Function(
-  String callId,
-  String candidate,
-  int senderId,
-);
-typedef OnSfuAnswerReceivedCallback = void Function(
-  String callId,
-  String answer,
-);
 typedef OnNewMessageCallback = void Function(ChatMessage message);
 typedef OnUserOnlineStatusChangedCallback = void Function(
   int userId,
@@ -76,10 +57,6 @@ class SignalRService {
   OnCallAcceptedCallback? onCallAccepted;
   OnCallRejectedCallback? onCallRejected;
   OnCallEndedCallback? onCallEnded;
-  OnOfferReceivedCallback? onOfferReceived;
-  OnAnswerReceivedCallback? onAnswerReceived;
-  OnIceCandidateReceivedCallback? onIceCandidateReceived;
-  OnSfuAnswerReceivedCallback? onSfuAnswerReceived;
   OnNewMessageCallback? onNewMessage;
   OnConnectionStateChangedCallback? onConnectionLost;
   OnConnectionStateChangedCallback? onConnectionRestored;
@@ -819,69 +796,6 @@ class SignalRService {
       }
     });
 
-    // 接收WebRTC消息
-    register('WebRTCMessage', (arguments) {
-      try {
-        final data = _eventData(arguments);
-        if (data == null) {
-          throw const FormatException('WebRTCMessage 负载为空或格式不正确');
-        }
-        final callId = data['call_id']?.toString();
-        if (callId == null || callId.isEmpty) {
-          throw const FormatException('WebRTCMessage 缺少 call_id');
-        }
-
-        final dynamic typeVal = data['type'];
-        final String type = typeVal is String
-            ? typeVal
-            : _webRTCTypeIntToString((typeVal as num).toInt());
-
-        final messageData = data['data']?.toString();
-        final senderIdRaw = data['sender_id'];
-        final senderId = senderIdRaw is num
-            ? senderIdRaw.toInt()
-            : int.tryParse(senderIdRaw?.toString() ?? '');
-        if (messageData == null || senderId == null) {
-          throw const FormatException('WebRTCMessage 缺少 data 或 sender_id');
-        }
-
-        print(
-          'Received WebRTC message: call=$callId, type=$type, sender_id=$senderId, current_user=$_currentUserId',
-        );
-
-        switch (type) {
-          case 'Offer':
-            onOfferReceived?.call(callId, messageData, senderId);
-            break;
-          case 'Answer':
-            onAnswerReceived?.call(callId, messageData, senderId);
-            break;
-          case 'IceCandidate':
-            onIceCandidateReceived?.call(callId, messageData, senderId);
-            break;
-          default:
-            print('Unknown WebRTC message type: $type');
-        }
-      } catch (e) {
-        print('Error parsing WebRTC message: $e');
-      }
-    });
-
-    register('SfuAnswer', (arguments) {
-      try {
-        final data = _eventData(arguments);
-        final callId = data?['call_id']?.toString();
-        final sdp = data?['sdp']?.toString();
-        if (callId == null || callId.isEmpty || sdp == null || sdp.isEmpty) {
-          throw const FormatException('SfuAnswer 缺少 call_id 或 sdp');
-        }
-        print('Received SFU answer: call=$callId');
-        onSfuAnswerReceived?.call(callId, sdp);
-      } catch (e) {
-        print('Error parsing SfuAnswer: $e');
-      }
-    });
-
     // 接收新消息
     register('NewMessage', (arguments) {
       try {
@@ -979,74 +893,6 @@ class SignalRService {
     }
   }
 
-  // 发送WebRTC消息
-  Future<void> sendWebRTCMessage(
-    String callId,
-    String type,
-    String data,
-    int receiverId,
-  ) async {
-    if (!isConnected) throw Exception('SignalR未连接');
-
-    try {
-      final message = {
-        'call_id': callId,
-        // 用枚举数值发送，满足后端的绑定要求
-        'type': _webRTCTypeToInt(type),
-        'data': data,
-        'receiver_id': receiverId,
-      };
-      await _connection!.invoke('SendWebRTCMessage', args: [message]);
-      print('WebRTC message sent for call: $callId, type: $type');
-    } catch (e) {
-      print('Error sending WebRTC message: $e');
-      throw Exception('发送WebRTC消息失败: $e');
-    }
-  }
-
-  // 发送WebRTC Offer
-  Future<void> sendOffer(WebRTCOffer offer, int receiverId) async {
-    await sendWebRTCMessage(offer.callId, 'Offer', offer.offer, receiverId);
-  }
-
-  // 发送WebRTC Answer
-  Future<void> sendAnswer(WebRTCAnswer answer, int receiverId) async {
-    await sendWebRTCMessage(answer.callId, 'Answer', answer.answer, receiverId);
-  }
-
-  // 发送ICE Candidate
-  Future<void> sendIceCandidate(
-    WebRTCCandidate candidate,
-    int receiverId,
-  ) async {
-    await sendWebRTCMessage(
-      candidate.callId,
-      'IceCandidate',
-      candidate.candidate,
-      receiverId,
-    );
-  }
-
-  Future<void> sendSfuOffer(String callId, String sdp) async {
-    if (!isConnected) throw Exception('SignalR未连接');
-    await _connection!.invoke(
-      'SendSfuOffer',
-      args: [
-        {'call_id': callId, 'sdp': sdp},
-      ],
-    );
-  }
-
-  Future<void> sendSfuIceCandidate(String callId, String candidate) async {
-    if (!isConnected) throw Exception('SignalR未连接');
-    await _connection!.invoke(
-      'SendSfuIceCandidate',
-      args: [
-        {'call_id': callId, 'candidate': candidate},
-      ],
-    );
-  }
-
   // 加入通话
   Future<void> joinCall(String callId) async {
     if (!isConnected) throw Exception('SignalR未连接');
@@ -1113,10 +959,6 @@ class SignalRService {
     onCallAccepted = null;
     onCallRejected = null;
     onCallEnded = null;
-    onOfferReceived = null;
-    onAnswerReceived = null;
-    onIceCandidateReceived = null;
-    onSfuAnswerReceived = null;
     onNewMessage = null;
     onConnectionLost = null;
     onConnectionRestored = null;
@@ -1138,43 +980,5 @@ class SignalRService {
       }
     }
     return null;
-  }
-
-  int _webRTCTypeToInt(String type) {
-    switch (type) {
-      case 'Offer':
-        return 0;
-      case 'Answer':
-        return 1;
-      case 'IceCandidate':
-        return 2;
-      case 'CallRequest':
-        return 3;
-      case 'CallResponse':
-        return 4;
-      case 'CallEnd':
-        return 5;
-      default:
-        return 0;
-    }
-  }
-
-  String _webRTCTypeIntToString(int value) {
-    switch (value) {
-      case 0:
-        return 'Offer';
-      case 1:
-        return 'Answer';
-      case 2:
-        return 'IceCandidate';
-      case 3:
-        return 'CallRequest';
-      case 4:
-        return 'CallResponse';
-      case 5:
-        return 'CallEnd';
-      default:
-        return 'Offer';
-    }
   }
 }

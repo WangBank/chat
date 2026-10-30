@@ -193,6 +193,13 @@ export interface CallHistoryApiResponse {
   duration?: number;
 }
 
+export interface LiveKitConnectionApiResponse {
+  url: string;
+  token: string;
+  room_name: string;
+  expires_at: string;
+}
+
 export function getApiErrorMessage(error: unknown, fallback: string) {
   return getWebApiErrorMessage(error, fallback);
 }
@@ -526,6 +533,13 @@ class ApiService {
 
   async getCallHistory() {
     const response = await this.api.get<ApiResponse<CallHistoryApiResponse[]>>('/api/calls/history');
+    return response.data;
+  }
+
+  async createLiveKitToken(callId: string) {
+    const response = await this.api.post<ApiResponse<LiveKitConnectionApiResponse>>(
+      `/api/calls/${encodeURIComponent(callId)}/livekit-token`,
+    );
     return response.data;
   }
 

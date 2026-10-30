@@ -19,11 +19,16 @@ namespace VideoCallAPI.Controllers
     public class CallsController : ControllerBase
     {
         private readonly ICallService _callService;
+        private readonly ILiveKitTokenService _liveKitTokenService;
         private readonly ILogger<CallsController> _logger;
 
-        public CallsController(ICallService callService, ILogger<CallsController> logger)
+        public CallsController(
+            ICallService callService,
+            ILiveKitTokenService liveKitTokenService,
+            ILogger<CallsController> logger)
         {
             _callService = callService;
+            _liveKitTokenService = liveKitTokenService;
             _logger = logger;
         }
 
@@ -49,6 +54,57 @@ namespace VideoCallAPI.Controllers
                     Success = false,
                     Message = "获取通话记录失败",
                     Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("{callId}/livekit-token")]
+        public async Task<ActionResult<ApiResponse<LiveKitConnectionDto>>> CreateLiveKitToken(string callId)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var call = await _callService.GetActiveCallForUserAsync(callId, userId);
+                if (call == null)
+                {
+                    return NotFound(new ApiResponse<LiveKitConnectionDto>
+                    {
+                        Success = false,
+                        Message = "通话不存在或无权加入"
+                    });
+                }
+
+                if (call.Status != CallStatus.Answered)
+                {
+                    return Conflict(new ApiResponse<LiveKitConnectionDto>
+                    {
+                        Success = false,
+                        Message = "请等待对方接听后再连接媒体"
+                    });
+                }
+
+                return Ok(new ApiResponse<LiveKitConnectionDto>
+                {
+                    Success = true,
+                    Data = _liveKitTokenService.CreateConnection(userId, callId)
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "LiveKit 令牌签发失败: CallId={CallId}", callId);
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new ApiResponse<LiveKitConnectionDto>
+                {
+                    Success = false,
+                    Message = ApiErrorMessage.ForClient(ex, "媒体服务暂不可用")
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "LiveKit 令牌签发异常: CallId={CallId}", callId);
+                return BadRequest(new ApiResponse<LiveKitConnectionDto>
+                {
+                    Success = false,
+                    Message = "获取媒体连接失败"
                 });
             }
         }

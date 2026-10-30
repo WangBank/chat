@@ -1,17 +1,9 @@
 .version-badge {
-  position: fixed;
-  bottom: 8px;
-  left: 8px;
-  padding: 4px 8px;
-  background: rgba(0, 0, 0, 0.5);
-  color: white;
-  border-radius: 4px;
-  font-size: 12px;
-  z-index: 100;
+  display: none;
 }
 
 .admin-header {
-  background: #4a154b;
+  background: #197fb8;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -23,7 +15,7 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: #f4ede4;
+  background: #f4faff;
   color: #1d1d1d;
   font-family: Inter, "Microsoft YaHei", "PingFang SC", "Segoe UI", system-ui, sans-serif;
 }
@@ -31,7 +23,7 @@
 .qq-login-window {
   width: min(420px, calc(100vw - 32px));
   overflow: hidden;
-  border: 1px solid #d9bdde;
+  border: 1px solid #b8def2;
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 0 32px rgba(0, 0, 0, 0.1);
@@ -45,7 +37,7 @@
   gap: 9px;
   height: 48px;
   padding: 0 16px;
-  background: #4a154b;
+  background: #197fb8;
   color: #fff;
 }
 
@@ -57,7 +49,7 @@
   border: 2px solid rgba(255, 255, 255, 0.74);
   border-radius: 999px;
   background: #fff;
-  color: #4a154b;
+  color: #197fb8;
   font-size: 17px;
   font-weight: 800;
   line-height: 1;
@@ -145,11 +137,11 @@
 }
 
 .qq-login-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: #4a154b;
+  color: #197fb8;
 }
 
 .qq-login-tabs .ant-tabs-ink-bar {
-  background: #4a154b;
+  background: #197fb8;
 }
 
 .qq-login-card .ant-input-affix-wrapper,
@@ -163,13 +155,13 @@
 }
 
 .qq-login-card .ant-input-affix-wrapper-focused {
-  border-color: #4a154b;
-  box-shadow: 0 0 0 2px rgba(74, 21, 75, 0.12);
+  border-color: #197fb8;
+  box-shadow: 0 0 0 2px rgba(25, 127, 184, 0.12);
 }
 
 .qq-login-card .ant-btn-primary {
   border-radius: 8px;
-  background: #4a154b;
+  background: #197fb8;
   font-weight: 700;
   box-shadow: none;
 }
@@ -187,7 +179,7 @@
 .qq-login-links a {
   height: auto;
   padding: 0;
-  color: #1264a3;
+  color: #237fb1;
   font-size: 13px;
 }
 
@@ -223,15 +215,15 @@
   height: 42px;
   border: 1px solid #dfe8ef;
   background: #fff;
-  color: #4a154b;
+  color: #197fb8;
   box-shadow: none;
 }
 
 .qq-social-button.ant-btn:hover,
 .qq-social-button.ant-btn:focus-visible {
-  border-color: #4a154b;
-  background: #f9f0ff;
-  color: #4a154b;
+  border-color: #197fb8;
+  background: #edf8ff;
+  color: #197fb8;
 }
 
 .qq-social-button .anticon {
@@ -249,5 +241,179 @@
 
   .qq-login-card .ant-card-body {
     padding: 24px 20px 26px;
+  }
+}
+
+/* Shared single-column pages: profile, contacts and message history. */
+.qq-login-page {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--love-sky-50);
+  color: var(--love-ink);
+}
+
+.qq-login-page::before {
+  position: absolute;
+  z-index: -1;
+  top: -310px;
+  left: 50%;
+  width: 690px;
+  height: 690px;
+  border: 1px solid rgba(74, 174, 220, 0.26);
+  border-radius: 50%;
+  content: '';
+  transform: translateX(-50%);
+}
+
+.qq-login-window {
+  border-color: var(--love-line);
+  border-radius: 8px;
+  box-shadow: var(--love-shadow);
+}
+
+.qq-login-titlebar {
+  background: #0d5f93;
+}
+
+.qq-login-avatar {
+  display: block;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+}
+
+.aux-page {
+  min-height: 100vh;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+  background: var(--love-sky-50);
+}
+
+.contacts-page,
+.settings-page {
+  max-width: 848px;
+}
+
+.aux-page-card.ant-card {
+  overflow: hidden;
+  border-color: var(--love-line);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(42, 121, 166, 0.08);
+}
+
+.aux-page-card .ant-card-head {
+  min-height: 58px;
+  border-bottom-color: var(--love-line);
+  background: #fff;
+}
+
+.aux-page-card .ant-card-head-title {
+  color: var(--love-ink);
+  font-weight: 800;
+}
+
+.aux-page .ant-list-item {
+  border-block-end-color: var(--love-line);
+}
+
+.aux-page .ant-avatar {
+  background: var(--love-sky-600);
+}
+
+.aux-page .ant-tag-blue {
+  border-color: var(--love-sky-200);
+  background: var(--love-sky-100);
+  color: var(--love-sky-700);
+}
+
+.history-page .ant-list-item {
+  padding-block: 14px;
+}
+
+.history-page .ant-picker,
+.history-page .ant-input-affix-wrapper {
+  border-color: var(--love-line);
+}
+
+.history-page .ant-picker-focused,
+.history-page .ant-input-affix-wrapper-focused {
+  border-color: var(--love-sky-600);
+  box-shadow: 0 0 0 2px rgba(25, 127, 184, 0.13);
+}
+
+@media (max-width: 600px) {
+  .aux-page {
+    padding: 16px 12px 28px;
+  }
+
+  .aux-page-card .ant-card-head {
+    padding-inline: 14px;
+  }
+
+  .aux-page-card .ant-card-body {
+    padding: 16px;
+  }
+
+  .contacts-page .ant-card-head {
+    min-height: 0;
+    padding-block: 12px;
+  }
+
+  .contacts-page .ant-card-head-wrapper {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .contacts-page .ant-card-head-title,
+  .contacts-page .ant-card-extra {
+    overflow: visible;
+    margin: 0;
+    padding: 0;
+  }
+
+  .contacts-page .ant-card-extra .ant-input-search {
+    width: 100% !important;
+  }
+
+  .contacts-page .ant-list-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px;
+  }
+
+  .contacts-page .ant-list-item-meta,
+  .contacts-page .ant-list-item-meta-content {
+    min-width: 0;
+  }
+
+  .contacts-page .ant-list-item-meta-title {
+    white-space: normal;
+  }
+
+  .contacts-page .ant-list-item-meta-title .ant-space {
+    display: block;
+  }
+
+  .contacts-page .ant-list-item-meta-title .ant-space-item:last-child {
+    display: block;
+    margin-top: 3px;
+  }
+
+  .contacts-page .ant-list-item-meta-title .ant-tag {
+    display: inline-block;
+    max-width: 118px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: top;
+    white-space: nowrap;
+  }
+
+  .contacts-page .ant-list-item-action {
+    margin-inline-start: 0;
   }
 }

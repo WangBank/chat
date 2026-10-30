@@ -762,9 +762,35 @@ class _ProfilePageState extends State<ProfilePage> {
         _isBindingQQ = true;
       });
 
-      // 先给出设备侧可执行的反馈。此前先请求服务端授权 URL，若后端还
-      // 没配置 OAuth，未安装 QQ 的用户只会看到泛化的“绑定失败”，而不
-      // 知道应先安装并登录 QQ。
+      final response = await widget.apiService.getQQLoginUrl(mode: 'bind');
+      final data = response['data'];
+      final authUrl = data is Map ? data['auth_url']?.toString() : null;
+      final configured = data is Map && data['configured'] == true;
+      final mockAvailable = data is Map && data['mock_available'] == true;
+
+      if (!configured && mockAvailable) {
+        final userId = _currentUser?.id ?? 'flutter';
+        final updatedUser = await widget.apiService.qqDevBind(
+          openId: 'dev_qq_bind_$userId',
+          nickname: 'QQ手机测试用户',
+        );
+        if (!mounted) return;
+        setState(() {
+          _setCurrentUser(updatedUser);
+          _isLoading = false;
+          _isBindingQQ = false;
+        });
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('QQ测试绑定成功')));
+        return;
+      }
+
+      if (!configured || authUrl == null || authUrl.isEmpty) {
+        throw Exception(response['message']?.toString() ?? 'QQ绑定尚未配置');
+      }
+
+      // 真实 OAuth 已就绪时，优先给出“安装并登录 QQ”的可执行提示，
+      // 然后再唤起 QQ 授权页；本地 mock 则无需安装 QQ。
       final qqInstalled = await _isQQInstalled();
       if (qqInstalled == false) {
         if (!mounted) return;
@@ -776,14 +802,6 @@ class _ProfilePageState extends State<ProfilePage> {
           const SnackBar(content: Text('未检测到手机 QQ，请先安装并登录 QQ 后重试')),
         );
         return;
-      }
-
-      final response = await widget.apiService.getQQLoginUrl(mode: 'bind');
-      final data = response['data'];
-      final authUrl = data is Map ? data['auth_url']?.toString() : null;
-      final configured = data is Map && data['configured'] == true;
-      if (!configured || authUrl == null || authUrl.isEmpty) {
-        throw Exception(response['message']?.toString() ?? 'QQ绑定尚未配置');
       }
 
       final launched = await _launchQQAuthUrl(

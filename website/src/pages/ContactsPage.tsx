@@ -61,8 +61,8 @@ const ContactsPage = observer(() => {
   };
 
   return (
-    <div style={{ padding: '24px', maxWidth: '800px', margin: '0 auto' }}>
-      <Card
+    <div className="aux-page contacts-page">
+      <Card className="aux-page-card"
         title={
           <Space>
             <Button 

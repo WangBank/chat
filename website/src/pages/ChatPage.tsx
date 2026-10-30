@@ -69,6 +69,7 @@ import {
 import { CallType } from '../services/webrtc.service';
 import { signalRService } from '../services/signalr.service';
 import CallModal from '../components/CallModal';
+import BrandMark from '../components/BrandMark';
 import CallPage from './CallPage';
 import { APP_CONFIG } from '../config/app.config';
 import { isAdminEmail } from '../utils/admin.utils';
@@ -5195,9 +5196,16 @@ const ChatPage = observer(() => {
                   }}
                   autoSize={{ minRows: 2, maxRows: 5 }}
                 />
-                <Button type="primary" icon={<SendOutlined />} onClick={() => void sendGroupMessage()} disabled={!groupMessageText.trim()}>
-                  发送
-                </Button>
+                <Tooltip title="发送消息">
+                  <Button
+                    aria-label="发送消息"
+                    className="composer-send-button"
+                    type="primary"
+                    icon={<SendOutlined />}
+                    onClick={() => void sendGroupMessage()}
+                    disabled={!groupMessageText.trim()}
+                  />
+                </Tooltip>
               </div>
             </div>
           </section>
@@ -5400,9 +5408,16 @@ const ChatPage = observer(() => {
               placeholder=""
               autoSize={{ minRows: 2, maxRows: 5 }}
             />
-            <Button type="primary" icon={<SendOutlined />} onClick={() => void handleSendMessage()} disabled={!messageText.trim()}>
-              发送
-            </Button>
+            <Tooltip title="发送消息">
+              <Button
+                aria-label="发送消息"
+                className="composer-send-button"
+                type="primary"
+                icon={<SendOutlined />}
+                onClick={() => void handleSendMessage()}
+                disabled={!messageText.trim()}
+              />
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -5413,6 +5428,7 @@ const ChatPage = observer(() => {
     <div className={`qq-app ${mobileContentOpen ? 'mobile-content-open' : ''}`}>
       <div className="qq-window">
         <div className="qq-titlebar">
+          <BrandMark className="titlebar-brand-mark" size={25} decorative />
           <button
             type="button"
             className="profile-avatar-button"
