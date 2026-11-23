@@ -1,3 +1,6 @@
+using Microsoft.EntityFrameworkCore;
+using VideoCallAPI.Data;
+
 namespace VideoCallAPI.Services
 {
     public static class AdminIdentityPolicy
@@ -36,6 +39,14 @@ namespace VideoCallAPI.Services
         {
             return !string.IsNullOrWhiteSpace(email)
                 && GetAdminEmails(configuration).Contains(email.Trim(), StringComparer.OrdinalIgnoreCase);
+        }
+
+        public static async Task<bool> IsAdminUserAsync(int userId, VideoCallDbContext db,
+            IConfiguration configuration, CancellationToken cancellationToken)
+        {
+            var email = await db.users.Where(user => user.id == userId).Select(user => user.email)
+                .SingleOrDefaultAsync(cancellationToken);
+            return IsAdminEmail(email, configuration);
         }
     }
 }

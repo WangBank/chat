@@ -6,6 +6,7 @@ import '../models/call.dart';
 import '../models/contact.dart';
 import '../models/friend_request.dart';
 import '../models/chat_message.dart';
+import '../models/announcement.dart';
 import '../config/app_config.dart';
 import '../utils/network_error.dart';
 
@@ -170,6 +171,28 @@ class ApiService {
 
   // 获取当前headers（用于调试）
   Map<String, String> get currentHeaders => _headers;
+
+  Future<AnnouncementPageData> getAnnouncements(int page) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/announcements?page=$page&pageSize=20'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_responseErrorMessage(response, '获取通知失败'));
+    }
+    final json = jsonDecode(utf8.decode(response.bodyBytes));
+    return AnnouncementPageData.fromJson(json['data'] as Map<String, dynamic>);
+  }
+
+  Future<void> markAnnouncementRead(int id) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/announcements/$id/read'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_responseErrorMessage(response, '标记已读失败'));
+    }
+  }
 
   String _responseErrorMessage(http.Response response, String fallback) {
     if (isServiceUnavailableStatusCode(response.statusCode)) {

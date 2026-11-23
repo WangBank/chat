@@ -16,6 +16,7 @@ namespace VideoCallAPI.Hubs
         private readonly ILogger<VideoCallHub> _logger;
         private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly IHubContext<VideoCallHub> _hubContext;
+        private readonly UserOperationLogService _operationLog;
         private static readonly ConcurrentDictionary<string, int> _connectionUserMap = new();
         private static readonly ConcurrentDictionary<int, CancellationTokenSource> _pendingOfflineTimers = new();
 
@@ -24,13 +25,15 @@ namespace VideoCallAPI.Hubs
             ICallService callService,
             ILogger<VideoCallHub> logger,
             IServiceScopeFactory serviceScopeFactory,
-            IHubContext<VideoCallHub> hubContext)
+            IHubContext<VideoCallHub> hubContext,
+            UserOperationLogService operationLog)
         {
             _userService = userService;
             _callService = callService;
             _logger = logger;
             _serviceScopeFactory = serviceScopeFactory;
             _hubContext = hubContext;
+            _operationLog = operationLog;
         }
 
         public override async Task OnConnectedAsync()
@@ -200,6 +203,7 @@ namespace VideoCallAPI.Hubs
         // 发起通话
         public async Task InitiateCall(InitiateCallDto request)
         {
+            bool success = false;
             try
             {
                 var callerId = GetCurrentUserId();
@@ -225,6 +229,7 @@ namespace VideoCallAPI.Hubs
 
                 // 同时通知呼叫者（返回call_id等信息）
                 await Clients.Caller.SendAsync("CallInitiated", callData);
+                success = true;
 
                 _logger.LogInformation("发起通话: {call_id}, 呼叫者: {caller_id}, 接收者: {receiver_id}", 
                     callResponse.call_id, callerId, request.receiver_id);
@@ -234,11 +239,16 @@ namespace VideoCallAPI.Hubs
                 _logger.LogError(ex, "发起通话失败");
                 await Clients.Caller.SendAsync("CallError", "发起通话失败");
             }
+            finally
+            {
+                await WriteCallLogAsync("发起通话", success);
+            }
         }
 
         // 应答通话
         public async Task AnswerCall(AnswerCallDto request)
         {
+            bool success = false;
             try
             {
                 var userId = GetCurrentUserId();
@@ -255,6 +265,7 @@ namespace VideoCallAPI.Hubs
                     call_id = request.call_id,
                     receiver_id = userId.Value
                 });
+                success = true;
 
                 _logger.LogInformation(
                     request.accept ? "通话被接受: {CallId}, 接收者: {UserId}" : "通话被拒绝: {CallId}, 接收者: {UserId}",
@@ -266,11 +277,16 @@ namespace VideoCallAPI.Hubs
                 _logger.LogError(ex, "应答通话失败");
                 await Clients.Caller.SendAsync("CallError", "应答通话失败");
             }
+            finally
+            {
+                await WriteCallLogAsync(request?.accept == false ? "拒绝通话" : "应答通话", success);
+            }
         }
 
         // 结束通话
         public async Task EndCall(string callId)
         {
+            bool success = false;
             try
             {
                 var userId = GetCurrentUserId();
@@ -298,6 +314,7 @@ namespace VideoCallAPI.Hubs
                 targetGroups.Add($"user_{session.receiver_id}");
                 await Clients.Groups(targetGroups.Distinct()).SendAsync("CallEnded", callEndedPayload);
                 await _callService.EndCallAsync(callId, userId.Value);
+                success = true;
 
                 _logger.LogInformation("通话已结束: CallId={CallId}, UserId={UserId}", callId, userId.Value);
             }
@@ -306,11 +323,16 @@ namespace VideoCallAPI.Hubs
                 _logger.LogError(ex, "结束通话异常: CallId={CallId}", callId);
                 await Clients.Caller.SendAsync("CallError", "结束通话失败");
             }
+            finally
+            {
+                await WriteCallLogAsync("结束通话", success);
+            }
         }
 
         // 加入通话
         public async Task JoinCall(string callId)
         {
+            bool success = false;
             try
             {
                 var userId = GetCurrentUserId();
@@ -332,6 +354,7 @@ namespace VideoCallAPI.Hubs
                 _logger.LogInformation("加入SignalR组: call_{callId}, 用户: {user_id}, 连接: {connection_id}", callId, userId, Context.ConnectionId);
 
                 await Clients.Caller.SendAsync("JoinedCall", new { call_id = callId, user_id = userId });
+                success = true;
 
                 _logger.LogInformation("用户加入通话: {call_id}, 用户: {user_id}", callId, userId);
             }
@@ -340,11 +363,16 @@ namespace VideoCallAPI.Hubs
                 _logger.LogError(ex, "加入通话失败");
                 await Clients.Caller.SendAsync("CallError", "加入通话失败");
             }
+            finally
+            {
+                await WriteCallLogAsync("加入通话", success);
+            }
         }
 
         // 离开通话
         public async Task LeaveCall(string callId)
         {
+            bool success = false;
             try
             {
                 var userId = GetCurrentUserId();
@@ -359,6 +387,7 @@ namespace VideoCallAPI.Hubs
                 _logger.LogInformation("离开SignalR组: call_{callId}, 用户: {user_id}, 连接: {connection_id}", callId, userId, Context.ConnectionId);
 
                 await Clients.Caller.SendAsync("LeftCall", new { call_id = callId, user_id = userId });
+                success = true;
 
                 _logger.LogInformation("用户离开通话: {call_id}, 用户: {user_id}", callId, userId);
             }
@@ -367,7 +396,14 @@ namespace VideoCallAPI.Hubs
                 _logger.LogError(ex, "离开通话失败");
                 await Clients.Caller.SendAsync("CallError", "离开通话失败");
             }
+            finally
+            {
+                await WriteCallLogAsync("离开通话", success);
+            }
         }
+
+        private Task WriteCallLogAsync(string operation, bool success) =>
+            _operationLog.RecordAsync(OperationActor.FromClaims(Context.User), operation, "SignalR", success);
 
         private int? GetCurrentUserId()
         {

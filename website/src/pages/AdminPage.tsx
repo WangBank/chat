@@ -54,6 +54,7 @@ import { apiService } from '../services/api.service';
 import { isAdminUser } from '../utils/admin.utils';
 import { formatFullTime, formatTime } from '../utils/time.utils';
 import AdminErrorMessagePanel from '../components/AdminErrorMessagePanel';
+import { BackupPanel, OperationLogPanel, PublishAnnouncementPanel } from '../components/AdminOperations';
 import BrandMark from '../components/BrandMark';
 import { errorMessageStore } from '../stores/error-message.store';
 import { getApiErrorMessage } from '../utils/error-message';
@@ -114,6 +115,7 @@ const AdminPage = observer(() => {
   const navigate = useNavigate();
   const [searchText, setSearchText] = useState('');
   const [activeTab, setActiveTab] = useState<AdminTab>('all');
+  const [section, setSection] = useState<'users' | 'logs' | 'announcements' | 'backups'>('users');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [detailUser, setDetailUser] = useState<User | null>(null);
   const [userDialogMode, setUserDialogMode] = useState<UserDialogMode | null>(null);
@@ -359,11 +361,11 @@ const AdminPage = observer(() => {
               Love Chat 用户、在线状态和账号安全
             </Typography>
           </Box>
-          <Tooltip title="刷新">
+          {section === 'users' && <Tooltip title="刷新">
             <IconButton color="inherit" onClick={handleRefresh}>
               <Refresh />
             </IconButton>
-          </Tooltip>
+          </Tooltip>}
           <Button color="inherit" startIcon={<Logout />} onClick={handleLogout}>
             退出
           </Button>
@@ -433,7 +435,17 @@ const AdminPage = observer(() => {
             </Grid>
           </Grid>
 
-          <AdminErrorMessagePanel
+          <Tabs value={section} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile
+            aria-label="后台管理栏目" onChange={(_, value) => setSection(value)}>
+            <Tab value="users" label="用户管理" />
+            <Tab value="logs" label="操作日志" />
+            <Tab value="announcements" label="消息公告" />
+            <Tab value="backups" label="数据库备份" />
+          </Tabs>
+          {section === 'logs' && <OperationLogPanel />}
+          {section === 'announcements' && <PublishAnnouncementPanel />}
+          {section === 'backups' && <BackupPanel />}
+          {section === 'users' && <><AdminErrorMessagePanel
             messages={errorMessageStore.messages}
             onClear={() => errorMessageStore.clear()}
             onRefresh={handleRefresh}
@@ -606,7 +618,7 @@ const AdminPage = observer(() => {
                 onPageChange={(_, page) => void adminStore.loadAllUsers(page + 1)}
               />
             )}
-          </Paper>
+          </Paper></>}
         </Stack>
       </Container>
 

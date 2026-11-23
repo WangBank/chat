@@ -10,6 +10,38 @@ export interface ApiResponse<T = unknown> {
   errors?: unknown;
 }
 
+export interface DatabaseBackup {
+  id: string;
+  createdAt: string;
+  sizeBytes: number;
+  kind: 'manual' | 'before-restore';
+}
+
+export interface OperationLog {
+  id: number;
+  userId: number | null;
+  username: string | null;
+  operation: string;
+  source: 'HTTP' | 'SignalR';
+  success: boolean;
+  statusCode: number | null;
+  createdAt: string;
+}
+
+export interface Announcement {
+  id: number;
+  title: string;
+  body: string;
+  published_at: string;
+  is_read: boolean;
+}
+
+export interface AnnouncementPage {
+  items: Announcement[];
+  total: number;
+  unread_count: number;
+}
+
 export interface UserSummaryResponse {
   id?: number;
   username?: string;
@@ -544,6 +576,38 @@ class ApiService {
   }
 
   // Admin APIs
+  async listBackups() {
+    return (await this.api.get<ApiResponse<DatabaseBackup[]>>('/api/admin/backups')).data;
+  }
+
+  async createBackup() {
+    return (await this.api.post<ApiResponse<DatabaseBackup>>('/api/admin/backups')).data;
+  }
+
+  async restoreBackup(id: string) {
+    return (await this.api.post<ApiResponse<DatabaseBackup>>(
+      `/api/admin/backups/${encodeURIComponent(id)}/restore`, { confirmBackupId: id },
+    )).data;
+  }
+
+  async getOperationLogs(page: number, filters: { userId?: number; success?: boolean }) {
+    return (await this.api.get<ApiResponse<{ items: OperationLog[]; total: number }>>(
+      '/api/admin/operation-logs', { params: { page, pageSize: 25, ...filters } },
+    )).data;
+  }
+
+  async publishAnnouncement(title: string, body: string) {
+    return (await this.api.post<ApiResponse<Announcement>>('/api/admin/announcements', { title, body })).data;
+  }
+
+  async getAnnouncements(page: number, pageSize = 10) {
+    return (await this.api.get<ApiResponse<AnnouncementPage>>('/api/announcements', { params: { page, pageSize } })).data;
+  }
+
+  async readAnnouncement(id: number) {
+    return (await this.api.put<ApiResponse>(`/api/announcements/${id}/read`)).data;
+  }
+
   async getOnlineUsers() {
     const response = await this.api.get<ApiResponse<UserApiResponse[]>>('/api/admin/online-users');
     return response.data;

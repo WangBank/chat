@@ -176,6 +176,32 @@
   line-height: 1;
 }
 
+.announcement-toolbar, .announcement-list button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.announcement-toolbar, .announcement-list time { color: #54748a; font-size: 12px; }
+.announcement-list { list-style: none; padding: 0; margin: 8px 0; }
+.announcement-list li { border-top: 1px solid #d7e9f4; }
+.announcement-list button {
+  width: 100%; padding: 12px 0; border: 0; background: transparent;
+  color: #0d2742; text-align: left; cursor: pointer; font: inherit; font-weight: 650;
+}
+.announcement-list button span, .announcement-list p { overflow-wrap: anywhere; }
+.announcement-list time { flex-shrink: 0; font-weight: 400; }
+.announcement-list i {
+  display: inline-block; width: 7px; height: 7px; margin-right: 6px;
+  border-radius: 50%; background: #197fb8;
+}
+.announcement-list p { margin: 0; padding-bottom: 12px; white-space: pre-wrap; }
+@media (max-width: 540px) {
+  .title-actions { gap: 3px; }
+  .title-actions .weather-pill { display: none; }
+  .announcement-list button { align-items: flex-start; flex-direction: column; }
+}
+
 .weather-pill {
   display: inline-flex;
   align-items: center;

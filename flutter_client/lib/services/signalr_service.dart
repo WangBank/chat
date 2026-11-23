@@ -60,6 +60,7 @@ class SignalRService {
   OnNewMessageCallback? onNewMessage;
   OnConnectionStateChangedCallback? onConnectionLost;
   OnConnectionStateChangedCallback? onConnectionRestored;
+  void Function()? onAnnouncementsChanged;
   final Set<OnUserOnlineStatusChangedCallback> _onlineStatusListeners = {};
 
   bool get isConnected => _connection?.state == HubConnectionState.Connected;
@@ -690,6 +691,9 @@ class SignalRService {
         handler(arguments);
       });
     }
+
+    register('AnnouncementPublished', (_) => onAnnouncementsChanged?.call());
+    register('AnnouncementRead', (_) => onAnnouncementsChanged?.call());
 
     // 接收来电
     register('IncomingCall', (arguments) {

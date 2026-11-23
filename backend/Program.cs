@@ -183,6 +183,8 @@ builder.Services.AddScoped<IContentSecurityService, ContentSecurityService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IEmailCodeCaptchaService, EmailCodeCaptchaService>();
 builder.Services.AddSingleton<ILiveKitTokenService, LiveKitTokenService>();
+builder.Services.AddSingleton<DatabaseBackupService>();
+builder.Services.AddScoped<UserOperationLogService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<IQQAuthService, QQAuthService>();
 
@@ -342,6 +344,7 @@ app.UseStaticFiles(new StaticFileOptions
 });
 
 app.UseAuthentication();
+app.UseMiddleware<UserOperationLogMiddleware>();
 app.UseAuthorization();
 
 app.MapGet("/health", () => Results.Ok(new

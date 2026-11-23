@@ -89,6 +89,24 @@
   background: #0d5f93 !important;
 }
 
+.admin-operation-panel {
+  min-width: 0;
+  padding: clamp(16px, 3vw, 28px);
+  overflow-wrap: anywhere;
+}
+
+.admin-operation-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.admin-operation-panel th, .admin-operation-panel td {
+  white-space: nowrap;
+}
+
 .admin-page .MuiPaper-root {
   border-color: var(--love-line);
   border-radius: 8px;

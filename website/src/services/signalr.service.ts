@@ -20,6 +20,7 @@ export interface IncomingCall {
 }
 
 class SignalRService {
+  readonly announcementEvents = new EventTarget();
   private connection: signalR.HubConnection | null = null;
   private currentUserId: number | null = null;
   private heartbeatTimer: number | null = null;
@@ -128,6 +129,9 @@ class SignalRService {
     });
 
     // Chat messages
+    for (const event of ['AnnouncementPublished', 'AnnouncementRead']) {
+      this.connection.on(event, () => this.announcementEvents.dispatchEvent(new Event('change')));
+    }
     this.connection.on('NewMessage', (message: ChatMessageApiResponse) => {
       console.log('New message:', message);
       this.onNewMessage?.(message);
@@ -168,6 +172,7 @@ class SignalRService {
 
     try {
       await this.connection.invoke('Authenticate');
+      this.announcementEvents.dispatchEvent(new Event('change'));
       if (userId !== undefined) {
         this.currentUserId = userId;
       }

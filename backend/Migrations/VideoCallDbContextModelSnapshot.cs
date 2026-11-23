@@ -22,6 +22,52 @@ namespace VideoCallAPI.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("VideoCallAPI.Models.Announcement", b =>
+                {
+                    b.Property<int>("id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("id"));
+
+                    b.Property<string>("body")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTime>("published_at")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("published_by")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.HasKey("id");
+
+                    b.HasIndex("published_by");
+
+                    b.ToTable("announcements");
+                });
+
+            modelBuilder.Entity("VideoCallAPI.Models.AnnouncementRead", b =>
+                {
+                    b.Property<int>("user_id")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("announcement_id")
+                        .HasColumnType("integer");
+
+                    b.HasKey("user_id", "announcement_id");
+
+                    b.HasIndex("announcement_id");
+
+                    b.ToTable("announcement_reads");
+                });
+
             modelBuilder.Entity("VideoCallAPI.Models.CallHistory", b =>
                 {
                     b.Property<int>("id")
@@ -725,6 +771,70 @@ namespace VideoCallAPI.Migrations
                         .IsUnique();
 
                     b.ToTable("users");
+                });
+
+            modelBuilder.Entity("VideoCallAPI.Models.UserOperationLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int?>("StatusCode")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Username")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Id");
+
+                    b.ToTable("UserOperationLogs");
+                });
+
+            modelBuilder.Entity("VideoCallAPI.Models.Announcement", b =>
+                {
+                    b.HasOne("VideoCallAPI.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("published_by")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("VideoCallAPI.Models.AnnouncementRead", b =>
+                {
+                    b.HasOne("VideoCallAPI.Models.Announcement", null)
+                        .WithMany()
+                        .HasForeignKey("announcement_id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("VideoCallAPI.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("user_id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("VideoCallAPI.Models.CallHistory", b =>

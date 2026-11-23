@@ -23,10 +23,24 @@ namespace VideoCallAPI.Data
         public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
         public DbSet<EmailVerificationCode> EmailVerificationCodes { get; set; }
         public DbSet<EmailCodeCaptchaChallenge> EmailCodeCaptchaChallenges { get; set; }
+        public DbSet<Announcement> Announcements => Set<Announcement>();
+        public DbSet<AnnouncementRead> AnnouncementReads => Set<AnnouncementRead>();
+        public DbSet<UserOperationLog> UserOperationLogs => Set<UserOperationLog>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<Announcement>().HasOne<User>().WithMany()
+                .HasForeignKey(a => a.published_by).OnDelete(DeleteBehavior.SetNull);
+            modelBuilder.Entity<AnnouncementRead>(entity =>
+            {
+                entity.HasKey(r => new { r.user_id, r.announcement_id });
+                entity.HasOne<User>().WithMany().HasForeignKey(r => r.user_id)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne<Announcement>().WithMany().HasForeignKey(r => r.announcement_id)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
 
             // User 表配置
             modelBuilder.Entity<User>(entity =>

@@ -101,6 +101,7 @@ namespace VideoCallAPI.Controllers
 
                 var user = await _userService.GetUserByIdAsync(userId.Value);
                 _logger.LogInformation("用户注册并自动登录成功: UserId={UserId}, Username={Username}", user.id, user.username);
+                OperationActor.SignedIn(HttpContext, user);
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
@@ -289,6 +290,7 @@ namespace VideoCallAPI.Controllers
                 
                 var user = await _userService.GetUserByIdAsync(userId.Value);
                 _logger.LogInformation("用户登录成功: UserId={UserId}, LoginIdentity={LoginIdentity}", userId.Value, loginDto.username);
+                OperationActor.SignedIn(HttpContext, user);
 
                 return Ok(new ApiResponse<object>
                 {
@@ -344,6 +346,7 @@ namespace VideoCallAPI.Controllers
             try
             {
                 var result = await _qqAuthService.CompleteLoginAsync(loginDto);
+                OperationActor.SignedIn(HttpContext, result.User);
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
@@ -399,6 +402,7 @@ namespace VideoCallAPI.Controllers
             try
             {
                 var result = await _qqAuthService.DevLoginAsync(loginDto);
+                OperationActor.SignedIn(HttpContext, result.User);
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,

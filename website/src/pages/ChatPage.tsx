@@ -70,6 +70,7 @@ import { CallType } from '../services/webrtc.service';
 import { signalRService } from '../services/signalr.service';
 import CallModal from '../components/CallModal';
 import BrandMark from '../components/BrandMark';
+import AnnouncementInbox from '../components/AnnouncementInbox';
 import CallPage from './CallPage';
 import { APP_CONFIG } from '../config/app.config';
 import { isAdminEmail } from '../utils/admin.utils';
@@ -5465,6 +5466,7 @@ const ChatPage = observer(() => {
                 </span>
               </span>
             </Tooltip>
+            <AnnouncementInbox key={authStore.user?.id} />
             <Tooltip title={chatStore.totalUnreadCount > 0 ? `${chatStore.totalUnreadCount} 条未读消息` : '新消息通知'}>
               <Button
                 type="text"

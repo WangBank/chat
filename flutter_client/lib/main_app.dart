@@ -13,6 +13,7 @@ import 'pages/login_page.dart';
 import 'pages/chat_history_page.dart';
 import 'pages/contacts_page.dart';
 import 'pages/profile_page.dart';
+import 'pages/announcements_page.dart';
 import 'pages/incoming_call_page.dart';
 import 'pages/call_page.dart';
 import 'pages/waiting_call_page.dart';
@@ -51,6 +52,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
 
   User? _currentUser;
   int _currentIndex = 1; // 默认显示联系人页面
+  int _announcementRefresh = 0;
+  int _unreadAnnouncements = 0;
   int _contactsRefreshToken = 0; // 新增：联系人刷新令牌
   int _chatRefreshToken = 0; // 新增：聊天刷新令牌
   bool _showingIncomingCall = false; // 防止重复显示来电界面
@@ -86,6 +89,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _refreshAnnouncements();
       _restoreOnlinePresence();
       _resumePendingUpdateInstallation();
       _checkForAppUpdate();
@@ -104,6 +108,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     // only on the initial exception would leave the overlay stuck onscreen.
     _signalRService.onConnectionLost = _onSignalRConnectionLost;
     _signalRService.onConnectionRestored = _onSignalRConnectionRestored;
+    _signalRService.onAnnouncementsChanged = _refreshAnnouncements;
 
     // 监听CallManager状态变化
     _callManager.addListener(_onCallManagerChanged);
@@ -113,6 +118,12 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     return mounted &&
         sessionGeneration == _appSessionGeneration &&
         _currentUser?.id == userId;
+  }
+
+  void _refreshAnnouncements() {
+    if (mounted && _currentUser != null) {
+      setState(() => _announcementRefresh++);
+    }
   }
 
   // 检查存储的登录凭据
@@ -246,6 +257,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       _serviceUnavailable = false;
       _contactsRefreshToken++;
       _chatRefreshToken++;
+      _announcementRefresh++;
     });
   }
 
@@ -978,6 +990,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     _serviceRecoveryUserId = null;
     setState(() {
       _currentUser = null;
+      _unreadAnnouncements = 0;
       _retryingServiceConnection = false;
       _serviceUnavailable = false;
     });
@@ -1039,6 +1052,16 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
                   callManager: _callManager,
                   onLogout: _onLogout,
                 ),
+                AnnouncementsPage(
+                  key: ValueKey(_currentUser!.id),
+                  apiService: _apiService,
+                  refreshToken: _announcementRefresh,
+                  onUnreadChanged: (count) {
+                    if (mounted && _unreadAnnouncements != count) {
+                      setState(() => _unreadAnnouncements = count);
+                    }
+                  },
+                ),
               ],
             ),
             if (_serviceUnavailable)
@@ -1055,24 +1078,34 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
                 _contactsRefreshToken++; // 点击「联系人」令牌+1
               } else if (index == 0) {
                 _chatRefreshToken++; // 点击「聊天」令牌+1
+              } else if (index == 3) {
+                _announcementRefresh++;
               }
             });
           },
-          destinations: const [
-            NavigationDestination(
+          destinations: [
+            const NavigationDestination(
               icon: Icon(Icons.chat_bubble_outline),
               selectedIcon: Icon(Icons.chat_bubble),
               label: '聊天',
             ),
-            NavigationDestination(
+            const NavigationDestination(
               icon: Icon(Icons.people_outline),
               selectedIcon: Icon(Icons.people),
               label: '联系人',
             ),
-            NavigationDestination(
+            const NavigationDestination(
               icon: Icon(Icons.person_outline),
               selectedIcon: Icon(Icons.person),
               label: '我的',
+            ),
+            NavigationDestination(
+              icon: Badge.count(
+                count: _unreadAnnouncements,
+                isLabelVisible: _unreadAnnouncements > 0,
+                child: const Icon(Icons.notifications_none),
+              ),
+              label: '通知',
             ),
           ],
         ),
